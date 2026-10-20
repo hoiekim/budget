@@ -160,20 +160,39 @@ describe("runRecurringDetection", () => {
     ]);
   });
 
-  test("a new suggestion keeps the whole group even where another recurring holds charges", async () => {
+  test("a new suggestion takes only charges no other active recurring holds", async () => {
+    setupSoftDeletedNetflix(null, [activeRow(["netflix-3"])]);
+
+    await runRecurringDetection();
+
+    expect(insertCall()!.values[6]).toEqual(["netflix-2", "netflix-1", "netflix-0"]);
+  });
+
+  test("a new suggestion isn't made from fewer unheld charges than a group needs", async () => {
     setupSoftDeletedNetflix(null, [activeRow(["netflix-3", "netflix-2"])]);
 
     await runRecurringDetection();
 
-    expect(insertCall()!.values[6]).toEqual(["netflix-3", "netflix-2", "netflix-1", "netflix-0"]);
+    expect(insertCall()).toBeUndefined();
   });
 
-  test("a revived suggestion keeps the whole group too", async () => {
-    setupSoftDeletedNetflix("suggested", [activeRow(["netflix-3", "netflix-2"])]);
+  test("a revived suggestion takes only unheld charges too", async () => {
+    setupSoftDeletedNetflix("suggested", [activeRow(["netflix-3"])]);
 
     await runRecurringDetection();
 
-    expect(insertCall()!.values[6]).toEqual(["netflix-3", "netflix-2", "netflix-1", "netflix-0"]);
+    expect(insertCall()!.values[6]).toEqual(["netflix-2", "netflix-1", "netflix-0"]);
+  });
+
+  test("refreshing a suggestion leaves a charge another active recurring holds with it", async () => {
+    setupSoftDeletedNetflix(null, [
+      activeRow(["netflix-3"]),
+      recurringRow("netflix", "suggested", ["netflix-2", "netflix-1", "netflix-0"], false),
+    ]);
+
+    await runRecurringDetection();
+
+    expect(statements().filter((s) => /^UPDATE recurrings SET transaction_ids = \$2/i.test(s))).toEqual([]);
   });
 
   test("a revived confirmed recurring leaves charges another active recurring holds with it", async () => {

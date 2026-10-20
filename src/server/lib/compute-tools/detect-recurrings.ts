@@ -103,20 +103,9 @@ export const normalizeMerchantName = (raw: string): string => {
   return tokens.join(" ");
 };
 
-/**
- * Whether a charge belongs to the merchant `key`. Its own key decides, but
- * enrichment can name a merchant something else, or nothing, from one charge
- * to the next; a bank description that contains the whole key, word for word,
- * still counts. A one-word key would match too much to trust that way.
- */
-export const matchesMerchantKey = (
-  candidate: Pick<RecurringCandidate, "merchant_name" | "name">,
-  key: string,
-): boolean => {
-  if (normalizeMerchantName(candidate.merchant_name || candidate.name || "") === key) return true;
-  if (!candidate.name || !key.includes(" ")) return false;
-  return ` ${normalizeMerchantName(candidate.name)} `.includes(` ${key} `);
-};
+/** Whether a bank description contains the whole merchant key, word for word. */
+const descriptionNames = (name: string, key: string): boolean =>
+  ` ${normalizeMerchantName(name)} `.includes(` ${key} `);
 
 export interface RecurringCandidate {
   transaction_id: string;
@@ -316,7 +305,8 @@ export interface ConfirmedRecurringSnapshot {
   is_income: boolean;
   cadence: RecurringCadence;
   /** The recurring's live member transactions, any order. */
-  members: Pick<RecurringCandidate, "transaction_id" | "amount" | "date">[];
+  members: (Pick<RecurringCandidate, "transaction_id" | "amount" | "date"> &
+    Partial<Pick<RecurringCandidate, "merchant_name">>)[];
 }
 
 type Member = ConfirmedRecurringSnapshot["members"][number];
@@ -385,7 +375,23 @@ export const selectConfirmedAttachments = (
   candidates: RecurringCandidate[],
   claimed: ReadonlySet<string>,
   group?: Pick<DetectedRecurringGroup, "transaction_ids">,
+  activeKeys: ReadonlySet<string> = new Set(),
 ): string[] => {
+  const key = recurring.merchant_key;
+  // Enrichment can name a merchant something else, or nothing, from one charge
+  // to the next, so a bank description that names this merchant also counts.
+  // Only for a key that came from a merchant name and has more than one word:
+  // a key formed from a description, or a single word, also matches whatever
+  // else bills through it. A charge whose own key is another active
+  // recurring's stays with that one.
+  const describable =
+    key.includes(" ") &&
+    recurring.members.some((m) => !!m.merchant_name && normalizeMerchantName(m.merchant_name) === key);
+  const belongs = (c: RecurringCandidate) => {
+    const own = normalizeMerchantName(c.merchant_name || c.name || "");
+    if (own === key) return true;
+    return describable && !!c.name && !activeKeys.has(own) && descriptionNames(c.name, key);
+  };
   const candidateById = new Map(candidates.map((c) => [c.transaction_id, c]));
   const memberIds = new Set(recurring.members.map((m) => m.transaction_id));
   const sameStream = !!group?.transaction_ids.some((id) => memberIds.has(id));
@@ -410,7 +416,7 @@ export const selectConfirmedAttachments = (
         !taken.has(c.transaction_id) &&
         isValidDate(c.date) &&
         c.date > mostRecent!.date &&
-        matchesMerchantKey(c, recurring.merchant_key),
+        belongs(c),
     )
     .sort((a, b) => (a.date < b.date ? -1 : 1));
 
@@ -545,7 +551,7 @@ const fetchMembers = async (
   executor: QueryExecutor,
 ): Promise<ConfirmedRecurringSnapshot["members"]> => {
   const result = await executor.query(
-    `SELECT t.transaction_id, t.amount, t.date::text AS date
+    `SELECT t.transaction_id, t.amount, t.date::text AS date, t.merchant_name
      FROM transactions t
      WHERE t.user_id = $1
        AND t.transaction_id = ANY($2::text[])
@@ -556,6 +562,7 @@ const fetchMembers = async (
     transaction_id: row.transaction_id as string,
     amount: Number(row.amount),
     date: (row.date as string).slice(0, 10),
+    merchant_name: row.merchant_name as string | null,
   }));
 };
 
@@ -646,10 +653,10 @@ export const runRecurringDetection = async (): Promise<void> => {
           rows.filter((r) => r.is_deleted).map((r) => [`${r.merchant_key}::${r.is_income}`, r]),
         );
 
-        // Charges already in an active recurring.
-        const claimed = new Set(
-          existing.filter((r) => r.status !== "dismissed").flatMap((r) => r.transaction_ids),
-        );
+        // Charges already in an active recurring, and those recurrings' keys.
+        const active = existing.filter((r) => r.status !== "dismissed");
+        const claimed = new Set(active.flatMap((r) => r.transaction_ids));
+        const activeKeys = new Set(active.map((r) => r.merchant_key));
 
         let userSuggested = 0;
         let userAttached = 0;
@@ -661,13 +668,12 @@ export const runRecurringDetection = async (): Promise<void> => {
             // The unique key also covers soft-deleted rows: a merchant whose
             // recurring was cascade-deleted revives that row with the new
             // charges and its status, name and default label as they were, so
-            // a dismissal still holds and a confirmed recurring carries on,
-            // taking only charges no active recurring holds, as attaching does.
+            // a dismissal still holds and a confirmed recurring carries on.
+            // Either way it takes only charges no active recurring holds, as
+            // attaching does, and a suggestion still needs enough of them.
             const revivesConfirmed = deletedByKey.get(key)?.status === "confirmed";
-            const ids = revivesConfirmed
-              ? group.transaction_ids.filter((id) => !claimed.has(id))
-              : group.transaction_ids;
-            if (ids.length === 0) continue;
+            const ids = group.transaction_ids.filter((id) => !claimed.has(id));
+            if (ids.length === 0 || (!revivesConfirmed && ids.length < MIN_OCCURRENCES)) continue;
             const inserted = await client.query<{ recurring_id: string; status: string }>(
               `INSERT INTO ${RECURRINGS}
                  (${RECURRING_ID}, ${USER_ID}, ${MERCHANT_KEY}, ${MERCHANT_NAME}, ${CADENCE}, ${IS_INCOME}, ${STATUS}, ${TRANSACTION_IDS})
@@ -706,15 +712,20 @@ export const runRecurringDetection = async (): Promise<void> => {
             // charges arrived, or deleted ones fell out of candidacy).
             // No UPDATE when identical — avoids `updated` churn that
             // would spam delta syncs with no-op bumps. The name is left
-            // alone: the user may have renamed the suggestion.
-            if (!sameIdSet(row.transaction_ids, group.transaction_ids)) {
+            // alone: the user may have renamed the suggestion. A charge
+            // another active recurring holds stays there.
+            const ids = group.transaction_ids.filter(
+              (id) => !claimed.has(id) || row.transaction_ids.includes(id),
+            );
+            if (!sameIdSet(row.transaction_ids, ids)) {
               await client.query(
                 `UPDATE ${RECURRINGS}
                  SET ${TRANSACTION_IDS} = $2, ${CADENCE} = $3, ${UPDATED} = CURRENT_TIMESTAMP
                  WHERE ${RECURRING_ID} = $1`,
-                [row.recurring_id, group.transaction_ids, group.cadence],
+                [row.recurring_id, ids, group.cadence],
               );
             }
+            ids.forEach((id) => claimed.add(id));
             continue;
           }
         }
@@ -750,6 +761,7 @@ export const runRecurringDetection = async (): Promise<void> => {
               candidates,
               claimed,
               groupByKey.get(`${row.merchant_key}::${row.is_income}`),
+              activeKeys,
             );
             if (fresh.length === 0) continue;
             await client.query(

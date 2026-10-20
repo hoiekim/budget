@@ -634,6 +634,56 @@ describe("selectConfirmedAttachments", () => {
       ).toEqual([]);
     });
 
+    test("needs the key's first word whole and its words together", () => {
+      const recurring = weekly(run);
+      const describedAs = (name: string) =>
+        txn({ transaction_id: name, date: "2026-10-12", amount: 12, merchant_name: "Bakery Holdings Inc.", name });
+      expect(
+        selectConfirmedAttachments(
+          recurring,
+          [describedAs("POS THECORNER BAKERY ANYTOWN"), describedAs("POS CORNER STREET BAKERY ANYTOWN")],
+          claimedBy(recurring),
+        ),
+      ).toEqual([]);
+    });
+
+    test("leaves a charge whose own merchant has an active recurring with that one", () => {
+      const recurring = weekly(run);
+      const renamed = bakery("w4", "2026-10-12", "Bakery Holdings Inc.");
+      expect(
+        selectConfirmedAttachments(
+          recurring,
+          [renamed],
+          claimedBy(recurring),
+          undefined,
+          new Set(["corner bakery", "bakery holdings inc"]),
+        ),
+      ).toEqual([]);
+    });
+
+    test("doesn't apply to a key formed from a bank description", () => {
+      // Members with no merchant name key on the billing descriptor itself,
+      // which other subscriptions billed the same way share.
+      const descriptor = "APPLE.COM/BILL 866-712-7753 CA";
+      const billed = (id: string, date: string, merchant: string | null) =>
+        txn({ transaction_id: id, date, amount: 9.99, merchant_name: merchant, name: descriptor });
+      const members = [
+        billed("a1", "2026-07-15", null),
+        billed("a2", "2026-08-15", null),
+        billed("a3", "2026-09-15", null),
+      ];
+      const recurring: ConfirmedRecurringSnapshot = {
+        merchant_key: normalizeMerchantName(descriptor),
+        is_income: false,
+        cadence: "monthly",
+        members,
+      };
+      const otherSubscription = billed("music", "2026-10-15", "Apple Music");
+      expect(
+        selectConfirmedAttachments(recurring, [otherSubscription], claimedBy(recurring)),
+      ).toEqual([]);
+    });
+
     test("doesn't apply to a one-word key", () => {
       const recurring = netflix(history);
       const renamed = txn({
