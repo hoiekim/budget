@@ -1,5 +1,6 @@
 const DB_NAME = "BudgetApp";
-const DB_VERSION = 5;
+/** Bump with every store added: IndexedDB creates stores only during an upgrade. */
+export const DB_VERSION = 6;
 
 export enum StoreName {
   // primary data
@@ -78,9 +79,23 @@ class IndexedDbAccessor {
         console.warn("IndexedDB unavailable; local caching disabled.", request.error);
         reject(request.error);
       };
+      // Another tab holding an older version open keeps the upgrade waiting,
+      // possibly until that tab closes. Waiting would hold up the first sync,
+      // so this page goes without the cache instead.
+      request.onblocked = () => {
+        this.available = false;
+        console.warn("IndexedDB upgrade is blocked by another tab; local caching disabled.");
+        reject(new Error("IndexedDB upgrade blocked"));
+      };
       request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
+        const database = request.result;
+        // Step aside when a newer version of the app opens the database.
+        database.onversionchange = () => {
+          database.close();
+          if (this.db === database) this.db = null;
+        };
+        this.db = database;
+        resolve(database);
       };
 
       request.onupgradeneeded = () => {
