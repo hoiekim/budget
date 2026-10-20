@@ -43,7 +43,6 @@ import {
   InstitutionDictionary,
   Institution,
   indexedDb,
-  indexedDbAccessor,
   StoreName,
   HoldingDictionary,
   Holding,
@@ -53,6 +52,9 @@ import {
   RecurringDictionary,
   globalData,
 } from "client";
+// Straight from the module rather than the barrel, so it is initialised when
+// this module's top level runs.
+import { indexedDbAccessor } from "client/lib/indexed-db/accessor";
 
 // Cursor key: ISO timestamp of the last successful sync's start, minus a
 // safety margin. Next sync's delta fetch sends this as `start-date`, so
@@ -103,6 +105,10 @@ const removeLastSyncedCursor = () => {
     // no-op
   }
 };
+
+// Stores an upgrade creates start empty, so no cursor from before it can seed
+// a delta for them. Set at load, before anything on the page opens the cache.
+indexedDbAccessor.onUpgradeExisting = removeLastSyncedCursor;
 
 /**
  * What a finished sync does with the delta cursor. A failed fetch or save, or a
@@ -603,7 +609,6 @@ export const useSync = () => {
       const syncStartedAt = new Date();
       dropLegacyKeys();
       const skippedWritesAtStart = indexedDbAccessor.skippedWrites;
-      indexedDbAccessor.onUpgradeExisting = removeLastSyncedCursor;
 
       const cached = await indexedDb.loadAllData().catch((err) => {
         console.error(err);
