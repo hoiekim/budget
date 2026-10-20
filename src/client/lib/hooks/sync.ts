@@ -603,12 +603,12 @@ export const useSync = () => {
       const syncStartedAt = new Date();
       dropLegacyKeys();
       const skippedWritesAtStart = indexedDbAccessor.skippedWrites;
+      indexedDbAccessor.onUpgradeExisting = removeLastSyncedCursor;
 
       const cached = await indexedDb.loadAllData().catch((err) => {
         console.error(err);
         return null;
       });
-      const cacheJustUpgraded = indexedDbAccessor.takeUpgradedExisting();
       const cursorRaw = readLastSyncedCursor();
       // Warm requires a populated IDB cache (accounts AND at least one
       // time-partitioned store) AND a previously-recorded cursor. Any missing
@@ -620,8 +620,7 @@ export const useSync = () => {
         (cached.transactions.size > 0 ||
           cached.investmentTransactions.size > 0 ||
           cached.accountSnapshots.size > 0) &&
-        cursorRaw !== null &&
-        !cacheJustUpgraded;
+        cursorRaw !== null;
 
       // Cold path purges IDB before the new save block writes the
       // fresh delta — otherwise pre-tombstone-era rows (soft-deleted

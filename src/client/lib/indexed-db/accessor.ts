@@ -43,7 +43,12 @@ class IndexedDbAccessor {
   private dbVersion: number;
   private stores = Object.values(StoreName);
   private blocked = false;
-  private upgradedExisting = false;
+  /**
+   * Called when this page upgrades an existing database. The stores the
+   * upgrade creates are empty, so whatever delta cursor seeded the cache
+   * before can't seed it now.
+   */
+  onUpgradeExisting: (() => void) | null = null;
   /**
    * Writes dropped because the cache was unavailable. A sync that dropped any
    * left the cache short of what it fetched, so it must not advance the cursor.
@@ -57,17 +62,6 @@ class IndexedDbAccessor {
 
   isAvailable(): boolean {
     return this.available;
-  }
-
-  /**
-   * True once after this page upgraded an existing database. Stores the
-   * upgrade created are empty, so the cache can't seed a delta sync until a
-   * cold one fills it.
-   */
-  takeUpgradedExisting(): boolean {
-    const upgraded = this.upgradedExisting;
-    this.upgradedExisting = false;
-    return upgraded;
   }
 
   private init = (): Promise<IDBDatabase> => {
@@ -123,7 +117,7 @@ class IndexedDbAccessor {
       };
 
       request.onupgradeneeded = (event) => {
-        if (event.oldVersion > 0) this.upgradedExisting = true;
+        if (event.oldVersion > 0) this.onUpgradeExisting?.();
         const database = request.result;
         this.stores.forEach((storeName) => {
           if (!database.objectStoreNames.contains(storeName)) {
