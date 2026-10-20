@@ -6,7 +6,7 @@ const { pg } = createFakePg();
 mock.module("pg", () => pg);
 
 const { getEventsRoute } = await import("./get-events");
-const { SSE_KEEPALIVE_MS, SSE_IDLE_TIMEOUT_SECONDS, subscriberCount, emitToUser } =
+const { SSE_KEEPALIVE_MS, SSE_IDLE_TIMEOUT_SECONDS, subscriberCount, emitToUser, currentEventId } =
   await import("server");
 const { TableName } = await import("common/constants");
 
@@ -116,24 +116,27 @@ describe("get-events", () => {
 
   test("replays from the last-event-id query parameter and ends on the current id", async () => {
     emitToUser("u-replay", TableName.Accounts);
+    const seen = currentEventId("u-replay");
     emitToUser("u-replay", TableName.Budgets);
-    const { req, close } = makeLiveReq("u-replay", { "last-event-id": "1" });
+    const tip = currentEventId("u-replay");
+    const { req, close } = makeLiveReq("u-replay", { "last-event-id": seen });
     const text = await readUntilConnected((await getEventsRoute.execute(req, fakeRes())) as Response);
     close();
 
     const blocks = text.split("\n\n").filter((b) => b.startsWith("id:"));
     expect(blocks).toEqual([
-      `id: 2\nevent: ${TableName.Budgets}-updated\ndata: {}`,
-      "id: 2\nevent: connected\ndata: {}",
+      `id: ${tip}\nevent: ${TableName.Budgets}-updated\ndata: {}`,
+      `id: ${tip}\nevent: connected\ndata: {}`,
     ]);
   });
 
   test("a reconnect with nothing missed gets no retry-full, only the current id", async () => {
-    const { req, close } = makeLiveReq("u-quiet", { "last-event-id": "0" });
+    const tip = currentEventId("u-quiet");
+    const { req, close } = makeLiveReq("u-quiet", { "last-event-id": tip });
     const text = await readUntilConnected((await getEventsRoute.execute(req, fakeRes())) as Response);
     close();
 
     expect(text).not.toContain("retry-full");
-    expect(text).toContain("id: 0\nevent: connected\ndata: {}");
+    expect(text).toContain(`id: ${tip}\nevent: connected\ndata: {}`);
   });
 });

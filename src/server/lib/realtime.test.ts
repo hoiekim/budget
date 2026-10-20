@@ -358,7 +358,20 @@ describe("ring buffer", () => {
     expect(result.events).toEqual([]);
   });
 
-  it("currentEventId reports each user's latest event id, and 0 before the first", () => {
+  it("getEventsSince flags an id from before a restart as overflow, however many events the new process has emitted", () => {
+    // Process A hands a tab ids up to 3 and emits more while the tab sleeps.
+    resetRingBufferForTests(0);
+    for (let i = 0; i < 5; i++) emitToUser("u1", TableName.Accounts);
+    // Process B boots later; its ids start from its own boot time.
+    resetRingBufferForTests(1_000);
+    expect(getEventsSince("u1", "3").overflow).toBe(true);
+    for (let i = 0; i < 5; i++) emitToUser("u1", TableName.Budgets);
+    const resumed = getEventsSince("u1", "3");
+    expect(resumed.overflow).toBe(true);
+    expect(resumed.events).toEqual([]);
+  });
+
+  it("currentEventId reports each user's latest event id, and the counter base before the first", () => {
     expect(currentEventId("u1")).toBe("0");
     emitToUser("u1", TableName.Accounts);
     emitToUser("u1", TableName.Budgets);

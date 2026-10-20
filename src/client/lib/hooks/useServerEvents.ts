@@ -63,12 +63,11 @@ const RESYNC_JITTER_MS = 2_000;
 const STABLE_CONNECTION_MS = 60_000;
 
 /**
- * Floor between two reconnect-driven `onReconnect` calls. `onReconnect` is a
- * whole-app refetch — O(all data), not O(gap) — so a flapping stream must not
+ * Floor between two `retry-full`-driven `onReconnect` calls. `onReconnect` is
+ * a whole-app refetch — O(all data), not O(gap) — so a flapping stream must not
  * be able to schedule one per flap. Suppressed calls are deferred to the end
- * of the interval, never dropped: each one stands for a gap during which the
- * server broadcast to an empty subscriber set and buffered nothing, so
- * skipping it loses those events for the life of the tab.
+ * of the interval, never dropped: each one stands for a gap the server's buffer
+ * could not replay, so skipping it loses those events for the life of the tab.
  */
 const RESYNC_MIN_INTERVAL_MS = 30_000;
 

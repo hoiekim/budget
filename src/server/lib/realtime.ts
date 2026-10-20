@@ -43,9 +43,10 @@ const subscribers = new Map<string, Set<Subscriber>>();
 
 /**
  * One buffered SSE event for reconnect replay. Reconnecting clients
- * request events by id via the browser's Last-Event-ID header; when the
- * ring covers the gap the caller replays these; when it doesn't, the
- * caller emits a `retry-full` signal and the client resyncs.
+ * request events by id (the `last-event-id` query parameter, or the
+ * Last-Event-ID header); when the ring covers the gap the caller replays
+ * these; when it doesn't, the caller emits a `retry-full` signal and the
+ * client resyncs.
  *
  * Coverage is bounded by `RING_BUFFER_MAX_ENTRIES` and
  * `RING_BUFFER_MAX_AGE_MS`, whichever hits first. In-memory per process
@@ -66,8 +67,15 @@ export const RING_BUFFER_MAX_AGE_MS = 15 * 60 * 1000;
 const perUserBuffer = new Map<string, StoredEvent[]>();
 const perUserCounter = new Map<string, number>();
 
+/**
+ * Every user's ids start here. Starting from the process's boot time keeps an
+ * id a client remembers from before a restart below anything this process
+ * hands out, so it reads as a gap rather than as one of this process's ids.
+ */
+let counterBase = Date.now();
+
 const nextEventId = (userId: string): string => {
-  const cur = (perUserCounter.get(userId) ?? 0) + 1;
+  const cur = (perUserCounter.get(userId) ?? counterBase) + 1;
   perUserCounter.set(userId, cur);
   return String(cur);
 };
@@ -90,8 +98,8 @@ const appendToBuffer = (userId: string, event: StoredEvent): void => {
  * the client should refetch everything.
  *
  * Semantics:
- *  - `lastEventId === null` → new stream. If the counter is 0 (never
- *    emitted for this user in this process) or the buffer is empty, the
+ *  - `lastEventId === null` → new stream. If nothing was ever emitted for
+ *    this user in this process or the buffer is empty, the
  *    client's most recent state is what the login-time `sync()` already
  *    fetched — covered with no replay. Otherwise (buffer has events, but
  *    the client never received an id) → overflow, because between the
@@ -100,21 +108,20 @@ const appendToBuffer = (userId: string, event: StoredEvent): void => {
  *  - `lastEventId` equals the counter tip → nothing was emitted since the
  *    client's last event; covered with no replay, even when the buffer has
  *    aged out.
- *  - `lastEventId` parses AND `lastId <= counterTip` (client isn't from a
- *    future / restarted-process past) AND the buffer's oldest id is
- *    `<= lastEventId + 1` (no gap) → covered; replay events with
- *    `id > last`.
+ *  - `lastEventId` parses AND `lastId <= counterTip` AND the buffer's
+ *    oldest id is `<= lastEventId + 1` (no gap) → covered; replay events
+ *    with `id > last`.
  *  - Otherwise → overflow; caller emits `retry-full` and the client
- *    resyncs. This covers malformed id, empty buffer with a non-null id,
- *    oldest > last+1, AND the restart case where the process's counter
- *    reset below the client's remembered id.
+ *    resyncs. This covers malformed id, an id above the tip, empty buffer
+ *    with an older id, oldest > last+1, AND an id from before a restart,
+ *    which sits below this process's `counterBase`.
  */
 export const getEventsSince = (
   userId: string,
   lastEventId: string | null,
 ): { events: StoredEvent[]; overflow: boolean } => {
   const buf = perUserBuffer.get(userId);
-  const counterTip = perUserCounter.get(userId) ?? 0;
+  const counterTip = perUserCounter.get(userId) ?? counterBase;
   if (lastEventId === null) {
     const hasBuffered = !!buf && buf.length > 0;
     return { events: [], overflow: hasBuffered };
@@ -130,8 +137,9 @@ export const getEventsSince = (
   return { events, overflow: false };
 };
 
-/** The id of the user's most recent event, "0" before the first. */
-export const currentEventId = (userId: string): string => String(perUserCounter.get(userId) ?? 0);
+/** The id of the user's most recent event, or the counter base before the first. */
+export const currentEventId = (userId: string): string =>
+  String(perUserCounter.get(userId) ?? counterBase);
 
 export type EmitDomain = TableName;
 
@@ -271,10 +279,15 @@ export const closeAllSubscribers = (): void => {
   subscribers.clear();
 };
 
-/** Test hook — clears the ring buffer and id counters. Not called on request paths. */
-export const resetRingBufferForTests = (): void => {
+/**
+ * Test hook — clears the ring buffer and id counters. Not called on request
+ * paths. `base` stands in for the process's boot time; a new one simulates a
+ * restart.
+ */
+export const resetRingBufferForTests = (base = 0): void => {
   perUserBuffer.clear();
   perUserCounter.clear();
+  counterBase = base;
 };
 
 /** Test/introspection — how many events are currently buffered for a user. */
