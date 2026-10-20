@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { cursorUpdateAfterSync } from "./sync";
+import { cursorUpdateAfterSync, sortById } from "./sync";
 
 describe("cursorUpdateAfterSync", () => {
   test("advances after a clean sync", () => {
@@ -60,5 +60,20 @@ describe("cursorUpdateAfterSync", () => {
         writesSkipped: false,
       }),
     ).toBe("clear");
+  });
+});
+
+describe("sortById", () => {
+  test("orders by UTF-16 code unit, the order IndexedDB returns string keys in", () => {
+    // A locale-aware compare would put "a" before "B" and "10" after "9";
+    // IndexedDB does neither, and any difference rebuilds every dropdown.
+    const rows = ["b", "B", "a", "9", "10"].map((id) => ({ id }));
+    expect(sortById(rows, (r) => r.id).map((r) => r.id)).toEqual(["10", "9", "B", "a", "b"]);
+  });
+
+  test("leaves its input untouched", () => {
+    const rows = [{ id: "b" }, { id: "a" }];
+    sortById(rows, (r) => r.id);
+    expect(rows.map((r) => r.id)).toEqual(["b", "a"]);
   });
 });

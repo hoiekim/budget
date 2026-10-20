@@ -6,6 +6,7 @@ import {
   subscriberCount,
   emitToUser,
   getEventsSince,
+  currentEventId,
   mutationEmitDomain,
   mutationSideEffectDomains,
   closeAllSubscribers,
@@ -345,5 +346,37 @@ describe("ring buffer", () => {
     const covered = getEventsSince("u1", "1");
     expect(covered.overflow).toBe(false);
     expect(covered.events).toEqual([]);
+  });
+
+  it("getEventsSince treats a reconnect at the counter tip as covered when nothing was ever buffered", () => {
+    // A tab that connected before this user's first event resumes from the
+    // "0" the connect handed it. Nothing has been emitted since, so there is
+    // nothing to miss — an overflow here would resync the whole app on every
+    // foreground of a quiet tab.
+    const result = getEventsSince("u1", currentEventId("u1"));
+    expect(result.overflow).toBe(false);
+    expect(result.events).toEqual([]);
+  });
+
+  it("getEventsSince flags an id from before a restart as overflow, however many events the new process has emitted", () => {
+    // Process A hands a tab ids up to 3 and emits more while the tab sleeps.
+    resetRingBufferForTests(0);
+    for (let i = 0; i < 5; i++) emitToUser("u1", TableName.Accounts);
+    // Process B boots later; its ids start from its own boot time.
+    resetRingBufferForTests(1_000);
+    expect(getEventsSince("u1", "3").overflow).toBe(true);
+    for (let i = 0; i < 5; i++) emitToUser("u1", TableName.Budgets);
+    const resumed = getEventsSince("u1", "3");
+    expect(resumed.overflow).toBe(true);
+    expect(resumed.events).toEqual([]);
+  });
+
+  it("currentEventId reports each user's latest event id, and the counter base before the first", () => {
+    expect(currentEventId("u1")).toBe("0");
+    emitToUser("u1", TableName.Accounts);
+    emitToUser("u1", TableName.Budgets);
+    emitToUser("u2", TableName.Accounts);
+    expect(currentEventId("u1")).toBe("2");
+    expect(currentEventId("u2")).toBe("1");
   });
 });

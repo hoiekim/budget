@@ -106,8 +106,13 @@ class StubEventSource {
     this.dispatch("error", {});
   }
 
-  emit(domain: ServerEventDomain, payload: ServerEventPayload) {
-    this.dispatch(`${domain}-updated`, { data: JSON.stringify(payload) });
+  emit(domain: ServerEventDomain, payload: ServerEventPayload, id = "") {
+    this.dispatch(`${domain}-updated`, { data: JSON.stringify(payload), lastEventId: id });
+  }
+
+  /** The server's opening block, carrying its current event id. */
+  connected(id: string) {
+    this.dispatch("connected", { data: "{}", lastEventId: id });
   }
 
   /** Server-emitted overflow signal — the ring buffer no longer covers the
@@ -124,6 +129,7 @@ const RESYNC_JITTER = 1_000;
 
 const harness = (opts: { random?: () => number } = {}) => {
   const sources: StubEventSource[] = [];
+  const requestedIds: (string | null)[] = [];
   const syncs: number[] = [];
   const received: [ServerEventDomain, ServerEventPayload][] = [];
   let clock = 1_000_000;
@@ -136,7 +142,8 @@ const harness = (opts: { random?: () => number } = {}) => {
   const connection = createServerEventsConnection({
     onEvent: (domain, payload) => received.push([domain, payload]),
     onReconnect: () => syncs.push(clock),
-    createEventSource: () => {
+    createEventSource: (lastEventId) => {
+      requestedIds.push(lastEventId);
       const stub = new StubEventSource();
       sources.push(stub);
       return stub as unknown as EventSource;
@@ -149,6 +156,7 @@ const harness = (opts: { random?: () => number } = {}) => {
 
   return {
     sources,
+    requestedIds,
     syncs,
     received,
     connection,
@@ -198,6 +206,30 @@ describe("createServerEventsConnection", () => {
     h.latest().open();
     h.latest().emit(TableName.Accounts, { originTabId: "tab-a" });
     expect(h.received).toEqual([[TableName.Accounts, { originTabId: "tab-a" }]]);
+    h.connection.close();
+  });
+
+  it("resumes each reconnect from the last event id it received", () => {
+    // Every reconnect is a new EventSource, which carries no Last-Event-ID of
+    // its own; without the id the server can only order a whole-app resync.
+    const h = harness();
+    h.latest().open();
+    h.latest().connected("4");
+    flapCovered(h, 1_000);
+    h.latest().connected("4");
+    h.latest().emit(TableName.Accounts, {}, "5");
+    flapCovered(h, 2_000); // the second attempt backs off twice as long
+    expect(h.requestedIds).toEqual([null, "4", "5"]);
+    h.connection.close();
+  });
+
+  it("keeps the remembered id when an event arrives without one", () => {
+    const h = harness();
+    h.latest().open();
+    h.latest().emit(TableName.Accounts, {}, "9");
+    h.latest().emit(TableName.Accounts, {});
+    flapCovered(h, 1_000);
+    expect(h.requestedIds).toEqual([null, "9"]);
     h.connection.close();
   });
 

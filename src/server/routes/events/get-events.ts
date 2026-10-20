@@ -5,6 +5,8 @@ import {
   unregisterSubscriber,
   subscriberCount,
   getEventsSince,
+  currentEventId,
+  optionalQueryString,
   SECURITY_HEADERS,
   SSE_KEEPALIVE_MS,
   SSE_IDLE_TIMEOUT_SECONDS,
@@ -33,6 +35,10 @@ const formatSseBlock = (event: string, payload: unknown, id?: string): string =>
 };
 
 const RETRY_FULL_EVENT = "retry-full";
+
+/** Carries the current event id, so a client that reconnects before any
+ *  event arrives still has an id to resume from. */
+const CONNECTED_EVENT = "connected";
 
 export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   const userId = req.session.user!.user_id;
@@ -87,8 +93,12 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   }
 
   // Read Last-Event-ID before registering the subscriber so replay is
-  // ordered strictly before any live emit. Headers are lowercased.
-  const lastEventIdRaw = req.headers["last-event-id"];
+  // ordered strictly before any live emit. Headers are lowercased. The query
+  // parameter is how the client's own reconnect sends it: a new EventSource
+  // can't set headers, and only the browser's native retry echoes the header.
+  const lastEventIdQuery = optionalQueryString(req, "last-event-id");
+  const lastEventIdRaw =
+    req.headers["last-event-id"] ?? (lastEventIdQuery.success ? lastEventIdQuery.data : undefined);
   const lastEventId =
     typeof lastEventIdRaw === "string" && lastEventIdRaw.length > 0 ? lastEventIdRaw : null;
 
@@ -115,6 +125,7 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
           controller.enqueue(encoder.encode(formatSseBlock(`${e.domain}-updated`, e.payload, e.id)));
         }
       }
+      controller.enqueue(encoder.encode(formatSseBlock(CONNECTED_EVENT, {}, currentEventId(userId))));
 
       sub = {
         send: (event, payload, id) => {

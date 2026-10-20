@@ -273,6 +273,9 @@ interface FetchBudgetsResult {
   networkFailed: boolean;
 }
 
+export const sortById = <T,>(rows: T[], id: (row: T) => string): T[] =>
+  [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
+
 const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   const result: FetchBudgetsResult = {
     budgets: new BudgetDictionary(),
@@ -288,10 +291,19 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   }
   if (!response.body) return result;
 
+  // Id order is the order IndexedDB hands the cache back in. Matching it keeps
+  // every budget/category dropdown from being rebuilt when a warm load's
+  // cached paint is replaced by the network's.
   const { budgets, sections, categories } = response.body;
-  budgets.forEach((e) => result.budgets.set(e.budget_id, new Budget(e)));
-  sections.forEach((e) => result.sections.set(e.section_id, new Section(e)));
-  categories.forEach((e) => result.categories.set(e.category_id, new Category(e)));
+  sortById(budgets, (e) => e.budget_id).forEach((e) =>
+    result.budgets.set(e.budget_id, new Budget(e)),
+  );
+  sortById(sections, (e) => e.section_id).forEach((e) =>
+    result.sections.set(e.section_id, new Section(e)),
+  );
+  sortById(categories, (e) => e.category_id).forEach((e) =>
+    result.categories.set(e.category_id, new Category(e)),
+  );
 
   return result;
 };
@@ -661,8 +673,10 @@ export const useSync = () => {
       // time-partitioned. Refreshed on every sync (warm + cold).
       //
       // For warm load, we paint cached state first so the UI doesn't
-      // flicker between cache and the refreshed view of Stage 1.
-      if (isWarm && cached) {
+      // flicker between cache and the refreshed view of Stage 1. A resync of
+      // a page already showing data skips it: the live state is at least as
+      // new as the cache, and swapping the cache in rebuilds every row.
+      if (isWarm && cached && !globalData.status.isInit) {
         cached.status.isInit = true;
         cached.status.isLoading = true;
         cached.status.isError = false;
