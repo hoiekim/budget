@@ -51,6 +51,18 @@ describe("getRemovedTransactions", () => {
     expect(result[0].transaction_id).toBe("tx-2");
   });
 
+  it("does not flag manually-entered (source='manual') transactions as removed", () => {
+    // Manual cash txns never appear in SimpleFin's incoming list — they must not
+    // be soft-deleted by the hourly sync.
+    const incoming = [makeTx({ transaction_id: "tx-1" })];
+    const stored = [
+      makeTx({ transaction_id: "tx-1" }),
+      makeTx({ transaction_id: "manual-1", source: "manual" }),
+    ];
+    const result = getRemovedTransactions(incoming, stored, START_DATE);
+    expect(result).toHaveLength(0);
+  });
+
   it("ignores stored transactions before startDate", () => {
     const incoming: JSONTransaction[] = [];
     const stored = [makeTx({ transaction_id: "tx-old", date: "2025-12-31" })];
@@ -102,6 +114,18 @@ describe("getRemovedInvestmentTransactions", () => {
     const result = getRemovedInvestmentTransactions(incoming, stored, START_DATE);
     expect(result).toHaveLength(1);
     expect(result[0].investment_transaction_id).toBe("inv-2");
+  });
+
+  it("does not flag manually-entered (source='manual') transactions as removed", () => {
+    // Manual investment txns never appear in SimpleFin's incoming list — they must
+    // not be soft-deleted by the hourly sync.
+    const incoming = [makeInvTx({ investment_transaction_id: "inv-1" })];
+    const stored = [
+      makeInvTx({ investment_transaction_id: "inv-1" }),
+      makeInvTx({ investment_transaction_id: "manual-1", source: "manual" }),
+    ];
+    const result = getRemovedInvestmentTransactions(incoming, stored, START_DATE);
+    expect(result).toHaveLength(0);
   });
 
   it("ignores stored investment transactions before startDate", () => {
