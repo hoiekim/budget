@@ -1,4 +1,11 @@
-import { Route, searchTransactions, SearchTransactionsOptions, optionalQueryString, validationError } from "server";
+import {
+  Route,
+  JsonStream,
+  searchTransactions,
+  SearchTransactionsOptions,
+  optionalQueryString,
+  validationError,
+} from "server";
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
 
 export interface TransactionsGetResponse {
@@ -39,16 +46,14 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
     if (endResult.data) options.endDate = endResult.data;
     if (accountResult.data) options.account_id = accountResult.data;
 
-    const response = await searchTransactions(user, options);
+    const { transactions, investment_transactions } = searchTransactions(user, options);
 
-    const { transactions, investment_transactions } = response;
-
-    return {
+    return new JsonStream<TransactionsGetResponse>({
       status: "success",
       body: {
         transactions,
         investmentTransactions: investment_transactions,
       },
-    };
+    });
   },
 );

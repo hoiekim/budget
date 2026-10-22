@@ -347,6 +347,8 @@ export interface SearchFilters {
     end?: string | Date;
   };
   excludeDeleted?: boolean;
+  /** Keyset pagination: only rows whose `column` sorts after `value`. */
+  after?: { column: string; value: ParamValue };
   orderBy?: string;
   limit?: number;
   offset?: number;
@@ -364,6 +366,7 @@ export function buildSelectWithFilters(
     inFilters = {},
     dateRange,
     excludeDeleted = true,
+    after,
     orderBy,
     limit,
     offset,
@@ -420,6 +423,11 @@ export function buildSelectWithFilters(
 
   if (excludeDeleted) {
     conditions.push(SOFT_DELETE_CONDITION);
+  }
+
+  if (after) {
+    conditions.push(`${after.column} > $${paramIndex++}`);
+    values.push(after.value);
   }
 
   const columnList = columns === "*" ? "*" : columns.join(", ");

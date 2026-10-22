@@ -1,7 +1,6 @@
-import { JSONSnapshotData } from "common";
+import { JSONSecurity, JSONSnapshotData } from "common";
 import {
   MaskedUser,
-  SnapshotModel,
   snapshotsTable,
   isAccountSnapshot,
   isSecuritySnapshot,
@@ -25,6 +24,7 @@ import {
   COST_BASIS,
   QUANTITY,
   QueryExecutor,
+  toJSONBatches,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
@@ -37,7 +37,6 @@ export interface SearchSnapshotsOptions {
   snapshot_type?: "account_balance" | "security" | "holding";
   startDate?: string;
   endDate?: string;
-  limit?: number;
   /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
    *  the response so the client can treat them as tombstones and
    *  evict them from its local cache (IDB + in-memory dict). Defaults
@@ -69,14 +68,14 @@ export interface HoldingSnapshot {
 // otherwise exclude them by the `user_id = $1` filter, leaving the frontend
 // unable to resolve `security_id → ticker_symbol`.
 //
-// Two queries instead of one: `snapshotsTable.query` filters by a single
-// `user_id`, so it can't express the `user_id = $1 OR user_id IS NULL` union
-// that surfacing shared security rows alongside the user's own requires.
-// Two scoped `.query` calls + concat is the smaller change.
-export const searchSnapshots = async (
+// Two queries instead of one: `snapshotsTable.queryInBatches` filters by a
+// single `user_id`, so it can't express the `user_id = $1 OR user_id IS NULL`
+// union that surfacing shared security rows alongside the user's own requires.
+// The scoped queries are yielded one after the other.
+export async function* searchSnapshots(
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {},
-): Promise<JSONSnapshotData[]> => {
+): AsyncGenerator<JSONSnapshotData[]> {
   // Filter by `updated`, not `snapshot_date` — matches the transactions
   // repository (`{ column: UPDATED, ... }`). Soft-deletes and edits bump
   // `updated`, so the FE's delta-by-cursor sync surfaces them regardless
@@ -88,21 +87,22 @@ export const searchSnapshots = async (
     options.startDate || options.endDate
       ? { column: UPDATED, start: options.startDate, end: options.endDate }
       : undefined;
+  const excludeDeleted = !options.includeDeleted;
 
-  const userSnapshots = await snapshotsTable.query(
-    {
-      [SNAPSHOT_TYPE]: options.snapshot_type,
-      [ACCOUNT_ID]: options.account_id,
-      [SECURITY_ID]: options.security_id,
-    },
-    {
-      user_id: user?.user_id,
-      inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
-      dateRange,
-      orderBy: `${SNAPSHOT_DATE} DESC`,
-      limit: options.limit,
-      excludeDeleted: !options.includeDeleted,
-    },
+  yield* toJSONBatches(
+    snapshotsTable.queryInBatches(
+      {
+        [SNAPSHOT_TYPE]: options.snapshot_type,
+        [ACCOUNT_ID]: options.account_id,
+        [SECURITY_ID]: options.security_id,
+      },
+      {
+        user_id: user?.user_id,
+        inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
+        dateRange,
+        excludeDeleted,
+      },
+    ),
   );
 
   // Holding snapshots store the account in `holding_account_id` and leave
@@ -120,30 +120,28 @@ export const searchSnapshots = async (
   const wantsHoldingByAccount =
     (!options.snapshot_type || options.snapshot_type === "holding") &&
     (options.account_id || options.account_ids?.length);
-  const holdingByAccountSnapshots: SnapshotModel[] = [];
   if (wantsHoldingByAccount) {
-    const holdingSnapshots = await snapshotsTable.query(
-      {
-        [SNAPSHOT_TYPE]: "holding",
-        [HOLDING_ACCOUNT_ID]: options.account_id,
-        // Holding rows store the security in `holding_security_id`; the
-        // `security_id` column is NULL for them. Filtering by `SECURITY_ID`
-        // here would match zero rows (latent for any future caller that
-        // passes both `account_id` and `security_id`).
-        [HOLDING_SECURITY_ID]: options.security_id,
-      },
-      {
-        user_id: user?.user_id,
-        inFilters: options.account_ids?.length
-          ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
-          : undefined,
-        dateRange,
-        orderBy: `${SNAPSHOT_DATE} DESC`,
-        limit: options.limit,
-        excludeDeleted: !options.includeDeleted,
-      },
+    yield* toJSONBatches(
+      snapshotsTable.queryInBatches(
+        {
+          [SNAPSHOT_TYPE]: "holding",
+          [HOLDING_ACCOUNT_ID]: options.account_id,
+          // Holding rows store the security in `holding_security_id`; the
+          // `security_id` column is NULL for them. Filtering by `SECURITY_ID`
+          // here would match zero rows (latent for any future caller that
+          // passes both `account_id` and `security_id`).
+          [HOLDING_SECURITY_ID]: options.security_id,
+        },
+        {
+          user_id: user?.user_id,
+          inFilters: options.account_ids?.length
+            ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
+            : undefined,
+          dateRange,
+          excludeDeleted,
+        },
+      ),
     );
-    holdingByAccountSnapshots.push(...holdingSnapshots);
   }
 
   // Security snapshots only make sense when the caller isn't narrowing to a
@@ -153,53 +151,40 @@ export const searchSnapshots = async (
     (!options.snapshot_type || options.snapshot_type === "security") &&
     !options.account_id &&
     !options.account_ids?.length;
-  if (!wantsSecurity) {
-    return [...userSnapshots, ...holdingByAccountSnapshots].map((s) => s.toJSON());
-  }
-
-  const securitySnapshots = await snapshotsTable.query(
-    {
-      [SNAPSHOT_TYPE]: "security",
-      [SECURITY_ID]: options.security_id,
-    },
-    {
-      dateRange,
-      orderBy: `${SNAPSHOT_DATE} DESC`,
-      limit: options.limit,
-      excludeDeleted: !options.includeDeleted,
-    },
-  );
+  if (!wantsSecurity) return;
 
   // Enrich each security snapshot with ticker_symbol / name / type from the
   // securities table. Without this the frontend's `securitySnapshots` dict
   // would carry only `{ security_id, close_price }` and `HoldingsComposition`
   // still couldn't resolve `security_id → ticker`. Same enrichment pattern
-  // as `getHoldingSnapshotsRoute`.
-  const uniqueSecurityIds = [
-    ...new Set(securitySnapshots.map((s) => s.security_id as string).filter(Boolean)),
-  ];
-  const securities = uniqueSecurityIds.length ? await searchSecuritiesById(uniqueSecurityIds) : [];
-  const securityMap = new Map(securities.map((s) => [s.security_id, s]));
-
-  const enrichedSecuritySnapshots = securitySnapshots.map((model) => {
-    const snap = model.toJSON();
-    if (!isSecuritySnapshot(snap)) return snap;
-    const sec = securityMap.get(snap.security.security_id);
-    if (sec) {
-      // Spread the full security record first, then keep the snapshot's
-      // historical `close_price` (per snapshot_date) — the securities table
-      // only holds the latest price.
-      snap.security = { ...sec, close_price: snap.security.close_price };
+  // as `getHoldingSnapshotsRoute`. Securities are few, so each one is looked
+  // up once and reused across batches.
+  const securityMap = new Map<string, JSONSecurity>();
+  const securityBatches = snapshotsTable.queryInBatches(
+    { [SNAPSHOT_TYPE]: "security", [SECURITY_ID]: options.security_id },
+    { dateRange, excludeDeleted },
+  );
+  for await (const models of securityBatches) {
+    const missingIds = [
+      ...new Set(models.map((s) => s.security_id as string).filter((id) => id && !securityMap.has(id))),
+    ];
+    if (missingIds.length) {
+      for (const sec of await searchSecuritiesById(missingIds)) securityMap.set(sec.security_id, sec);
     }
-    return snap;
-  });
-
-  return [
-    ...userSnapshots.map((s) => s.toJSON()),
-    ...holdingByAccountSnapshots.map((s) => s.toJSON()),
-    ...enrichedSecuritySnapshots,
-  ];
-};
+    yield models.map((model) => {
+      const snap = model.toJSON();
+      if (!isSecuritySnapshot(snap)) return snap;
+      const sec = securityMap.get(snap.security.security_id);
+      if (sec) {
+        // Spread the full security record first, then keep the snapshot's
+        // historical `close_price` (per snapshot_date) — the securities table
+        // only holds the latest price.
+        snap.security = { ...sec, close_price: snap.security.close_price };
+      }
+      return snap;
+    });
+  }
+}
 
 export const getSecuritySnapshots = async (
   options: { security_id?: string; startDate?: string; endDate?: string } = {},

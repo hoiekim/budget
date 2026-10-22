@@ -7,7 +7,7 @@ const { pg, mockQuery, resetQueryMocks } = createFakePg();
 mock.module("pg", () => pg);
 
 const {
-  getTransactions,
+  searchTransactions,
   getTransaction,
   searchTransactionsById,
   searchTransactionsByAccountId,
@@ -51,69 +51,90 @@ beforeEach(() => {
   resetQueryMocks();
 });
 
-describe("getTransactions", () => {
-  test("returns empty array when no transactions", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const result = await getTransactions(testUser);
-    expect(result).toEqual([]);
+const collect = async <T,>(batches: AsyncIterable<T[]>): Promise<T[]> => {
+  const all: T[] = [];
+  for await (const batch of batches) all.push(...batch);
+  return all;
+};
+
+const queryAt = (i: number) => mockQuery.mock.calls[i] as [string, unknown[]];
+
+describe("searchTransactions", () => {
+  const readBoth = async (...args: Parameters<typeof searchTransactions>) => {
+    const { transactions, investment_transactions } = searchTransactions(...args);
+    return { transactions: await collect(transactions), investments: await collect(investment_transactions) };
+  };
+
+  test("returns mapped JSON transactions with nested labels", async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          makeTxRow({ transaction_id: "tx-1", label_budget_id: "bud-1", label_memo: "work lunch" }),
+          makeTxRow({ transaction_id: "tx-2" }),
+        ],
+        rowCount: 2,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const { transactions, investments } = await readBoth(testUser);
+
+    expect(transactions.map((t) => t.transaction_id)).toEqual(["tx-1", "tx-2"]);
+    expect(transactions[0].amount).toBe(5.5);
+    expect(transactions[0].label.budget_id).toBe("bud-1");
+    expect(transactions[0].label.memo).toBe("work lunch");
+    expect(investments).toEqual([]);
   });
 
-  test("returns mapped JSON transactions", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeTxRow()], rowCount: 1 });
-    const result = await getTransactions(testUser);
-    expect(result).toHaveLength(1);
-    expect(result[0].transaction_id).toBe("tx-1");
-    expect(result[0].account_id).toBe("acc-1");
-    expect(result[0].name).toBe("Coffee Shop");
-    expect(result[0].amount).toBe(5.5);
+  test("scopes both the transactions and the investment transactions read to the user", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth({ user_id: "usr-99", username: "test" });
+
+    const [txSql, txValues] = queryAt(0);
+    const [invSql, invValues] = queryAt(1);
+    expect(txSql).toStartWith("SELECT * FROM transactions WHERE user_id = $1");
+    expect(invSql).toStartWith("SELECT * FROM investment_transactions WHERE user_id = $1");
+    expect(txValues[0]).toBe("usr-99");
+    expect(invValues[0]).toBe("usr-99");
   });
 
-  test("label fields are nested correctly", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        makeTxRow({
-          label_budget_id: "bud-1",
-          label_category_id: "cat-1",
-          label_memo: "work lunch",
-          label_category_confidence: 0.95,
-        }),
-      ],
-      rowCount: 1,
-    });
-    const result = await getTransactions(testUser);
-    expect(result[0].label.budget_id).toBe("bud-1");
-    expect(result[0].label.category_id).toBe("cat-1");
-    expect(result[0].label.memo).toBe("work lunch");
-    expect(result[0].label.category_confidence).toBe(0.95);
+  test("a delta read bounds rows by when they changed, not by their date", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth(testUser, { startDate: "2026-10-01T00:00:00.000Z" });
+
+    for (const i of [0, 1]) {
+      const [sql, values] = queryAt(i);
+      expect(sql).toContain("updated >= $");
+      expect(sql).not.toMatch(/\bdate >= /);
+      expect(values).toContain("2026-10-01T00:00:00.000Z");
+    }
   });
 
-  test("passes user_id filter to query", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    await getTransactions({ user_id: "usr-99", username: "test" });
-    const sql = mockQuery.mock.calls[0][0] as string;
-    const values = mockQuery.mock.calls[0][1] as string[];
-    expect(sql).toContain("transactions");
-    expect(values).toContain("usr-99");
+  test("soft-deleted rows are included only when asked for, as tombstones", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth(testUser, { includeDeleted: true });
+    await readBoth(testUser);
+
+    expect(queryAt(0)[0]).not.toContain("is_deleted");
+    expect(queryAt(1)[0]).not.toContain("is_deleted");
+    expect(queryAt(2)[0]).toContain("is_deleted");
+    expect(queryAt(3)[0]).toContain("is_deleted");
   });
 
-  test("passes account_id filter when provided", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    await getTransactions(testUser, { account_id: "acc-specific" });
-    const values = mockQuery.mock.calls[0][1] as string[];
-    expect(values).toContain("acc-specific");
+  test("narrows both reads to an account when one is given", async () => {
+    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth(testUser, { account_id: "acc-specific" });
+
+    expect(queryAt(0)[1]).toContain("acc-specific");
+    expect(queryAt(1)[1]).toContain("acc-specific");
   });
 
-  test("returns multiple transactions", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
-      rowCount: 2,
-    });
-    const result = await getTransactions(testUser);
-    expect(result).toHaveLength(2);
-    expect(result.map((t: { transaction_id: string }) => t.transaction_id)).toEqual([
-      "tx-1",
-      "tx-2",
-    ]);
+  test("nothing is queried until the batches are read", () => {
+    searchTransactions(testUser);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 
