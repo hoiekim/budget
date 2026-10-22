@@ -1,4 +1,5 @@
 import { Pool, PoolClient, PoolConfig, types } from "pg";
+import { logger } from "../logger";
 
 const {
   POSTGRES_HOST: host = "localhost",
@@ -96,6 +97,22 @@ export const pool: Pool = new Proxy({} as Pool, {
     return Reflect.getPrototypeOf(getPool());
   },
 });
+
+/**
+ * Keeps a dropped connection (e.g. Postgres restarting) from becoming an
+ * uncaught exception. pg emits it on the client, and pg-pool detaches its own
+ * listener while a client is checked out, so every client gets one here. The
+ * dead client's next query rejects and the pool replaces it.
+ */
+export const logDroppedConnections = (target: Pool): void => {
+  target.on("connect", (client) => {
+    client.on("error", (error) => {
+      logger.error("Database connection lost", {}, error);
+    });
+  });
+  // pg-pool re-emits an idle client's error here, after the client listener logged it.
+  target.on("error", () => {});
+};
 
 /**
  * Execute a function within a database transaction.

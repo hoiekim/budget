@@ -1,4 +1,6 @@
 import { describe, test, expect, mock, afterAll } from "bun:test";
+import { EventEmitter } from "events";
+import type { Pool } from "pg";
 import { restoreLeaves } from "test-helpers";
 
 const ctorCalls = mock(() => {});
@@ -33,7 +35,7 @@ const mockPg = (Pool: unknown) =>
 
 mockPg(FakePool);
 
-const { pool, resetPool } = await import("./client");
+const { pool, resetPool, logDroppedConnections } = await import("./client");
 
 afterAll(restoreLeaves);
 
@@ -105,5 +107,23 @@ describe("lazy pool Proxy", () => {
     mockPg(FakePool);
 
     expect(displaced).toBe(SecondPool.prototype);
+  });
+});
+
+describe("logDroppedConnections", () => {
+  const dropped = Object.assign(new Error("terminating connection due to administrator command"), { code: "57P01" });
+
+  test("a checked-out client's dropped connection does not throw", () => {
+    const target = new EventEmitter();
+    logDroppedConnections(target as unknown as Pool);
+    const client = new EventEmitter();
+    target.emit("connect", client);
+    expect(() => client.emit("error", dropped)).not.toThrow();
+  });
+
+  test("an idle client's error re-emitted on the pool does not throw", () => {
+    const target = new EventEmitter();
+    logDroppedConnections(target as unknown as Pool);
+    expect(() => target.emit("error", dropped)).not.toThrow();
   });
 });

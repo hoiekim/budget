@@ -14,6 +14,7 @@ import {
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
+  logDroppedConnections,
   getClientIp,
   SECURITY_HEADERS,
   MAX_REQUEST_BODY_SIZE,
@@ -246,6 +247,8 @@ process.on("uncaughtException", async (error) => {
   }
   process.exit(1);
 });
+
+logDroppedConnections(pool);
 
 await initializePostgres();
 startRateLimitCleanup();
