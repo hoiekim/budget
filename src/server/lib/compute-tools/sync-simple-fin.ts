@@ -199,6 +199,7 @@ export const getRemovedTransactions = (
   const transactionIds = new Set(transactions.map((e) => e.transaction_id));
   const removedTransactions: RemovedTransaction[] = [];
   storedTransactions.forEach((t) => {
+    if (t.source === "manual") return; // sync must not remove user-entered rows
     const { transaction_id, date } = t;
     if (new LocalDate(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
@@ -218,6 +219,7 @@ export const getRemovedInvestmentTransactions = (
   );
   const removedInvestmentTransactions: RemovedInvestmentTransaction[] = [];
   storedInvestmentTransactions.forEach((t) => {
+    if (t.source === "manual") return; // sync must not remove user-entered rows
     const { investment_transaction_id, date } = t;
     if (new LocalDate(date) < startDate) return;
     if (!accountIds.has(t.account_id)) return;
