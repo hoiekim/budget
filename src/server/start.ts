@@ -14,6 +14,7 @@ import {
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
+  logDroppedConnections,
   getClientIp,
   SECURITY_HEADERS,
   MAX_REQUEST_BODY_SIZE,
@@ -247,12 +248,7 @@ process.on("uncaughtException", async (error) => {
   process.exit(1);
 });
 
-// pg emits a dropped idle connection (e.g. Postgres restarting) on the pool;
-// with no listener it becomes an uncaught exception. The pool discards the
-// client and the next query reconnects, so log it and keep serving.
-pool.on("error", (error) => {
-  logger.error("Idle database connection lost", {}, error);
-});
+logDroppedConnections(pool);
 
 await initializePostgres();
 startRateLimitCleanup();
