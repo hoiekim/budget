@@ -38,6 +38,22 @@ export class PostgresSessionStore {
   async get(sid: string): Promise<SessionData | null> {
     const model = await sessionsTable.queryOne({ [SESSION_ID]: sid });
     if (!model) return null;
+    // Enforce expiry at the point of use, not just in the hourly purge
+    // sweep. A row whose recorded expiry has passed is treated as absent
+    // and hard-deleted on the way out, leaving the sweep as pure hygiene
+    // rather than the security boundary (hoiekim/budget#824). An
+    // unparseable value fails closed: if the expiry cannot be established
+    // as future, the row does not authenticate.
+    const expiresAt =
+      model.cookie_expires === null ? null : new Date(model.cookie_expires).getTime();
+    if (expiresAt !== null && !(expiresAt > Date.now())) {
+      await sessionsTable.hardDelete(sid).catch(() => false);
+      return null;
+    }
+    // A null cookie_expires carries no recorded expiry (rows written before
+    // the column existed, or sessions persisted without a cookie expiry).
+    // There is nothing to enforce, so the row authenticates as before — the
+    // purge sweep treats nulls the same way (NULL <= now is never true).
     return model.toJSON();
   }
 
