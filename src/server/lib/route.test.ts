@@ -81,4 +81,35 @@ describe("JsonStream", () => {
     expect(finished).toBe(true);
     expect(pulled).toBeLessThan(5);
   });
+
+  test.each([
+    ["resolves", (release: { resolve: () => void; reject: (e: Error) => void }) => release.resolve()],
+    ["fails", (release: { resolve: () => void; reject: (e: Error) => void }) => release.reject(new Error("closed"))],
+  ])("a batch that %s after the client disconnects is not reported", async (_, settle) => {
+    let release!: { resolve: () => void; reject: (e: Error) => void };
+    const pending = new Promise<void>((resolve, reject) => (release = { resolve, reject }));
+    let started = false;
+    async function* slow(): AsyncGenerator<number[]> {
+      started = true;
+      await pending;
+      yield [1];
+    }
+    const onError = mock(() => {});
+    const reader = new JsonStream({ status: "success", body: slow() } as never)
+      .toReadableStream(onError)
+      .getReader();
+
+    let text = "";
+    while (!text.endsWith("[")) text += new TextDecoder().decode((await reader.read()).value);
+    const nextRead = reader.read();
+    while (!started) await new Promise((resolve) => setTimeout(resolve, 1));
+    const cancelled = reader.cancel();
+    settle(release);
+    await cancelled;
+    await nextRead;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(onError).not.toHaveBeenCalled();
+  });
 });
+

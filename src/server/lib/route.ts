@@ -69,18 +69,24 @@ export class JsonStream<T = unknown> {
   toReadableStream(onError: (error: unknown) => void): ReadableStream<Uint8Array> {
     const chunks = serializeJson(this.value);
     const encoder = new TextEncoder();
+    // A client that disconnects cancels the stream while a batch may still be
+    // loading; whatever that batch then does is no longer an error to report.
+    let cancelled = false;
     return new ReadableStream<Uint8Array>({
       async pull(controller) {
         try {
           const { done, value } = await chunks.next();
+          if (cancelled) return;
           if (done) controller.close();
           else controller.enqueue(encoder.encode(value));
         } catch (error) {
+          if (cancelled) return;
           onError(error);
           controller.error(error);
         }
       },
       async cancel() {
+        cancelled = true;
         await chunks.return(undefined);
       },
     });
