@@ -417,6 +417,21 @@ describe("buildSelectWithFilters", () => {
     expect(values).toEqual(["2026-01-01", "2026-02-01"]);
   });
 
+  it("adds a keyset bound after the other conditions, ahead of ORDER BY and LIMIT", () => {
+    const { sql, values } = buildSelectWithFilters("transactions", "*", {
+      user_id: "u1",
+      after: { column: "transaction_id", value: "t-500" },
+      orderBy: "transaction_id",
+      limit: 500,
+      excludeDeleted: true,
+    });
+    expect(sql).toBe(
+      `SELECT * FROM transactions WHERE user_id = $1 AND ${SOFT_DELETE_CONDITION}` +
+        " AND transaction_id > $2 ORDER BY transaction_id LIMIT $3",
+    );
+    expect(values).toEqual(["u1", "t-500", 500]);
+  });
+
   it("places ORDER BY, LIMIT, and OFFSET after the WHERE clause with trailing params", () => {
     const { sql, values } = buildSelectWithFilters("transactions", "*", {
       user_id: "u1",

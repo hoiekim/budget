@@ -1,5 +1,12 @@
 import { JSONSnapshotData } from "common";
-import { Route, searchSnapshots, SearchSnapshotsOptions, optionalQueryString, validationError } from "server";
+import {
+  Route,
+  JsonStream,
+  searchSnapshots,
+  SearchSnapshotsOptions,
+  optionalQueryString,
+  validationError,
+} from "server";
 
 export type SnapshotsGetResponse = JSONSnapshotData[];
 
@@ -52,8 +59,9 @@ export const getSnapshotsRoute = new Route<SnapshotsGetResponse>(
     if (securityResult.data) options.security_id = securityResult.data;
     if (typeResult.data) options.snapshot_type = typeResult.data as SnapshotType;
 
-    const snapshots = await searchSnapshots(user, options);
-
-    return { status: "success", body: snapshots };
+    return new JsonStream<SnapshotsGetResponse>({
+      status: "success",
+      body: searchSnapshots(user, options),
+    });
   },
 );
