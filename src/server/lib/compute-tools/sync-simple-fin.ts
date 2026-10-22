@@ -35,6 +35,7 @@ import {
   upsertAndDeleteHoldingsWithSnapshots,
 } from "./create-snapshots";
 import { inferCashHoldings } from "./cash-holding";
+import { buildTransactionLookupMaps, findStoredTransaction } from "./sync-plaid";
 
 export const syncSimpleFinData = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -57,6 +58,14 @@ export const syncSimpleFinData = async (item_id: string) => {
     accounts: storedAccounts,
     holdings: storedHoldings,
   } = storedData;
+
+  // The SimpleFin translator stamps every row with the provider's memo, and
+  // the upsert writes label_memo back unconditionally — so a memo the user
+  // edited would be clobbered on every hourly re-sync of the 14-day window.
+  // Carry the stored label forward for rows that already exist, exactly like
+  // sync-plaid's modelize; only brand-new rows take the provider memo as
+  // their initial label.
+  const modeledTransactions = preserveStoredLabels(transactions, storedTransations);
 
   const removedTransactions = getRemovedTransactions(transactions, storedTransations, startDate);
   const removedInvestmentTransaction = getRemovedInvestmentTransactions(
@@ -116,7 +125,7 @@ export const syncSimpleFinData = async (item_id: string) => {
   // If the process crashes mid-way, the DB rolls back the entire block and the item cursor
   // is not advanced, so the next sync re-processes the same window safely.
   await withTransaction(async (client) => {
-    await upsertTransactions(user, transactions, client);
+    await upsertTransactions(user, modeledTransactions, client);
     await deleteTransactions(user, removedTransactionIds, client);
     for (const txId of removedTransactionIds) {
       await deleteSplitTransactionsByTransaction(user, txId, client);
@@ -160,6 +169,25 @@ const getStoredData = async (user: MaskedUser, item: JSONItem, startDate: Date) 
 
   const { transactions, investment_transactions } = transactionsData;
   return { accounts, holdings, transactions, investment_transactions };
+};
+
+/**
+ * Carry the stored label forward onto re-synced SimpleFin transactions.
+ * Rows that already exist in the DB keep their stored label (including any
+ * user-edited memo); rows with no stored match keep the translated row
+ * untouched, so the provider's memo becomes the initial label. Mirrors
+ * sync-plaid's modelize; the id-based lookup handles pending→posted id
+ * changes the same way.
+ */
+export const preserveStoredLabels = (
+  transactions: JSONTransaction[],
+  storedTransactions: JSONTransaction[],
+): JSONTransaction[] => {
+  const lookupMaps = buildTransactionLookupMaps(storedTransactions);
+  return transactions.map((t) => {
+    const existing = findStoredTransaction(t, lookupMaps);
+    return existing ? { ...t, label: existing.label } : t;
+  });
 };
 
 export const getRemovedTransactions = (
