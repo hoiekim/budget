@@ -31,6 +31,22 @@ export const ChartAccountsPage = () => {
     : [];
   const { accounts, budgets } = data;
 
+  const updateAccountIds = async (newAccountIds: string[]) => {
+    const updated = { ...configuration, account_ids: newAccountIds };
+    let updatedConfiguration:
+      | BalanceChartConfiguration
+      | ProjectionChartConfiguration
+      | FlowChartConfiguration;
+    if (type === ChartType.BALANCE) {
+      updatedConfiguration = new BalanceChartConfiguration(updated);
+    } else if (type === ChartType.PROJECTION) {
+      updatedConfiguration = new ProjectionChartConfiguration(updated);
+    } else {
+      updatedConfiguration = new FlowChartConfiguration(updated);
+    }
+    await chartMutate.update(new Chart({ ...chart, configuration: updatedConfiguration }));
+  };
+
   const accountRows = accounts
     .filter((a) => !a.hide)
     .map((a) => {
@@ -38,19 +54,7 @@ export const ChartAccountsPage = () => {
         const newAccountIds = account_ids.includes(a.account_id)
           ? account_ids.filter((id) => id !== a.account_id)
           : [...account_ids, a.account_id];
-        let updatedConfiguration:
-          | BalanceChartConfiguration
-          | ProjectionChartConfiguration
-          | FlowChartConfiguration;
-        const updated = { ...configuration, account_ids: newAccountIds };
-        if (type === ChartType.BALANCE) {
-          updatedConfiguration = new BalanceChartConfiguration(updated);
-        } else if (type === ChartType.PROJECTION) {
-          updatedConfiguration = new ProjectionChartConfiguration(updated);
-        } else {
-          updatedConfiguration = new FlowChartConfiguration(updated);
-        }
-        await chartMutate.update(new Chart({ ...chart, configuration: updatedConfiguration }));
+        await updateAccountIds(newAccountIds);
       };
 
       return (
@@ -66,6 +70,33 @@ export const ChartAccountsPage = () => {
         </Row>
       );
     });
+
+  // Stored ids that resolve to no visible account — the account was hidden
+  // or deleted after the chart was configured. Without a row for them the
+  // id can never be deselected (removal is keyed off a rendered account),
+  // and for a projection chart the dead selection bricks the dashboard.
+  // They render as selected rows so the user can toggle them off; the
+  // existing rows for visible accounts are untouched.
+  const staleAccountIds = account_ids.filter(
+    (id) => accounts.find((a) => !a.hide && a.account_id === id) === undefined,
+  );
+
+  const staleAccountRows = staleAccountIds.map((id) => {
+    const account = accounts.find((a) => a.account_id === id);
+    const onChangeToggle: ChangeEventHandler<HTMLInputElement> = async () => {
+      await updateAccountIds(account_ids.filter((staleId) => staleId !== id));
+    };
+
+    return (
+      <Row key={id} className="keyValue">
+        <div>
+          <span>{account ? account.custom_name || account.name : "Missing account"}</span>
+          <span className="small">&nbsp;&nbsp;{account ? "hidden" : "account not found"}</span>
+        </div>
+        <ToggleInput defaultChecked onChange={onChangeToggle} />
+      </Row>
+    );
+  });
 
   const makeBudgetToggleHandler =
     (budget_id: string): ChangeEventHandler<HTMLInputElement> =>
@@ -137,7 +168,10 @@ export const ChartAccountsPage = () => {
     <div className="ChartAccountsPage">
       <Properties className="sidePadding">
         <PropertyLabel>Select accounts</PropertyLabel>
-        <Property>{accountRows}</Property>
+        <Property>
+          {accountRows}
+          {staleAccountRows}
+        </Property>
         {showBudgetSelector && (
           <>
             <PropertyLabel>Select budgets</PropertyLabel>

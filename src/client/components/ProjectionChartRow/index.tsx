@@ -59,7 +59,11 @@ export const ProjectionChartRow = ({
     useLengthFixer: false,
   });
 
-  if (!account_ids?.length) {
+  // Guard on the list actually graphed, not the stored `account_ids`:
+  // every referenced account may be hidden or deleted while the ids
+  // survive, and graphing an empty selection throws in
+  // `calculateProjection` (startOffset -1 -> new Array(-1)).
+  if (!selectedAccounts.length) {
     return (
       <ChartRowShell
         className="ProjectionChartRow"
