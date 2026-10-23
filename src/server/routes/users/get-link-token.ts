@@ -19,8 +19,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
 
     // The browser names the item; the server resolves the stored credential
     // itself. The lookup is scoped to the requesting user, so a caller can
-    // never mint an update-mode link token for another user's item
-    // (hoiekim/budget#807).
+    // never mint an update-mode link token for another user's item.
     let accessToken: string | undefined;
     if (itemIdResult.data) {
       const item = await getItem(user, itemIdResult.data);

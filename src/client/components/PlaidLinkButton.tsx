@@ -26,7 +26,7 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
   const { scriptLoaded, openLink } = usePlaidLinkContext();
 
   // The link token is cached per item. The key is the item_id — the item's
-  // server-side credential never leaves the server (hoiekim/budget#807).
+  // server-side credential never leaves the server.
   const item_id = (item && item.item_id) || "";
   const [token, setToken] = useState(tokens.get(item_id) || "");
   const [storedToken, setStoredToken] = useLocalStorageState("storedToken", "");

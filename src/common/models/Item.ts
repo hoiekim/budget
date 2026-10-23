@@ -49,6 +49,6 @@ export interface JSONItem {
  * The shape of an item as serialized to the browser. `access_token` is a
  * long-lived server-side credential (the Plaid production access token, or
  * the SimpleFin access URL with embedded HTTP Basic credentials) and is
- * never sent to the client — see hoiekim/budget#807.
+ * never sent to the client.
  */
 export type JSONClientItem = Omit<JSONItem, "access_token">;

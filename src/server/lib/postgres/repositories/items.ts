@@ -68,10 +68,10 @@ export const getItemByAccessToken = async (access_token: string): Promise<JSONIt
 
 /**
  * Project an item to the shape the browser may see. The server-side
- * credential (`access_token`) never crosses to the client — hoiekim/budget#807.
+ * credential (`access_token`) never crosses to the client.
  */
 export const toClientItem = (item: JSONItem): JSONClientItem => {
-  const { access_token, ...rest } = item;
+  const { access_token: _access_token, ...rest } = item;
   return rest;
 };
 
