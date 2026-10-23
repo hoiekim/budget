@@ -94,8 +94,10 @@ export const validateSimpleFinUrl = (rawUrl: string, label: string): URL => {
 
 /**
  * Claims the access URL a setup token points to. A redirect is refused rather
- * than followed, since its target would skip the allowlist; a refused claim's
- * body (such as "Forbidden") is returned for the caller to report.
+ * than followed, since its target would skip the allowlist; a non-2xx response
+ * throws rather than returning its body, since the caller stores what this
+ * returns as the item's access token. The claimed access URL is checked
+ * against the allowlist before it is returned.
  */
 export const exchangeSetupToken = async (setupToken: SetupToken): Promise<AccessUrl> => {
   const rawUrl = Buffer.from(setupToken, "base64").toString();
@@ -105,8 +107,13 @@ export const exchangeSetupToken = async (setupToken: SetupToken): Promise<Access
     headers: { "Content-Length": "0" },
     redirect: "error",
   });
+  if (!response.ok) {
+    throw new Error(
+      `SimpleFin token exchange failed: ${response.status} ${response.statusText}`
+    );
+  }
   const body = await response.text();
-  if (response.ok) validateSimpleFinUrl(body, "access URL");
+  validateSimpleFinUrl(body, "access URL");
   return body;
 };
 
