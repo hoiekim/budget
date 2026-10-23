@@ -2,12 +2,13 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakePg, restoreLeaves } from "test-helpers";
 import type { QueryExecutor } from "../models";
 import { AccountType, AccountSubtype } from "plaid";
+import { JSONItem, ItemProvider, ItemStatus } from "common";
 
 const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
 
 mock.module("pg", () => pg);
 
-const { deleteItem, upsertItems } = await import("./items");
+const { deleteItem, upsertItems, toClientItem } = await import("./items");
 
 afterAll(restoreLeaves);
 
@@ -243,5 +244,25 @@ describe("upsertItems", () => {
     expect(setClause).toBe(
       "institution_id = EXCLUDED.institution_id, raw = EXCLUDED.raw, updated = CURRENT_TIMESTAMP",
     );
+  });
+});
+
+describe("toClientItem", () => {
+  test("strips the server-side credential and keeps every other field", () => {
+    const item: JSONItem = {
+      item_id: "i-1",
+      access_token: "access-production-secret",
+      institution_id: "ins-1",
+      available_products: [],
+      provider: ItemProvider.PLAID,
+      status: ItemStatus.OK,
+    };
+    const client = toClientItem(item);
+    expect(client).not.toHaveProperty("access_token");
+    expect(client.item_id).toBe("i-1");
+    expect(client.institution_id).toBe("ins-1");
+    expect(client.provider).toBe(ItemProvider.PLAID);
+    // The input is not mutated — the server still needs the credential.
+    expect(item.access_token).toBe("access-production-secret");
   });
 });

@@ -20,8 +20,7 @@ export enum ItemProvider {
 
 export interface JSONItem {
   item_id: string;
-  access_token: string;
-  institution_id: string | null;
+  access_token: string;  institution_id: string | null;
   available_products: Products[];
   cursor?: string;
   status?: ItemStatus;
@@ -45,3 +44,11 @@ export interface JSONItem {
    */
   last_sync_error?: string;
 }
+
+/**
+ * The shape of an item as serialized to the browser. `access_token` is a
+ * long-lived server-side credential (the Plaid production access token, or
+ * the SimpleFin access URL with embedded HTTP Basic credentials) and is
+ * never sent to the client.
+ */
+export type JSONClientItem = Omit<JSONItem, "access_token">;
