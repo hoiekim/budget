@@ -84,6 +84,20 @@ describe("POST /client-error", () => {
     expect(detail).toContain("(no message)");
   });
 
+  test("reports through the cooldown bucket when the body is missing entirely", async () => {
+    // start.ts leaves req.body undefined when there is no JSON
+    // content-type, the JSON is unparseable, or the payload is null —
+    // the report must still land in the dedicated bucket, not as a 500
+    // in the default alarm bucket.
+    for (const body of [undefined, null]) {
+      const result = await postClientErrorRoute.execute(makeReq(body), makeRes());
+      expect(result?.status).toBe("success");
+      const [, detail, key] = mockSendAlarm.mock.calls.at(-1) as [string, string, string];
+      expect(detail).toContain("(no message)");
+      expect(key).toBe("client-error");
+    }
+  });
+
   test("ignores non-string fields instead of interpolating them", async () => {
     await postClientErrorRoute.execute(
       makeReq({ message: { toString: () => "evil" }, stack: 42, url: null }),

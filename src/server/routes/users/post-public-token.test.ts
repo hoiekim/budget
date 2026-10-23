@@ -89,6 +89,30 @@ describe("post-public-token", () => {
     expect(result?.message).toMatch(/provider/);
   });
 
+  test("provider=simple_fin with missing body → wrong-type failure, not a 500", async () => {
+    // start.ts leaves req.body undefined when there is no JSON
+    // content-type, the JSON is unparseable, or the payload is null.
+    for (const body of [undefined, null]) {
+      const result = await postPublicTokenRoute.execute(
+        makeReq({ provider: "simple_fin" }, body),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/wrong type of public_token/);
+    }
+  });
+
+  test("provider=plaid with missing body → wrong-type failure, not a 500", async () => {
+    for (const body of [undefined, null]) {
+      const result = await postPublicTokenRoute.execute(
+        makeReq({ provider: "plaid" }, body),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/wrong type of public_token/);
+    }
+  });
+
   test("provider=simple_fin with non-string public_token → wrong-type failure", async () => {
     const result = await postPublicTokenRoute.execute(
       makeReq({ provider: "simple_fin" }, { public_token: 42 }),
