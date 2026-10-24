@@ -42,6 +42,24 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         : getLimitedBudgetsToSync(original, updated, capacityData)
       : getNonSyncedBudgetsToUpdate(original, updated, isIncome, isInfinite);
 
+    // Apply one committed entity to the store. Runs after each successful
+    // POST, not after the whole loop: when a later entity's POST fails,
+    // the entities that already committed stay visible instead of vanishing
+    // until the next full /api/budgets sync (fixes #810). The throw below
+    // still surfaces the failure for the remainder.
+    const applyToStore = (budgetLike: BudgetFamily) => {
+      setData((oldData) => {
+        const { id, type, dictionaryKey } = budgetLike;
+        if (!oldData[dictionaryKey].has(id)) return oldData;
+        const newData = new Data(oldData);
+        const DynamicBudgetFamily = getBudgetClass(type);
+        const newBudgetLike = new DynamicBudgetFamily(budgetLike);
+        indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
+        newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
+        return newData;
+      });
+    };
+
     const iterator = toUpdateList.values();
     let current = iterator.next();
     while (!current.done) {
@@ -51,27 +69,9 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
       if (status !== "success") {
         throw new Error(message || `Failed to update ${type}: ${id}`);
       }
+      applyToStore(budgetLike);
       current = iterator.next();
     }
-
-    setData((oldData) => {
-      const newData = new Data(oldData);
-
-      const iterator = toUpdateList.values();
-      let current = iterator.next();
-      while (!current.done) {
-        const budgetLike = current.value;
-        const { id, type, dictionaryKey } = budgetLike;
-        if (!oldData[dictionaryKey].has(id)) return oldData;
-        const DynamicBudgetFamily = getBudgetClass(type);
-        const newBudgetLike = new DynamicBudgetFamily(budgetLike);
-        indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
-        newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
-        current = iterator.next();
-      }
-
-      return newData;
-    });
   };
 
   return save;
