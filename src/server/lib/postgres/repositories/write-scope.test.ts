@@ -129,6 +129,8 @@ const SERVER_KEYED: Record<string, string> = {
     "session_id is server-issued: the cookie's sid is honoured only if the store already holds it, and otherwise a random UUID is minted",
   "lib/postgres/repositories/session.ts::destroy::sessionsTable.hardDelete":
     "session_id is server-issued: the cookie's sid is honoured only if the store already holds it, and otherwise a random UUID is minted",
+  "lib/postgres/repositories/session.ts::get::sessionsTable.hardDelete":
+    "the sid is honoured only because the store already holds a row for it, read back just above and found expired; the delete removes that same server-held row",
   "lib/postgres/repositories/session.ts::touch::sessionsTable.update":
     "session_id is server-issued: the cookie's sid is honoured only if the store already holds it, and otherwise a random UUID is minted",
   "lib/postgres/repositories/users.ts::writeUser::usersTable.upsert":
