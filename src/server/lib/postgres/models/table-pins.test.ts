@@ -15,24 +15,24 @@
 // - error propagation: a pool.query rejection reaches the caller
 //   unchanged — no production code maps pg error codes.
 //
-// CI has no Postgres service, so these run against the shared createFakePg
+// CI has no Postgres service, so these run against the shared createFakeSql
 // stub (see scripts/test-helpers.ts). The SQL strings are produced by the
 // repo's own builders, not by the stub; the stub only returns scripted
 // rows, which is what makes the mapping assertions meaningful.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { IS_NOT_NULL } from "../database";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { createTable } = await import("./base");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 class WidgetModel {
@@ -91,13 +91,13 @@ const row = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const lastCall = () => {
-  const [sql, values] = mockQuery.mock.calls.at(-1) as [string, unknown[]];
+  const [sql, values] = mockUnsafe.mock.calls.at(-1) as [string, unknown[]];
   return { sql, values };
 };
 
 describe("Table.query", () => {
   test("equality filter + soft-delete predicate, rows mapped to models", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const out = await widgetsTable.query({ user_id: "u-1" });
     expect(out).toHaveLength(1);
     expect(out[0]).toBeInstanceOf(WidgetModel);
@@ -189,29 +189,29 @@ describe("Table.query", () => {
   });
 
   test("empty result maps to []", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.query({ user_id: "u-1" })).toEqual([]);
   });
 
   test("a pool rejection propagates unchanged", async () => {
     const boom = new Error("boom");
-    mockQuery.mockRejectedValueOnce(boom);
+    mockUnsafe.mockRejectedValueOnce(boom);
     await expect(widgetsTable.query({ user_id: "u-1" })).rejects.toBe(boom);
   });
 
   test("an explicit client is used instead of the pool", async () => {
-    const client = { query: mockClientQuery };
-    mockClientQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const client = { query: mockReservedUnsafe };
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const out = await widgetsTable.query({ user_id: "u-1" }, {}, client as never);
     expect(out).toHaveLength(1);
-    expect(mockClientQuery).toHaveBeenCalledTimes(1);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
 describe("Table.queryOne", () => {
   test("appends LIMIT 1, returns the first row or null", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const found = await widgetsTable.queryOne({ user_id: "u-1" });
     expect(found).toBeInstanceOf(WidgetModel);
     expect(lastCall().sql).toBe(
@@ -219,14 +219,14 @@ describe("Table.queryOne", () => {
     );
     expect(lastCall().values).toEqual(["u-1", 1]);
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.queryOne({ user_id: "u-1" })).toBeNull();
   });
 });
 
 describe("Table.insert", () => {
   test("updated is CURRENT_TIMESTAMP first; undefined fields drop out; RETURNING pk", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const out = await widgetsTable.insert({ widget_id: "w-1", user_id: "u-1", note: undefined });
     expect(out).toEqual(row());
     expect(lastCall().sql).toBe(
@@ -236,7 +236,7 @@ describe("Table.insert", () => {
   });
 
   test("an explicit returning list replaces the pk default", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     await widgetsTable.insert({ widget_id: "w-1", user_id: "u-1" }, ["widget_id", "label"]);
     expect(lastCall().sql).toBe(
       "INSERT INTO widgets (updated, widget_id, user_id) VALUES (CURRENT_TIMESTAMP, $1, $2) RETURNING widget_id, label",
@@ -244,14 +244,14 @@ describe("Table.insert", () => {
   });
 
   test("no returned row maps to null", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.insert({ widget_id: "w-1" })).toBeNull();
   });
 });
 
 describe("Table.update", () => {
   test("SET + pk + user guard + null guard + soft-delete predicate, in order", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const out = await widgetsTable.update(
       "w-1",
       { label: "b" },
@@ -270,51 +270,51 @@ describe("Table.update", () => {
 
   test("no settable fields returns null WITHOUT issuing a query", async () => {
     expect(await widgetsTable.update("w-1", {})).toBeNull();
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("no returned row maps to null", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.update("w-1", { label: "b" })).toBeNull();
   });
 
   test("an explicit client is used instead of the pool", async () => {
-    const client = { query: mockClientQuery };
-    mockClientQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const client = { query: mockReservedUnsafe };
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     await widgetsTable.update("w-1", { label: "b" }, ["widget_id"], undefined, client as never);
-    expect(mockClientQuery).toHaveBeenCalledTimes(1);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("upsert and bulkSoftDelete route through an explicit client too", async () => {
-    const client = { query: mockClientQuery };
-    mockClientQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const client = { query: mockReservedUnsafe };
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     await widgetsTable.upsert({ widget_id: "w-1", user_id: "u-1" }, undefined, client as never);
-    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
     await widgetsTable.bulkSoftDelete(["w-1"], undefined, client as never);
-    expect(mockClientQuery).toHaveBeenCalledTimes(2);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
 describe("Table deletes", () => {
   test("softDelete sets is_deleted + updated, returns rowCount > 0", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
     expect(await widgetsTable.softDelete("w-1")).toBe(true);
     expect(lastCall().sql).toBe(
       "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE widget_id = $1 RETURNING widget_id",
     );
     expect(lastCall().values).toEqual(["w-1"]);
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.softDelete("w-1")).toBe(false);
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: null });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: null });
     expect(await widgetsTable.softDelete("w-1")).toBe(false);
   });
 
   test("softDelete with a userId scopes on user_id", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
     await widgetsTable.softDelete("w-1", "u-1");
     expect(lastCall().sql).toBe(
       "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE widget_id = $1 AND user_id = $2 RETURNING widget_id",
@@ -324,11 +324,11 @@ describe("Table deletes", () => {
 
   test("queryByIds: empty list short-circuits with no query", async () => {
     expect(await widgetsTable.queryByIds([])).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("queryByIds numbers IN placeholders and appends filters after the soft-delete predicate", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const out = await widgetsTable.queryByIds(["w-1", "w-2"], { label: "a" });
     expect(out).toHaveLength(1);
     expect(lastCall().sql).toBe(
@@ -339,27 +339,27 @@ describe("Table deletes", () => {
 
   test("bulkSoftDelete: empty list short-circuits; otherwise rowCount, null -> 0", async () => {
     expect(await widgetsTable.bulkSoftDelete([])).toBe(0);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 2 });
     expect(await widgetsTable.bulkSoftDelete(["w-1", "w-2"])).toBe(2);
     expect(lastCall().sql).toBe(
       "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE widget_id IN ($1, $2) RETURNING widget_id",
     );
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: null });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: null });
     expect(await widgetsTable.bulkSoftDelete(["w-1"])).toBe(0);
   });
 
   test("bulkSoftDeleteByColumn: single value uses =, an array uses ANY($1)", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
     await widgetsTable.bulkSoftDeleteByColumn("label", "a");
     expect(lastCall().sql).toBe(
       "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE label = $1 RETURNING widget_id",
     );
     expect(lastCall().values).toEqual(["a"]);
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 2 });
     await widgetsTable.bulkSoftDeleteByColumn("label", ["a", "b"], "u-1");
     expect(lastCall().sql).toBe(
       "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE label = ANY($1) AND user_id = $2 RETURNING widget_id",
@@ -370,7 +370,7 @@ describe("Table deletes", () => {
   });
 
   test("bulkSoftDeleteByRelatedColumn resolves the match inside a subquery", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 3 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 3 });
     expect(
       await widgetsTable.bulkSoftDeleteByRelatedColumn(
         "user_id",
@@ -399,30 +399,30 @@ describe("Table deletes", () => {
   });
 
   test("hardDelete / bulkHardDelete / hardDeleteByColumn / deleteByCondition", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
     expect(await widgetsTable.hardDelete("w-1")).toBe(true);
     expect(lastCall().sql).toBe(
       "DELETE FROM widgets WHERE widget_id = $1 RETURNING widget_id",
     );
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.hardDelete("w-1")).toBe(false);
 
     expect(await widgetsTable.bulkHardDelete([])).toBe(0);
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 2 });
     expect(await widgetsTable.bulkHardDelete(["w-1", "w-2"])).toBe(2);
     expect(lastCall().sql).toBe(
       "DELETE FROM widgets WHERE widget_id IN ($1, $2) RETURNING widget_id",
     );
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
     expect(await widgetsTable.hardDeleteByColumn("label", "a")).toBe(1);
     expect(lastCall().sql).toBe(
       "DELETE FROM widgets WHERE label = $1 RETURNING widget_id",
     );
 
     for (const op of ["=", "<=", ">=", "<", ">", "!="] as const) {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
       expect(await widgetsTable.deleteByCondition("label", op, "a")).toBe(1);
       expect(lastCall().sql).toBe(
         `DELETE FROM widgets WHERE label ${op} $1 RETURNING widget_id`,
@@ -463,8 +463,8 @@ describe("composite-primary-key guard", () => {
 
   test.each(cases)("%s throws on a composite-PK table without issuing a query", async (method, run) => {
     await expect(run()).rejects.toThrow(guardMessage(method));
-    expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("the named-constraint spelling guards the same way", async () => {
@@ -479,13 +479,13 @@ describe("composite-primary-key guard", () => {
   test("queryInBatches throws when iteration starts, before any query", async () => {
     const gen = compositeTable.queryInBatches({}, {});
     await expect(gen.next()).rejects.toThrow(guardMessage("queryInBatches"));
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("query and queryOne deliberately do NOT guard — reads are safe", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     expect(await compositeTable.query({ user_id: "u-1" })).toHaveLength(1);
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     expect(await compositeTable.queryOne({ user_id: "u-1" })).toBeInstanceOf(WidgetModel);
   });
 });
@@ -493,15 +493,15 @@ describe("composite-primary-key guard", () => {
 describe("database.query / queryOne pass-through", () => {
   test("query returns the pool result untouched; queryOne returns the first row or null", async () => {
     const { query, queryOne } = await import("../database");
-    const fakePool = { query: mockQuery } as never;
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const fakePool = { query: mockUnsafe } as never;
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     const result = await query(fakePool, "SELECT 1", ["a"]);
     expect(result.rows).toEqual([row()]);
-    expect(mockQuery.mock.calls[0]).toEqual(["SELECT 1", ["a"]]);
+    expect(mockUnsafe.mock.calls[0]).toEqual(["SELECT 1", ["a"]]);
 
-    mockQuery.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
     expect(await queryOne(fakePool, "SELECT 1")).toEqual(row());
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await queryOne(fakePool, "SELECT 1")).toBeNull();
   });
 });

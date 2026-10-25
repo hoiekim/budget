@@ -2,7 +2,7 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { restoreLeaves } from "test-helpers";
 
 // `mock.module` is process-global in Bun and `restoreLeaves` only restores the
-// `pg` / `bcrypt` leaves, so capture the real modules up front and restore them
+// driver / `bcrypt` leaves, so capture the real modules up front and restore them
 // in `afterAll` (the post-plaid-hook.test.ts pattern) to keep these stubs out of
 // sibling route tests sharing the process.
 const realAlarm = { ...(await import("server/lib/alarm")) };

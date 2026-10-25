@@ -14,7 +14,6 @@ import {
   startRateLimitCleanup,
   stopRateLimitCleanup,
   pool,
-  logDroppedConnections,
   getClientIp,
   SECURITY_HEADERS,
   MAX_REQUEST_BODY_SIZE,
@@ -250,8 +249,9 @@ process.on("uncaughtException", async (error) => {
   process.exit(1);
 });
 
-logDroppedConnections(pool);
-
+// No logDroppedConnections call: Bun.sql has no attach-after-construction
+// hook, so dropped-connection logging is wired into the client's own
+// `onclose` at construction (see postgres/client.ts).
 await initializePostgres();
 startRateLimitCleanup();
 scheduledSync();

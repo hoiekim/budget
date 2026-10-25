@@ -85,7 +85,10 @@ export class SectionModel extends Model<JSONSection, SectionSchema> implements S
     if (s.name !== undefined) r.name = s.name;
     if (s.roll_over !== undefined) r.roll_over = s.roll_over;
     if (s.roll_over_start_date !== undefined) r.roll_over_start_date = s.roll_over_start_date;
-    if (s.capacities !== undefined) r.capacities = JSON.stringify(s.capacities);
+    // Pass the array through, not a string: Bun.sql stores a string bound
+    // for a JSONB column as a JSON string value, not the object (pg had the
+    // server parse the string into JSON). The driver encodes objects as JSON.
+    if (s.capacities !== undefined) r.capacities = s.capacities;
     return r;
   }
 }

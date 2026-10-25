@@ -3,18 +3,18 @@
 // user-supplied string straight into the process-wide Polygon rate gate, so
 // these tests pin the three things that keep one caller off everybody else's
 // slots: the charset gate, the securities-table short-circuit, and the
-// per-user cap. Leaf-mock pg pattern — every DB call lands on `mockQuery`
-// via a FakePool, routed by table name. Polygon runs as real code with
+// per-user cap. Leaf-mock driver pattern — every DB call lands on `mockUnsafe`
+// via a FakeSQL, routed by table name. Polygon runs as real code with
 // `globalThis.fetch` mocked.
 process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const mockFetch = mock(
   async (): Promise<Response> => new Response(JSON.stringify({}), { status: 200 }),
@@ -45,8 +45,8 @@ const queryRouter = async (sql: string) => {
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   securitiesRows = [];
   clearPriceCache();
   clearYahooCache();
@@ -118,14 +118,14 @@ describe("POST /api/validate-ticker — auth and input gate", () => {
   test("rejects unauthenticated requests", async () => {
     const result = await post({ ticker_symbol: "AAPL" }, { authenticated: false });
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
   test("rejects a missing ticker_symbol before any lookup", async () => {
     const result = await post({});
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -143,7 +143,7 @@ describe("POST /api/validate-ticker — auth and input gate", () => {
 
     expect(result?.status).toBe("success");
     expect(result?.body?.valid).toBe(true);
-    const values = mockQuery.mock.calls[0]?.[1] as unknown[];
+    const values = mockUnsafe.mock.calls[0]?.[1] as unknown[];
     expect(values).toContain("AAPL");
   });
 });

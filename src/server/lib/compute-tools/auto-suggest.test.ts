@@ -7,7 +7,7 @@
 // The function calls `usersTable.query`, `transactionsTable.query`,
 // `pool.query` (feature signal + split fetch), and `Table.update` for
 // both label-apply paths. The bundle inlines all of that; the test
-// leaf-mocks `pg` so every SELECT/UPDATE lands on `mockQuery`.
+// leaf-mock the SQL driver so every SELECT/UPDATE lands on `mockUnsafe`.
 //
 // A SQL router dispatches each call by shape:
 //   - `FROM users`                            → userRows
@@ -16,13 +16,13 @@
 //   - `FROM split_transactions`               → splitRows (per userId)
 //   - `UPDATE transactions`/`split_transactions` → captured + return ok
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
 const { runAutoSuggestions, CAS_NULL_CONFIDENCE } = await import("./auto\-suggest");
 
@@ -111,13 +111,13 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
     return { rows: userRows, rowCount: userRows.length };
   }
 
-  // Default — UPDATE/INSERT calls fall here. Tests inspect mockQuery.mock.calls.
+  // Default — UPDATE/INSERT calls fall here. Tests inspect mockUnsafe.mock.calls.
   return { rows: [], rowCount: 0 };
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   userRows = [];
   unlabeledByUser = new Map();
   splitsByUser = new Map();
@@ -126,12 +126,12 @@ beforeEach(() => {
 });
 
 const updateCalls = (target: RegExp): Array<{ sql: string; values: unknown[] }> =>
-  mockQuery.mock.calls
+  mockUnsafe.mock.calls
     .map((c) => ({ sql: c[0] as string, values: (c[1] ?? []) as unknown[] }))
     .filter((c) => target.test(c.sql));
 
 const signalCalls = (): number =>
-  mockQuery.mock.calls.filter((c) => isSignalSql(c[0] as string)).length;
+  mockUnsafe.mock.calls.filter((c) => isSignalSql(c[0] as string)).length;
 
 describe("runAutoSuggestions", () => {
   test("skips when no users found", async () => {
@@ -153,7 +153,7 @@ describe("runAutoSuggestions", () => {
     userRows = [userRow({ user_id: "user-1" })];
     unlabeledByUser.set("user-1", [txRow({ transaction_id: "txn-1", user_id: "user-1", merchant_name: "Coffee Shop" })]);
     await runAutoSuggestions();
-    const signalSql = String(mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string))?.[0]).replace(/\s+/g, " ");
+    const signalSql = String(mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string))?.[0]).replace(/\s+/g, " ");
     // Anchored on what follows each join, so a clause appended after the scope can't widen it.
     expect(signalSql).toContain(
       "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1 JOIN sections",
@@ -330,8 +330,8 @@ describe("runAutoSuggestions", () => {
 
     // Both users had their unlabeled SELECT attempted (the fail-user's threw,
     // the ok-user's resolved). The transactionsTable.query for ok-user must
-    // be present in mockQuery.mock.calls — proves the loop continued.
-    const txSelects = mockQuery.mock.calls.filter(
+    // be present in mockUnsafe.mock.calls — proves the loop continued.
+    const txSelects = mockUnsafe.mock.calls.filter(
       (c) => /^\s*SELECT[\s\S]*FROM\s+transactions\b/i.test(c[0] as string),
     );
     const userIdsHit = txSelects.map((c) => (c[1] as unknown[])?.[0]);
@@ -549,7 +549,7 @@ describe("runAutoSuggestions", () => {
         rejected: "0",
       };
       await runAutoSuggestions();
-      const signalQuery = mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string));
+      const signalQuery = mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string));
       expect(signalQuery).toBeDefined();
       return signalQuery![0] as string;
     };
@@ -695,7 +695,7 @@ describe("runAutoSuggestions", () => {
         rejected: "0",
       };
       await runAutoSuggestions();
-      const call = mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string));
+      const call = mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string));
       expect(call).toBeDefined();
       const values = (call![1] ?? []) as unknown[];
       // $1 = userId, $2 = merchant, $3 = sim threshold (0.5),

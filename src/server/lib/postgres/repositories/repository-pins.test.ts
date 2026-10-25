@@ -20,17 +20,17 @@
 // - rejected-categories.getRejectedCategoriesForTransactions: an empty
 //   id list issues no query.
 //
-// CI has no Postgres service, so these run against the shared createFakePg
+// CI has no Postgres service, so these run against the shared createFakeSql
 // stub (see scripts/test-helpers.ts). rejected-categories.ts imports pool
 // from "server" — the existing rejected-categories.test.ts proves that
 // resolves under bun test; the same import style is used here.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { createHash } from "crypto";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const apiKeys = await import("./api_keys");
 const rejected = await import("./rejected-categories");
@@ -38,7 +38,7 @@ const rejected = await import("./rejected-categories");
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 const keyRow = (overrides: Record<string, unknown> = {}) => ({
@@ -57,7 +57,7 @@ const keyRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const lastPoolCall = () => {
-  const [sql, values] = mockQuery.mock.calls.at(-1) as [string, unknown[]];
+  const [sql, values] = mockUnsafe.mock.calls.at(-1) as [string, unknown[]];
   return { sql, values };
 };
 
@@ -65,7 +65,7 @@ const user = { user_id: "u-1" } as never;
 
 describe("api_keys edge semantics", () => {
   test("createApiKey defaults expires_at to NULL in the inserted values", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
     const created = await apiKeys.createApiKey({ user_id: "u-1", name: "cli", scopes: ["read"] });
     expect(created.key_id).toBe("k-1");
     expect(created.prefix.startsWith("bk_")).toBe(true);
@@ -81,7 +81,7 @@ describe("api_keys edge semantics", () => {
   });
 
   test("listApiKeys projects every visible column except key_hash, unrevoked, newest first", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
     await apiKeys.listApiKeys("u-1");
     const { sql, values } = lastPoolCall();
     const flat = sql.replace(/\s+/g, " ");
@@ -93,20 +93,20 @@ describe("api_keys edge semantics", () => {
   });
 
   test("verifyApiKey looks up by key_hash with a LIMIT", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
     // The touch UPDATE is issued after the lookup; script it to succeed so
     // only the lookup shape is asserted here.
-    mockQuery.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
     await apiKeys.verifyApiKey("bk_secret");
-    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+    const [sql, values] = mockUnsafe.mock.calls[0] as [string, unknown[]];
     expect(sql).toContain("key_hash = $1");
     expect(sql).toContain("LIMIT $2");
     expect(values).toEqual([createHash("sha256").update("bk_secret").digest("hex"), 1]);
   });
 
   test("verifyApiKey still resolves when the last_used_at touch fails", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
-    mockQuery.mockRejectedValueOnce(new Error("touch failed"));
+    mockUnsafe.mockResolvedValueOnce({ rows: [keyRow()], rowCount: 1 });
+    mockUnsafe.mockRejectedValueOnce(new Error("touch failed"));
     const out = await apiKeys.verifyApiKey("bk_secret");
     // Verification succeeds; the touch is best-effort and its failure is
     // swallowed, not surfaced to the caller.
@@ -117,13 +117,13 @@ describe("api_keys edge semantics", () => {
 
 describe("rejected-categories edge semantics", () => {
   test("addRejectedCategory maps an empty result to null", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await rejected.addRejectedCategory(user, "t-1", "food")).toBeNull();
   });
 
   test("migrateRejectedCategoriesOnPendingPosted: a ROLLBACK failure is swallowed and the original error wins", async () => {
     const original = new Error("insert failed");
-    mockClientQuery.mockImplementation(async (sql: string) => {
+    mockReservedUnsafe.mockImplementation(async (sql: string) => {
       if (String(sql).includes("INSERT INTO")) throw original;
       if (String(sql) === "ROLLBACK") throw new Error("rollback failed");
       return { rows: [], rowCount: 0 };
@@ -131,7 +131,7 @@ describe("rejected-categories edge semantics", () => {
     await expect(
       rejected.migrateRejectedCategoriesOnPendingPosted("t-old", "t-new"),
     ).rejects.toBe(original);
-    const statements = mockClientQuery.mock.calls.map((c) => String(c[0]).trim());
+    const statements = mockReservedUnsafe.mock.calls.map((c) => String(c[0]).trim());
     expect(statements[0]).toBe("BEGIN");
     expect(statements.some((s) => s.startsWith("INSERT INTO"))).toBe(true);
     expect(statements).toContain("ROLLBACK");
@@ -140,11 +140,11 @@ describe("rejected-categories edge semantics", () => {
 
   test("migrateRejectedCategoriesOnPendingPosted with the same id copies nothing without a transaction", async () => {
     expect(await rejected.migrateRejectedCategoriesOnPendingPosted("t-1", "t-1")).toBe(0);
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("getRejectedCategoriesForTransactions with no ids issues no query", async () => {
     expect(await rejected.getRejectedCategoriesForTransactions(user, [])).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

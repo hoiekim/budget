@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postTransferPairRoute } = await import("./post\-transfer\-pair");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -56,38 +56,38 @@ describe("post-transfer-pair", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects missing body", async () => {
     const result = await postTransferPairRoute.execute(makeReq(null), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects array body (not an object)", async () => {
     const result = await postTransferPairRoute.execute(makeReq(["x"]), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   // `confirmTransferPair` now runs in a DB transaction: BEGIN, advisory
   // lock, lookup SELECT, collision SELECT, UPDATE status, cleanup UPDATE,
   // COMMIT.
   function stageConfirmOk(pairTxnA = "tx-a", pairTxnB = "tx-b") {
-    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
-    mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
-    mockClientQuery.mockResolvedValueOnce({
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockReservedUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
       rowCount: 1,
     }); // lookup
-    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
-    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // UPDATE confirmed
-    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // cleanup
-    mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 }); // UPDATE confirmed
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // cleanup
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
   }
 
   describe("confirm-existing-pair branch (pair_id is a string)", () => {
@@ -101,7 +101,7 @@ describe("post-transfer-pair", () => {
 
       expect(result?.status).toBe("success");
       expect(result?.body).toEqual({ pair_id: "p-confirm" });
-      const updateCall = mockClientQuery.mock.calls.find((c) => {
+      const updateCall = mockReservedUnsafe.mock.calls.find((c) => {
         const sql = c[0] as string;
         return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
       })!;
@@ -118,12 +118,12 @@ describe("post-transfer-pair", () => {
         fakeRes(),
       );
       expect(result?.status).toBe("success");
-      const sessionUserScoped = mockClientQuery.mock.calls.filter((c) => {
+      const sessionUserScoped = mockReservedUnsafe.mock.calls.filter((c) => {
         const values = c[1] as unknown[] | undefined;
         return values && values.includes("u-A");
       });
       expect(sessionUserScoped.length).toBeGreaterThan(0);
-      const anyCrossUser = mockClientQuery.mock.calls.some((c) => {
+      const anyCrossUser = mockReservedUnsafe.mock.calls.some((c) => {
         const values = c[1] as unknown[] | undefined;
         return Boolean(values?.includes("u-B"));
       });
@@ -138,8 +138,8 @@ describe("post-transfer-pair", () => {
         fakeRes(),
       );
       expect(result?.status).toBe("failed");
-      expect(mockQuery).not.toHaveBeenCalled();
-      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
     });
 
     test("rejects missing transaction_id_b", async () => {
@@ -148,8 +148,8 @@ describe("post-transfer-pair", () => {
         fakeRes(),
       );
       expect(result?.status).toBe("failed");
-      expect(mockQuery).not.toHaveBeenCalled();
-      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
     });
 
     test("rejects non-string transaction_id_a", async () => {
@@ -158,26 +158,26 @@ describe("post-transfer-pair", () => {
         fakeRes(),
       );
       expect(result?.status).toBe("failed");
-      expect(mockQuery).not.toHaveBeenCalled();
-      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
     });
 
     // `pairTransactions` runs in a DB transaction: BEGIN, advisory lock,
     // existence pre-check, collision SELECT, INSERT, cleanup UPDATE, COMMIT.
     function stagePairOk(insertPairId: string) {
-      mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
-      mockClientQuery.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
-      mockClientQuery.mockResolvedValueOnce({
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+      mockReservedUnsafe.mockResolvedValueOnce({
         rows: [{ transaction_id: "t-a" }, { transaction_id: "t-b" }],
         rowCount: 2,
       }); // existence pre-check (FOR SHARE), both alive
-      mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
-      mockClientQuery.mockResolvedValueOnce({
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
+      mockReservedUnsafe.mockResolvedValueOnce({
         rows: [{ pair_id: insertPairId }],
         rowCount: 1,
       }); // INSERT RETURNING
-      mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // cleanup
-      mockClientQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // cleanup
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
     }
 
     test("happy path with status=confirmed: INSERT scoped to session user_id", async () => {
@@ -194,7 +194,7 @@ describe("post-transfer-pair", () => {
 
       expect(result?.status).toBe("success");
       expect(result?.body).toEqual({ pair_id: "p-new" });
-      const insertCall = mockClientQuery.mock.calls.find((c) =>
+      const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
         /INSERT INTO transaction_pairs/i.test(c[0] as string),
       )!;
       expect(insertCall).toBeDefined();
@@ -212,7 +212,7 @@ describe("post-transfer-pair", () => {
         makeReq({ transaction_id_a: "t-a", transaction_id_b: "t-b" }),
         fakeRes(),
       );
-      const insertCall = mockClientQuery.mock.calls.find((c) =>
+      const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
         /INSERT INTO transaction_pairs/i.test(c[0] as string),
       )!;
       expect((insertCall[1] as unknown[])[4]).toBe("suggested");
@@ -229,7 +229,7 @@ describe("post-transfer-pair", () => {
         }),
         fakeRes(),
       );
-      const insertCall = mockClientQuery.mock.calls.find((c) =>
+      const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
         /INSERT INTO transaction_pairs/i.test(c[0] as string),
       )!;
       expect((insertCall[1] as unknown[])[4]).toBe("suggested");
@@ -245,7 +245,7 @@ describe("post-transfer-pair", () => {
         ),
         fakeRes(),
       );
-      const insertCall = mockClientQuery.mock.calls.find((c) =>
+      const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
         /INSERT INTO transaction_pairs/i.test(c[0] as string),
       )!;
       expect((insertCall[1] as unknown[])[1]).toBe("u-A");

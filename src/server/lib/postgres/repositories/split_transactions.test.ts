@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { searchSplitTransactions } = await import("./split_transactions");
 
@@ -31,50 +31,50 @@ function makeSplitRow(overrides: Record<string, unknown> = {}) {
 const testUser = { user_id: "usr-1", username: "hoie" };
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 describe("searchSplitTransactions", () => {
   test("defaults to active-only (excludeDeleted when includeDeleted unset)", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchSplitTransactions(testUser);
-    const sql = mockQuery.mock.calls[0][0] as string;
+    const sql = mockUnsafe.mock.calls[0][0] as string;
     expect(sql).toContain("is_deleted IS NULL OR is_deleted = FALSE");
   });
 
   test("includeDeleted=true drops the soft-delete predicate", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchSplitTransactions(testUser, { includeDeleted: true });
-    const sql = mockQuery.mock.calls[0][0] as string;
+    const sql = mockUnsafe.mock.calls[0][0] as string;
     expect(sql).not.toContain("is_deleted IS NULL OR is_deleted = FALSE");
   });
 
   test("passes user_id and account_id filters", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchSplitTransactions(
       { user_id: "usr-99", username: "test" },
       { account_id: "acc-specific" },
     );
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(values).toContain("usr-99");
     expect(values).toContain("acc-specific");
   });
 
   test("applies date range on UPDATED column when provided", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchSplitTransactions(testUser, {
       startDate: "2026-03-01",
       endDate: "2026-04-01",
     });
-    const sql = mockQuery.mock.calls[0][0] as string;
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const sql = mockUnsafe.mock.calls[0][0] as string;
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(sql).toContain("updated");
     expect(values).toContain("2026-03-01");
     expect(values).toContain("2026-04-01");
   });
 
   test("toJSON emits is_deleted alongside the existing fields", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeSplitRow({ is_deleted: true })],
       rowCount: 1,
     });
@@ -85,7 +85,7 @@ describe("searchSplitTransactions", () => {
   });
 
   test("returns is_deleted=false for active rows when column is null/missing", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeSplitRow({ is_deleted: null })],
       rowCount: 1,
     });

@@ -1,6 +1,5 @@
-import { PoolClient } from "pg";
 import { isUndefined } from "common";
-import { pool } from "../client";
+import { pool, type SqlClient, type SqlPool } from "../client";
 import {
   buildSelectWithFilters,
   buildInsert,
@@ -15,7 +14,7 @@ import {
 } from "../database";
 
 /** Query executor - either pool or a transaction client */
-export type QueryExecutor = typeof pool | PoolClient;
+export type QueryExecutor = SqlPool | SqlClient;
 
 /** Rows per database read when a result is streamed rather than returned whole. */
 export const STREAM_BATCH_SIZE = 500;
@@ -178,7 +177,12 @@ export abstract class Table<
       if (rows.length === 0) return;
       yield rows.map((row: unknown) => new this.ModelClass(row));
       if (rows.length < batchSize) return;
-      after = { column: this.primaryKey, value: rows[rows.length - 1][this.primaryKey] };
+      // The keyset value comes back from the database for the PK column;
+      // pg's any-rows let it flow untyped, the Record rows need the cast.
+      after = {
+        column: this.primaryKey,
+        value: rows[rows.length - 1][this.primaryKey] as ParamValue,
+      };
     }
   }
 
