@@ -2,10 +2,10 @@ import { describe, it, expect, mock, afterAll } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
 import ts from "typescript";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg } = createFakePg();
-mock.module("pg", () => pg);
+const { driver } = createFakeSql();
+mock.module("../sql-driver", () => driver);
 const models = await import("../models");
 afterAll(restoreLeaves);
 

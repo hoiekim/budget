@@ -4,7 +4,7 @@
  * `mock.module(...)` overrides cleanly.
  *
  * Why restore: bun's `mock.module()` is process-global and has no
- * `unmock` API — once a file mocks `"pg"` with a FakePool, every
+ * `unmock` API — once a file mocks the SQL driver with a FakeSQL, every
  * subsequent file in the same `bun test` process sees the mock unless
  * it's explicitly re-mocked back to real. A bare `globalThis.fetch =`
  * has the same blast radius and no unmock API either. `restoreLeaves()`
@@ -17,7 +17,7 @@
  *   import { restoreLeaves } from "scripts/test-helpers";
  *   import { afterAll, mock } from "bun:test";
  *
- *   mock.module("pg", () => ({ Pool: FakePool, ... }));
+ *   mock.module("./sql-driver", () => driver);
  *
  *   afterAll(restoreLeaves);
  */
@@ -25,7 +25,7 @@ import { mock } from "bun:test";
 import { resetPool } from "server/lib/postgres/client";
 
 interface RealLeaves {
-  __REAL_PG: Record<string, unknown> & { default: unknown };
+  __REAL_SQL_DRIVER: Record<string, unknown>;
   __REAL_BCRYPT: Record<string, unknown> & { default: unknown };
   __REAL_FETCH: typeof fetch;
   __REAL_ENV: Record<string, string | undefined>;
@@ -33,7 +33,7 @@ interface RealLeaves {
 
 const realLeaves = (): RealLeaves => {
   const g = globalThis as unknown as Partial<RealLeaves>;
-  if (!g.__REAL_PG || !g.__REAL_BCRYPT || !g.__REAL_FETCH || !g.__REAL_ENV) {
+  if (!g.__REAL_SQL_DRIVER || !g.__REAL_BCRYPT || !g.__REAL_FETCH || !g.__REAL_ENV) {
     throw new Error(
       "test-helpers: real leaf snapshots missing on globalThis. " +
         "Run tests via `bun test` (which preloads `scripts/test-preload.ts`).",
@@ -79,16 +79,16 @@ export const restoreEnv = (): void => {
 };
 
 /**
- * Re-mock the standard set of leaf deps (`pg`, `bcrypt`) back to the
- * real module exports captured by the preload, put `globalThis.fetch`
- * back with the market-data env, and invalidate the lazy Pool cache in
- * `postgres/client.ts` so the next file's first pool use rebuilds
- * against that file's mock (or real pg if it doesn't mock anything).
- * Pass directly to `afterAll(restoreLeaves)`.
+ * Re-mock the standard set of leaf deps (the SQL driver, `bcrypt`) back
+ * to the real module exports captured by the preload, put
+ * `globalThis.fetch` back with the market-data env, and invalidate the
+ * lazy SQL cache in `postgres/client.ts` so the next file's first pool
+ * use rebuilds against that file's mock (or the real driver if it
+ * doesn't mock anything). Pass directly to `afterAll(restoreLeaves)`.
  */
 export const restoreLeaves = (): void => {
-  const { __REAL_PG, __REAL_BCRYPT } = realLeaves();
-  mock.module("pg", () => __REAL_PG);
+  const { __REAL_SQL_DRIVER, __REAL_BCRYPT } = realLeaves();
+  mock.module("server/lib/postgres/sql-driver", () => __REAL_SQL_DRIVER);
   mock.module("bcrypt", () => __REAL_BCRYPT);
   restoreFetch();
   restoreEnv();
@@ -115,7 +115,7 @@ export const updateColumnsOf = (sql: string): string[] => {
     .filter(Boolean);
 };
 
-/** What every `createFakePg` query resolves to. */
+/** What every `createFakeSql` query resolves to at the executor level. */
 export interface FakeQueryResult {
   rows: unknown[];
   rowCount: number | null;
@@ -126,53 +126,97 @@ export type FakeQuery = (sql: string, values?: unknown[]) => Promise<FakeQueryRe
 const resolveEmpty: FakeQuery = async () => ({ rows: [], rowCount: 0 });
 
 /**
- * Build a `pg` module stub whose pool and transaction client are *separate*
- * mocks.
+ * Build a SQL-driver module stub whose pool and reserved client are
+ * *separate* mocks.
  *
  * `withTransaction` reaches the database through `pool.connect()`, so a
- * `connect()` that hands back `pool.query` collapses both into one call log
- * and no assertion can tell where a statement ran. Dropping the `client`
- * argument from a cascade then leaves the suite green while, in production,
- * that cascade commits on its own and survives the caller's rollback.
+ * `reserve()` that hands back `pool.unsafe` collapses both into one call
+ * log and no assertion can tell where a statement ran. Dropping the
+ * `client` argument from a cascade then leaves the suite green while, in
+ * production, that cascade commits on its own and survives the caller's
+ * rollback.
  *
- * Assert an in-transaction statement against `mockClientQuery`, and its
- * absence from `mockQuery`.
+ * Assert an in-transaction statement against `mockReservedUnsafe`, and
+ * its absence from `mockUnsafe`.
  *
  * ```ts
- * const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
- * mock.module("pg", () => pg);
+ * const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
+ * mock.module("./sql-driver", () => driver);
  * ```
  *
- * `resetQueryMocks` puts `implementation` back afterwards: bun's `mockReset`
- * drops it, and a `query()` that resolves to `undefined` blows up inside
+ * The stub translates at the seam: tests script executor-level
+ * `{ rows, rowCount }` results (the shape `pool.query` resolves to), and
+ * the fake's `unsafe` hands the production adapter the Bun-shaped array
+ * with `count`/`columns` it would get from a real client, so the
+ * adapter's row mapping runs for real. A test that wants to pin the
+ * adapter's type conversions scripts a Bun-shaped array directly — it
+ * passes through untouched (see `client-pins.test.ts`).
+ *
+ * `resetSqlMocks` puts `implementation` back afterwards: bun's `mockReset`
+ * drops it, and an `unsafe()` that resolves to `undefined` blows up inside
  * `withTransaction` long before the assertion it was meant to reach.
  */
-export const createFakePg = (implementation: FakeQuery = resolveEmpty) => {
-  const mockQuery = mock(implementation);
-  const mockClientQuery = mock(implementation);
+export const createFakeSql = (implementation: FakeQuery = resolveEmpty) => {
+  const mockUnsafe = mock(implementation);
+  const mockReservedUnsafe = mock(implementation);
+  const mockRelease = mock(() => {});
+  const mockClose = mock(async () => {});
 
-  class FakePool {
-    query = mockQuery;
-    end = async () => {};
-    connect = async () => ({ query: mockClientQuery, release: () => {} });
+  const toBunResult = (value: unknown): unknown => {
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      "rows" in value &&
+      "rowCount" in value
+    ) {
+      const { rows, rowCount } = value as FakeQueryResult;
+      return Object.assign([...rows], { count: rowCount, columns: [] });
+    }
+    return value;
+  };
+
+  const unsafe = async (sql: string, values?: unknown[]) =>
+    toBunResult(await mockUnsafe(sql, values));
+  const reservedUnsafe = async (sql: string, values?: unknown[]) =>
+    toBunResult(await mockReservedUnsafe(sql, values));
+  const mockReserve = mock(async () => ({ unsafe: reservedUnsafe, release: mockRelease }));
+
+  const constructedOptions: Record<string, unknown>[] = [];
+  class FakeSQL {
+    unsafe = unsafe;
+    close = mockClose;
+    reserve = mockReserve;
+    constructor(options: Record<string, unknown>) {
+      constructedOptions.push(options);
+    }
   }
 
-  const types = { setTypeParser: () => {} };
-  const pg = { Pool: FakePool, types, default: { Pool: FakePool, types } };
+  const driver = { SQL: FakeSQL };
 
   return {
-    pg,
-    mockQuery,
-    mockClientQuery,
-    resetQueryMocks: () => {
-      mockQuery.mockReset();
-      mockClientQuery.mockReset();
-      mockQuery.mockImplementation(implementation);
-      mockClientQuery.mockImplementation(implementation);
+    driver,
+    mockUnsafe,
+    mockReservedUnsafe,
+    mockReserve,
+    mockRelease,
+    mockClose,
+    constructedOptions,
+    resetSqlMocks: () => {
+      mockUnsafe.mockReset();
+      mockReservedUnsafe.mockReset();
+      mockUnsafe.mockImplementation(implementation);
+      mockReservedUnsafe.mockImplementation(implementation);
+      mockReserve.mockClear();
+      mockRelease.mockClear();
+      mockClose.mockClear();
     },
-    clearQueryMocks: () => {
-      mockQuery.mockClear();
-      mockClientQuery.mockClear();
+    clearSqlMocks: () => {
+      mockUnsafe.mockClear();
+      mockReservedUnsafe.mockClear();
+      mockReserve.mockClear();
+      mockRelease.mockClear();
+      mockClose.mockClear();
     },
   };
 };

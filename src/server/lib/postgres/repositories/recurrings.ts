@@ -480,7 +480,8 @@ export const setRecurringSplits = async (
   }
   const updated = await recurringsTable.update(
     recurring_id,
-    { [SPLITS]: JSON.stringify(splits), [SPLITS_SINCE]: getDateString() },
+    // JSONB takes the array, not a string (see models fromJSON).
+    { [SPLITS]: splits, [SPLITS_SINCE]: getDateString() },
     undefined,
     user.user_id,
     undefined,

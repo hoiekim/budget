@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("./postgres/sql-driver", () => driver);
 
 const { recordCategoryRejection } = await import("./record-category-rejection");
 
@@ -29,14 +29,14 @@ const prev = (
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
 });
 
 const findInsertRejection = () =>
-  mockQuery.mock.calls.find((c) => /INSERT INTO rejected_categories/i.test(c[0]));
+  mockUnsafe.mock.calls.find((c) => /INSERT INTO rejected_categories/i.test(c[0]));
 const findDeleteRejection = () =>
-  mockQuery.mock.calls.find((c) => /DELETE FROM rejected_categories/i.test(c[0]));
+  mockUnsafe.mock.calls.find((c) => /DELETE FROM rejected_categories/i.test(c[0]));
 
 describe("recordCategoryRejection — body shape gating", () => {
   test("no category change in request → no DB call", async () => {
@@ -46,7 +46,7 @@ describe("recordCategoryRejection — body shape gating", () => {
       { memo: "groceries" },
       prev({ category_id: "cat-A", category_confidence: 1 }),
     );
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("undefined reqLabel → no DB call", async () => {
@@ -56,7 +56,7 @@ describe("recordCategoryRejection — body shape gating", () => {
       undefined,
       prev({ category_id: "cat-A", category_confidence: 1 }),
     );
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
@@ -127,7 +127,7 @@ describe("recordCategoryRejection — rejection happens ONLY when prev was a SUG
     );
     expect(findInsertRejection()).toBeUndefined();
 
-    clearQueryMocks();
+    clearSqlMocks();
     await recordCategoryRejection(
       fakeUser(),
       "tx-2",

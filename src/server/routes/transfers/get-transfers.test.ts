@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getTransfersRoute } = await import("./get-transfers");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -55,15 +55,15 @@ describe("get-transfers", () => {
     const result = await getTransfersRoute.execute(makeReq({ user: null }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("empty pairs list returns success with empty array — no second query issued", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     expect(result?.status).toBe("success");
     expect(result?.body).toEqual([]);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   test("happy path scopes the pairs SELECT to the caller's user_id", async () => {
@@ -101,8 +101,8 @@ describe("get-transfers", () => {
       is_deleted: false,
       source: "plaid",
     });
-    mockQuery.mockResolvedValueOnce({ rows: [pairRow], rowCount: 1 });
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({ rows: [pairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({
       rows: [txnRow("t-a", 100), txnRow("t-b", -100)],
       rowCount: 2,
     });
@@ -114,26 +114,26 @@ describe("get-transfers", () => {
     expect(result?.body?.[0].status).toBe("confirmed");
     expect(result?.body?.[0].transactions).toHaveLength(2);
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const [pairsSql, pairsValues] = mockUnsafe.mock.calls[0];
     expect(pairsSql).toMatch(/FROM transaction_pairs/);
     expect(pairsSql).toMatch(/WHERE user_id = \$1/);
     expect(pairsValues).toEqual(["u-1"]);
 
-    const [txnsSql, txnsValues] = mockQuery.mock.calls[1];
+    const [txnsSql, txnsValues] = mockUnsafe.mock.calls[1];
     expect(txnsSql).toMatch(/WHERE user_id = \$1/);
     expect(txnsValues?.[0]).toBe("u-1");
   });
 
   test("cross-user isolation: another user's pairs are never returned", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getTransfersRoute.execute(
       makeReq({ user: { user_id: "u-B", username: "b" } }),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
     expect(result?.body).toEqual([]);
-    const [, values] = mockQuery.mock.calls[0];
+    const [, values] = mockUnsafe.mock.calls[0];
     expect(values).toEqual(["u-B"]);
   });
 
@@ -172,17 +172,17 @@ describe("get-transfers", () => {
       is_deleted: false,
       source: "plaid",
     });
-    mockQuery.mockResolvedValueOnce({ rows: [pairRow], rowCount: 1 });
-    mockQuery.mockResolvedValueOnce({ rows: [txnRow("t-a"), txnRow("t-b")], rowCount: 2 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [pairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [txnRow("t-a"), txnRow("t-b")], rowCount: 2 });
 
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     expect(result?.body?.[0].updated).toBe("2026-05-02T09:00:00Z");
   });
 
   test("default (no include-deleted) excludes soft-deleted pairs at the SQL layer", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(makeReq(), fakeRes());
-    const [pairsSql] = mockQuery.mock.calls[0];
+    const [pairsSql] = mockUnsafe.mock.calls[0];
     expect(pairsSql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
   });
 
@@ -197,7 +197,7 @@ describe("get-transfers", () => {
       updated: "2026-05-03T12:00:00Z",
       is_deleted: true,
     };
-    mockQuery.mockResolvedValueOnce({ rows: [deletedPairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [deletedPairRow], rowCount: 1 });
 
     const result = await getTransfersRoute.execute(
       makeReq({ query: { "include-deleted": "true" } }),
@@ -210,9 +210,9 @@ describe("get-transfers", () => {
       { pair_id: "p-dead", status: "confirmed", transactions: [], updated: "2026-05-03T12:00:00Z" },
     ]);
     // A tombstone needs no transaction resolution — only the pairs SELECT runs.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
     // Soft-delete exclusion is dropped so tombstones surface.
-    const [pairsSql] = mockQuery.mock.calls[0];
+    const [pairsSql] = mockUnsafe.mock.calls[0];
     expect(pairsSql).not.toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
   });
 
@@ -230,7 +230,7 @@ describe("get-transfers", () => {
       updated: "2026-05-04T08:00:00Z",
       is_deleted: false,
     };
-    mockQuery.mockResolvedValueOnce({ rows: [rejectedPairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [rejectedPairRow], rowCount: 1 });
 
     const result = await getTransfersRoute.execute(
       makeReq({ query: { "include-deleted": "true" } }),
@@ -243,7 +243,7 @@ describe("get-transfers", () => {
       { pair_id: "p-rej", status: "rejected", transactions: [], updated: "2026-05-04T08:00:00Z" },
     ]);
     // No transaction resolution for eviction signals.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   test("default (no include-deleted) omits rejected pairs entirely — not delivered as eviction signals", async () => {
@@ -257,14 +257,14 @@ describe("get-transfers", () => {
       updated: "2026-05-04T08:00:00Z",
       is_deleted: false,
     };
-    mockQuery.mockResolvedValueOnce({ rows: [rejectedPairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [rejectedPairRow], rowCount: 1 });
 
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     // On the wholesale-replace default path, a rejected pair is simply absent
     // (absence = eviction); it must NOT surface as an eviction-signal row.
     expect(result?.body).toEqual([]);
     // No second (txn) query — nothing visible to resolve.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   const activePairRow = {
@@ -279,31 +279,31 @@ describe("get-transfers", () => {
   };
 
   test("start-date narrows the pairs SELECT by `updated`", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(
       makeReq({ query: { "start-date": "2026-05-02T00:00:00Z" } }),
       fakeRes(),
     );
-    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    const [pairsSql, pairsValues] = mockUnsafe.mock.calls[0];
     expect(pairsSql).toMatch(/updated >= \$2/);
     expect(pairsValues).toEqual(["u-1", "2026-05-02T00:00:00Z"]);
   });
 
   test("no start-date leaves the read unbounded (cold sync)", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(makeReq(), fakeRes());
-    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    const [pairsSql, pairsValues] = mockUnsafe.mock.calls[0];
     expect(pairsSql).not.toMatch(/updated >=/);
     expect(pairsValues).toEqual(["u-1"]);
   });
 
   test("start-date composes with include-deleted — cursor filter plus tombstone delivery", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getTransfersRoute.execute(
       makeReq({ query: { "start-date": "2026-05-02T00:00:00Z", "include-deleted": "true" } }),
       fakeRes(),
     );
-    const [pairsSql, pairsValues] = mockQuery.mock.calls[0];
+    const [pairsSql, pairsValues] = mockUnsafe.mock.calls[0];
     expect(pairsSql).toMatch(/updated >= \$2/);
     expect(pairsSql).not.toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
     expect(pairsValues).toEqual(["u-1", "2026-05-02T00:00:00Z"]);
@@ -314,8 +314,8 @@ describe("get-transfers", () => {
     // from the (soft-delete-excluding) transactions query. Omitting it is
     // enough for a client that replaces wholesale; a delta reducer never
     // revisits an id it isn't sent, so it has to be told explicitly.
-    mockQuery.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await getTransfersRoute.execute(
       makeReq({ query: { "include-deleted": "true" } }),
@@ -333,8 +333,8 @@ describe("get-transfers", () => {
   });
 
   test("default (no include-deleted) still drops an unresolvable pair silently", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [activePairRow], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await getTransfersRoute.execute(makeReq(), fakeRes());
     expect(result?.body).toEqual([]);

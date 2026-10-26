@@ -1,10 +1,10 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { updateInvestmentTransactions, createManualInvestmentTransaction } = await import(
   "./investment_transactions"
@@ -25,7 +25,7 @@ const ID = "itx-1";
  * right column with the wrong number, which is most of what can go wrong here.
  */
 const written = (verb: "UPDATE" | "INSERT"): Record<string, unknown> => {
-  const call = mockQuery.mock.calls.find((c) => new RegExp(`^\\s*${verb}`, "i").test(String(c[0])));
+  const call = mockUnsafe.mock.calls.find((c) => new RegExp(`^\\s*${verb}`, "i").test(String(c[0])));
   if (!call) return {};
   const sql = String(call[0]);
   const values = (call[1] as unknown[]) ?? [];
@@ -59,8 +59,8 @@ const written = (verb: "UPDATE" | "INSERT"): Record<string, unknown> => {
 };
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockQuery.mockImplementation(async () => ({
+  clearSqlMocks();
+  mockUnsafe.mockImplementation(async () => ({
     rows: [{ investment_transaction_id: ID, inv_unknown_index: 0 }],
     rowCount: 1,
   }));

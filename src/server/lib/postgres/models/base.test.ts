@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves, updateColumnsOf } from "test-helpers";
+import { createFakeSql, restoreLeaves, updateColumnsOf } from "test-helpers";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { createTable } = await import("./base");
 
@@ -21,11 +21,11 @@ const widgetsTable = createTable({
 });
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
+  clearSqlMocks();
+  mockUnsafe.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
 });
 
-const emittedSql = () => mockQuery.mock.calls[0][0] as string;
+const emittedSql = () => mockUnsafe.mock.calls[0][0] as string;
 
 describe("Table.upsert conflict clause", () => {
   test("with no allowlist, every supplied column is rewritten — including the owner", async () => {
@@ -85,8 +85,8 @@ describe("Table.upsertMany", () => {
       { widget_id: "w-1", label: "first" },
       { widget_id: "w-1", label: "second" },
     ]);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    expect(mockQuery.mock.calls[0][1]).toEqual(["w-1", "second"]);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe.mock.calls[0][1]).toEqual(["w-1", "second"]);
   });
 
   test("rows are grouped by defined-column set, one statement per group", async () => {
@@ -96,16 +96,16 @@ describe("Table.upsertMany", () => {
       { widget_id: "w-1", label: "a", note: "keep" },
       { widget_id: "w-2", label: "b" },
     ]);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
 
-    const [withNote, withoutNote] = mockQuery.mock.calls.map((call) => call[0] as string);
+    const [withNote, withoutNote] = mockUnsafe.mock.calls.map((call) => call[0] as string);
     expect(updateColumnsOf(withNote)).toContain("note");
     expect(updateColumnsOf(withNote)).toContain("label");
-    expect(mockQuery.mock.calls[0][1]).toEqual(["w-1", "a", "keep"]);
+    expect(mockUnsafe.mock.calls[0][1]).toEqual(["w-1", "a", "keep"]);
 
     expect(withoutNote).not.toContain("note");
     expect(updateColumnsOf(withoutNote)).toContain("label");
-    expect(mockQuery.mock.calls[1][1]).toEqual(["w-2", "b"]);
+    expect(mockUnsafe.mock.calls[1][1]).toEqual(["w-2", "b"]);
   });
 });
 
@@ -135,43 +135,43 @@ describe("Table.queryInBatches", () => {
   };
 
   test("pages by primary key, resuming after the last row of each full batch", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: rowsFrom(1, 2), rowCount: 2 }))
       .mockImplementationOnce(async () => ({ rows: rowsFrom(3, 2), rowCount: 2 }))
       .mockImplementationOnce(async () => ({ rows: rowsFrom(5, 1), rowCount: 1 }));
 
     expect(await collectIds(2)).toEqual([["w-001", "w-002"], ["w-003", "w-004"], ["w-005"]]);
-    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(mockUnsafe).toHaveBeenCalledTimes(3);
 
-    const [firstSql, firstValues] = mockQuery.mock.calls[0] as [string, unknown[]];
+    const [firstSql, firstValues] = mockUnsafe.mock.calls[0] as [string, unknown[]];
     expect(firstSql).toContain("ORDER BY widget_id LIMIT $");
     expect(firstSql).not.toContain("widget_id >");
     expect(firstValues).toEqual(["u-1", 2]);
 
-    const [secondSql, secondValues] = mockQuery.mock.calls[1] as [string, unknown[]];
+    const [secondSql, secondValues] = mockUnsafe.mock.calls[1] as [string, unknown[]];
     expect(secondSql).toContain("widget_id > $");
     expect(secondValues).toEqual(["u-1", "w-002", 2]);
-    expect((mockQuery.mock.calls[2] as [string, unknown[]])[1]).toEqual(["u-1", "w-004", 2]);
+    expect((mockUnsafe.mock.calls[2] as [string, unknown[]])[1]).toEqual(["u-1", "w-004", 2]);
   });
 
   test("a full final batch costs one empty read, then stops", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: rowsFrom(1, 2), rowCount: 2 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
     expect(await collectIds(2)).toEqual([["w-001", "w-002"]]);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
   });
 
   test("an empty result yields no batches", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
     expect(await collectIds(2)).toEqual([]);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   test("nothing is queried until iteration starts", () => {
     pagedWidgetsTable.queryInBatches({ user_id: "u-1" }, {}, 2);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

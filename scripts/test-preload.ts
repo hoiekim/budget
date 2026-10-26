@@ -10,11 +10,11 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
  *      than "server" — without a `window`, `Dictionary.set()` no-ops and the
  *      holdings-calculation tests fail. Registration is process-wide and
  *      reaches well past the DOM — see the note on the `register` call.
- *   2. Capture the REAL exports of leaf node-modules that tests
- *      commonly mock (`pg`, `bcrypt`). Tests can then `afterAll`-restore
- *      via these snapshots so a previous test file's
- *      `mock.module("pg", FakePool)` doesn't leak into the next file's
- *      assumptions.
+ *   2. Capture the REAL exports of leaf modules that tests
+ *      commonly mock (the SQL driver, `bcrypt`). Tests can then
+ *      `afterAll`-restore via these snapshots so a previous test file's
+ *      `mock.module("./sql-driver", FakeSQL)` doesn't leak into the next
+ *      file's assumptions.
  *
  *      The snapshots are taken at preload time — BEFORE any test file
  *      has a chance to call `mock.module(...)` — so they're guaranteed
@@ -55,7 +55,8 @@ for (const [name, value] of nativeNetworkGlobals) {
 // A test that replaces `globalThis.fetch` does so for every file that runs
 // after it, and there is no unmock API. Exposing the real one lets a file that
 // needs the network — rather than a stub of it — install it for its own
-// duration, the way `__REAL_PG` lets one opt back out of a leaked `pg` mock.
+// duration, the way `__REAL_SQL_DRIVER` lets one opt back out of a leaked
+// driver mock.
 (globalThis as Record<string, unknown>).__REAL_FETCH = globalThis.fetch;
 
 // Market-data env a test file sets for its own duration. Snapshotted here for
@@ -82,12 +83,11 @@ for (const [name, value] of nativeNetworkGlobals) {
 // runtime — e.g. `bcrypt.hash` internally calls `module.exports.genSalt`.
 // If `restoreLeaves` then re-mocks bcrypt to a partial object, the
 // missing-internal-reference crashes the next test file's bcrypt call.
-const realPg = require("pg");
+const realSqlDriver = require("../src/server/lib/postgres/sql-driver");
 const realBcrypt = require("bcrypt");
 
-(globalThis as Record<string, unknown>).__REAL_PG = {
-  ...realPg,
-  default: realPg.default ?? realPg,
+(globalThis as Record<string, unknown>).__REAL_SQL_DRIVER = {
+  ...realSqlDriver,
 };
 (globalThis as Record<string, unknown>).__REAL_BCRYPT = {
   ...realBcrypt,
