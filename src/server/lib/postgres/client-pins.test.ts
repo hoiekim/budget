@@ -15,6 +15,9 @@
 // - Pool construction options replace pg's PoolConfig: `max` stays 20,
 //   `idleTimeoutMillis: 30000` becomes `idleTimeout: 30` (seconds),
 //   `connectionTimeoutMillis: 2000` becomes `connectionTimeout: 2`.
+//   Prepared statements are off (`prepare: false`): pg used unnamed
+//   statements, while Bun.sql's named cache accumulates per distinct text
+//   per connection.
 // - The custom type-parser set is gone — Bun.sql has no per-type parser
 //   hooks. The same shapes are produced by the OID-keyed conversion layer
 //   in ./client, so these tests script Bun-shaped results (arrays with
@@ -75,6 +78,7 @@ const clientOptions = async () => {
     max: number;
     idleTimeout: number;
     connectionTimeout: number;
+    prepare: boolean;
     onclose: unknown;
   };
 };
@@ -85,6 +89,7 @@ describe("client construction", () => {
     expect(options.max).toBe(20);
     expect(options.idleTimeout).toBe(30);
     expect(options.connectionTimeout).toBe(2);
+    expect(options.prepare).toBe(false);
   });
 
   test("wires a connection-close handler at construction", async () => {
@@ -135,16 +140,35 @@ describe("result conversion", () => {
     expect(typeof (rows[0] as { t: unknown }).t).toBe("string");
   });
 
-  test("JSON and JSONB parse to objects", async () => {
+  test("JSON and JSONB arrive already parsed on Bun 1.4.4 and pass through untouched", async () => {
     mockUnsafe.mockResolvedValueOnce(
-      bunResult([{ j: '{"a":1}' }, { j: '{"b":2}' }], [{ name: "j", type: JSON }]),
+      bunResult([{ j: { a: 1 } }, { j: { b: 2 } }], [{ name: "j", type: JSON }]),
     );
     expect((await pool.query("SELECT 1")).rows).toEqual([{ j: { a: 1 } }, { j: { b: 2 } }]);
 
     mockUnsafe.mockResolvedValueOnce(
-      bunResult([{ j: '{"a":1}' }], [{ name: "j", type: JSONB }]),
+      bunResult([{ j: { a: 1 } }], [{ name: "j", type: JSONB }]),
     );
     expect((await pool.query("SELECT 1")).rows).toEqual([{ j: { a: 1 } }]);
+  });
+
+  test("JSONB top-level strings are NOT re-parsed", async () => {
+    // Bun.sql parses a JSONB string value to the JS string; re-parsing it
+    // would corrupt '"42"' to 42 and throw on '"abc"', failing the whole
+    // query. The string IS the value.
+    mockUnsafe.mockResolvedValueOnce(
+      bunResult([{ j: "abc" }, { j: "42" }], [{ name: "j", type: JSONB }]),
+    );
+    const { rows } = await pool.query("SELECT 1");
+    expect(rows).toEqual([{ j: "abc" }, { j: "42" }]);
+    expect(typeof (rows[1] as { j: unknown }).j).toBe("string");
+  });
+
+  test("a result without columns throws instead of converting nothing", async () => {
+    // Bun.sql before 1.4.4 returns no `columns`; defaulting to [] used to
+    // silently skip every conversion. A loud failure beats wrong types.
+    mockUnsafe.mockResolvedValueOnce(Object.assign([{ n: "19.99" }], { count: 1 }));
+    await expect(pool.query("SELECT 1")).rejects.toThrow(/1\.4\.4/);
   });
 
   test("every other type passes through untouched, nulls included", async () => {

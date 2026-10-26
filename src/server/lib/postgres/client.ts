@@ -60,8 +60,10 @@ export interface SqlPool extends SqlExecutor {
 //   a text change, not a value change: every consumer parses it with
 //   `new Date(...)` or compares it server-side in SQL, never by string
 //   equality.
-// - JSON (114) / JSONB (3802): Bun.sql returns the JSON text; the repo
-//   consumes parsed objects (pg parsed them).
+// - JSON (114) / JSONB (3802): Bun.sql on 1.4.4 returns values already
+//   parsed (pg parsed them too), so the converter trusts that parse. It
+//   must NOT re-parse strings: a top-level JSON string would be corrupted
+//   ('"42"' -> 42) or throw ('"abc"'), failing the whole query.
 const NUMERIC_OID = 1700;
 const INT8_OID = 20;
 const DATE_OID = 1082;
@@ -91,14 +93,24 @@ function convertValue(value: unknown, oid: number): unknown {
       return value instanceof Date ? value.toISOString() : value;
     case JSON_OID:
     case JSONB_OID:
-      return typeof value === "string" ? JSON.parse(value) : value;
+      // Bun.sql on 1.4.4 already parsed this (see the header note); a
+      // string here IS the value, not text waiting to be parsed.
+      return value;
     default:
       return value;
   }
 }
 
 function convertResult<T>(result: BunSqlResult): SqlQueryResult<T> {
-  const columns = result.columns ?? [];
+  // Bun.sql before 1.4.4 returns no `columns` at all, which used to make
+  // conversion silently do nothing (NUMERIC stayed strings, JSON stayed
+  // text, DATE stayed Dates). Fail loudly instead of serving wrong types.
+  if (result.columns == null) {
+    throw new Error(
+      "Bun.sql returned no result columns; this build requires Bun 1.4.4 or newer",
+    );
+  }
+  const columns = result.columns;
   const rows = (result as Array<Record<string, unknown>>).map((row) => {
     if (!row || typeof row !== "object" || Array.isArray(row)) return row as T;
     const converted: Record<string, unknown> = { ...row };
@@ -136,9 +148,23 @@ const sqlOptions = {
   database,
   // Pool mapping from the old pg config: max 20, idle 30s, connect-timeout 2s.
   // Bun.sql takes both timeouts in SECONDS (pg took milliseconds).
+  // `max` stays 20 even though Bun.sql opens all `max` connections on first
+  // use (pg grew on demand): with `prepare: false` below, an idle backend
+  // holds no statement cache, so the eager pool costs idle connections,
+  // not the memory growth prepared statements used to cause.
   max: 20,
   idleTimeout: 30,
   connectionTimeout: 2,
+  // Bun.sql defaults to `prepare: true`, keeping a named prepared statement
+  // for every distinct SQL text on every connection. The repo builds many
+  // distinct texts in normal operation (multi-row upserts sized by batch,
+  // `IN ($1..$n)` lists sized by input, INSERT/UPDATE column sets that vary
+  // by payload), so each backend's cache grows without bound; connections
+  // are only recycled after 30 s idle. node-postgres used unnamed
+  // statements, which don't accumulate — `prepare: false` restores that
+  // behavior (a string bound to a JSONB column is parsed by the server
+  // again, as pg did).
+  prepare: false,
   onclose: (error: Error | null) => {
     if (isConnectionLoss(error)) {
       logger.error("Database connection lost", {}, error);

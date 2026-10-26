@@ -444,7 +444,16 @@ async function finalResponseHeaders(
   session: Session,
   contentType: string | null,
 ): Promise<Record<string, string>> {
-  const setCookieValue = await persistSession(session, isProduction);
+  // Best-effort: the route already produced its response, and a dead
+  // database must not replace it with the runtime's fallback error page.
+  // If the persist fails, the session simply isn't refreshed this request —
+  // the client keeps its existing cookie and the next request persists again.
+  let setCookieValue: string | null = null;
+  try {
+    setCookieValue = await persistSession(session, isProduction);
+  } catch (error) {
+    logger.error("Session persist failed", {}, error);
+  }
   const responseHeaders: Record<string, string> = { ...SECURITY_HEADERS };
   if (isProduction) {
     responseHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
