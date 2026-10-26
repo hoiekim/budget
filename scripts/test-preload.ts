@@ -11,7 +11,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
  *      holdings-calculation tests fail. Registration is process-wide and
  *      reaches well past the DOM — see the note on the `register` call.
  *   2. Capture the REAL exports of leaf modules that tests
- *      commonly mock (the SQL driver, `bcrypt`). Tests can then
+ *      commonly mock (the SQL driver, the password wrapper). Tests can then
  *      `afterAll`-restore via these snapshots so a previous test file's
  *      `mock.module("./sql-driver", FakeSQL)` doesn't leak into the next
  *      file's assumptions.
@@ -78,18 +78,15 @@ for (const [name, value] of nativeNetworkGlobals) {
 // registration above lands first — `common`-side modules consumed by these
 // captures will see the stub.
 //
-// We spread the full namespace (not just a hand-picked subset) because
-// these libs' methods reference each other through `module.exports` at
-// runtime — e.g. `bcrypt.hash` internally calls `module.exports.genSalt`.
-// If `restoreLeaves` then re-mocks bcrypt to a partial object, the
-// missing-internal-reference crashes the next test file's bcrypt call.
+// We spread the full namespace (not just a hand-picked subset) so a test
+// file that re-mocks a leaf to a partial object can't strand the next
+// file's call on a missing export.
 const realSqlDriver = require("../src/server/lib/postgres/sql-driver");
-const realBcrypt = require("bcrypt");
+const realPassword = require("../src/server/lib/password");
 
 (globalThis as Record<string, unknown>).__REAL_SQL_DRIVER = {
   ...realSqlDriver,
 };
-(globalThis as Record<string, unknown>).__REAL_BCRYPT = {
-  ...realBcrypt,
-  default: realBcrypt.default ?? realBcrypt,
+(globalThis as Record<string, unknown>).__REAL_PASSWORD = {
+  ...realPassword,
 };

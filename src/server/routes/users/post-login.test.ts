@@ -1,11 +1,6 @@
-//
-// bcrypt is in the framework's DEFAULT_NODE_EXTERNALS list, so the
-// bundle's `import bcrypt from "bcrypt"` resolves at runtime through
-// the real package — same as the original test. Password hash + compare
-// run unmocked.
+// Password hash + compare run unmocked.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
-import bcrypt from "bcrypt";
 
 const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
@@ -17,7 +12,7 @@ const { loginRateLimiter } = await import("server/lib/rate-limit");
 afterAll(restoreLeaves);
 
 const REAL_PASSWORD = "correct-horse-battery-staple";
-const REAL_HASH = await bcrypt.hash(REAL_PASSWORD, 10);
+const REAL_HASH = await Bun.password.hash(REAL_PASSWORD, { algorithm: "bcrypt", cost: 10 });
 
 /** Raw users row matching UserModel's schema. */
 const userRow = (overrides: Record<string, unknown> = {}) => ({

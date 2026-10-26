@@ -5,12 +5,12 @@ const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
 mock.module("../sql-driver", () => driver);
 
-mock.module("bcrypt", () => ({
-  default: { hash: async (s: string) => `hashed:${s}` },
+mock.module("../../password", () => ({
+  hashPassword: async (s: string) => `hashed:${s}`,
 }));
 
 // Dynamic-import after the leaf-dep mocks register, so the source
-// resolves the driver/bcrypt to their FakeSQL / fake bcrypt.
+// resolves the driver/password wrapper to their FakeSQL / fake password functions.
 const { writeUser, searchUser, getUserById, deleteUser } = await import("./users");
 
 afterAll(restoreLeaves);

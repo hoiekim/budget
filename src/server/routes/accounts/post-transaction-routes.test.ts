@@ -40,7 +40,7 @@ const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, 
 mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // `mock.module` is process-global in Bun and `restoreLeaves` only restores the
-// driver / `bcrypt` leaves, so spread the real module rather than replacing it —
+// driver / `password` leaves, so spread the real module rather than replacing it —
 // `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
 // (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
 // exercise the real `sendAlarm`.
