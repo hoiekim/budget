@@ -14,7 +14,7 @@ runs once before any test file and:
 1. Stubs `globalThis.window = {}` so client-side env detection resolves to
    "unknown" instead of "server" — without it, `Dictionary.set()` no-ops and
    client-side calc tests fail.
-2. Captures the REAL exports of the SQL driver and `bcrypt` on
+2. Captures the REAL exports of the SQL driver and the password wrapper on
    `globalThis.__REAL_*` so `restoreLeaves()` can re-mock leaf deps back
    to a known baseline between test files.
 
@@ -30,7 +30,7 @@ describe("featureName", () => {
 });
 ```
 
-### Mocking the SQL driver / `bcrypt` (the per-file isolation pattern)
+### Mocking the SQL driver / password wrapper (the per-file isolation pattern)
 
 `bun:test`'s `mock.module(...)` is **process-global** — once any test file
 mocks the SQL driver with a FakeSQL, every subsequent file in the run sees
@@ -42,7 +42,7 @@ that mock. To keep the pool per-file, two things conspire:
    pool use instantiates the test's FakeSQL. Production code imports `SQL`
    only through `./sql-driver` because `mock.module(...)` cannot override
    the `"bun"` builtin itself.
-2. `scripts/test-helpers.ts#restoreLeaves` re-mocks the driver and `bcrypt`
+2. `scripts/test-helpers.ts#restoreLeaves` re-mocks the driver and the password wrapper
    back to the preload snapshots and calls `resetPool()` to drop the cached
    instance, so the NEXT file's first pool use rebuilds against its own
    mock.

@@ -26,14 +26,14 @@ import { resetPool } from "server/lib/postgres/client";
 
 interface RealLeaves {
   __REAL_SQL_DRIVER: Record<string, unknown>;
-  __REAL_BCRYPT: Record<string, unknown> & { default: unknown };
+  __REAL_PASSWORD: Record<string, unknown>;
   __REAL_FETCH: typeof fetch;
   __REAL_ENV: Record<string, string | undefined>;
 }
 
 const realLeaves = (): RealLeaves => {
   const g = globalThis as unknown as Partial<RealLeaves>;
-  if (!g.__REAL_SQL_DRIVER || !g.__REAL_BCRYPT || !g.__REAL_FETCH || !g.__REAL_ENV) {
+  if (!g.__REAL_SQL_DRIVER || !g.__REAL_PASSWORD || !g.__REAL_FETCH || !g.__REAL_ENV) {
     throw new Error(
       "test-helpers: real leaf snapshots missing on globalThis. " +
         "Run tests via `bun test` (which preloads `scripts/test-preload.ts`).",
@@ -79,7 +79,7 @@ export const restoreEnv = (): void => {
 };
 
 /**
- * Re-mock the standard set of leaf deps (the SQL driver, `bcrypt`) back
+ * Re-mock the standard set of leaf deps (the SQL driver, the password wrapper) back
  * to the real module exports captured by the preload, put
  * `globalThis.fetch` back with the market-data env, and invalidate the
  * lazy SQL cache in `postgres/client.ts` so the next file's first pool
@@ -87,9 +87,9 @@ export const restoreEnv = (): void => {
  * doesn't mock anything). Pass directly to `afterAll(restoreLeaves)`.
  */
 export const restoreLeaves = (): void => {
-  const { __REAL_SQL_DRIVER, __REAL_BCRYPT } = realLeaves();
+  const { __REAL_SQL_DRIVER, __REAL_PASSWORD } = realLeaves();
   mock.module("server/lib/postgres/sql-driver", () => __REAL_SQL_DRIVER);
-  mock.module("bcrypt", () => __REAL_BCRYPT);
+  mock.module("server/lib/password", () => __REAL_PASSWORD);
   restoreFetch();
   restoreEnv();
   resetPool();

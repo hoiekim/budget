@@ -1,4 +1,3 @@
-import bcrypt from "bcrypt";
 import {
   Route,
   searchUser,
@@ -9,6 +8,7 @@ import {
   validationError,
   loginRateLimiter,
   preSessionShedMessage,
+  verifyPassword,
 } from "server";
 
 export type LoginPostResponse = MaskedUser;
@@ -44,8 +44,8 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
   // comparison takes the same time as a real one, preventing timing-based enumeration.
   const DUMMY_HASH = "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
   const pwMatches = user
-    ? await bcrypt.compare(passwordResult.data!, user.password)
-    : await bcrypt.compare(passwordResult.data!, DUMMY_HASH).then(() => false);
+    ? await verifyPassword(passwordResult.data!, user.password)
+    : await verifyPassword(passwordResult.data!, DUMMY_HASH).then(() => false);
 
   if (pwMatches && user) {
     // A success hands back its own slot and leaves the rest: clearing the counter would let one
