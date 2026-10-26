@@ -98,8 +98,34 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
 
 export interface PlaidInvestmentTransaction extends InvestmentTransaction {}
 
-export const getInvestmentTransactions = async (user: MaskedUser, items: JSONItem[]) => {
-  const client = getClient(user);
+/**
+ * Test seam for {@link getInvestmentTransactions}: the Plaid client factory
+ * and the item writes it needs. Defaults are the production imports, so
+ * callers pass nothing and behavior is unchanged. Tests pass fakes here
+ * instead of mocking the shared leaves: mock.module is process-global in
+ * Bun, and a module imported while a mock is registered keeps the mock —
+ * mocking these leaves in the test file leaked into sibling test files
+ * (mocked logger broke webhook.test.ts's warning throttle, mocked
+ * upsertItems broke items.test.ts, mocked plaid util broke
+ * get-institutions tests) whenever the suite ran together.
+ */
+export interface InvestmentTransactionDeps {
+  getClient?: typeof getClient;
+  upsertItems?: typeof upsertItems;
+  updateItemStatus?: typeof updateItemStatus;
+}
+
+export const getInvestmentTransactions = async (
+  user: MaskedUser,
+  items: JSONItem[],
+  deps: InvestmentTransactionDeps = {},
+) => {
+  const {
+    getClient: getClientFn = getClient,
+    upsertItems: upsertItemsFn = upsertItems,
+    updateItemStatus: updateItemStatusFn = updateItemStatus,
+  } = deps;
+  const client = getClientFn(user);
 
   type PlaidInvestmentTransactionsResponse = {
     items: JSONItem[];
@@ -175,7 +201,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
           const updated_products = item.available_products.filter(
             (p) => p !== Products.Investments,
           );
-          upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
+          upsertItemsFn(user, [{ ...item, available_products: updated_products }]).catch((e) => {
             logger.error("Failed to update available_products for item", { itemId: item_id }, e);
           });
           return;
@@ -187,7 +213,7 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
           );
           if (!plaidError) plaidError = errorData ?? null;
           if (errorData && errorData.error_type === PlaidErrorType.ItemError) {
-            updateItemStatus(user, item_id, ItemStatus.BAD, errorData.error_code).catch((e) => {
+            updateItemStatusFn(user, item_id, ItemStatus.BAD, errorData.error_code).catch((e) => {
               logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
             });
           }

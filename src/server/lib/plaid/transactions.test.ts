@@ -1,42 +1,31 @@
-import { describe, it, expect, mock, afterEach, beforeEach } from "bun:test";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { Products, PlaidErrorType } from "plaid";
 import { getDateString } from "common";
 import type { JSONItem } from "common";
 import type { MaskedUser } from "server";
+import { getInvestmentTransactions } from "./transactions";
+import type { InvestmentTransactionDeps } from "./transactions";
 
-// mock.module is process-global in Bun, so mocks are restored after each
-// test to keep sibling test files on the real exports.
-//
-// Ordering wrinkle: the "server" barrel re-exports ./plaid, so importing the
-// barrel (or ./util, which imports the barrel) loads the module under test
-// transitively — before any mock is registered — and the binding sticks.
-// The mocks below therefore target the LEAF modules (registered before
-// anything touches the barrel), and the module under test is imported
-// dynamically only after all mocks are in place.
-const realLoggerMod = await import("server/lib/logger");
-const realItemsRepo = await import("server/lib/postgres/repositories/items");
-// The real ./util can't be captured up front (it imports the barrel, which
-// would load the module under test before the mocks are registered), so its
-// factory hardcodes the one-line ignorable set — the only other export this
-// module reads. If util.ts grows exports this module needs, update the
-// factory. The restore copy is captured after registration via a
-// cache-busting specifier.
+// No mock.module calls in this file, on purpose. mock.module is
+// process-global in Bun: a module imported while a mock is registered
+// keeps the mock, so mocking the shared leaves this function needs
+// (plaid util, items repo, logger) leaked into sibling test files and
+// broke the suite whenever it ran together: webhook.test.ts's
+// spyOn(logger, "warn") wrapped the shared mock logger and counted
+// warnings from other tests (4 vs 1), items.test.ts bound the mocked
+// upsertItems, and get-institutions tests bound the mocked plaid util.
+// Instead the function takes its Plaid client and item writes as an
+// injected `deps` argument (see transactions.ts): the fakes below are
+// plain function mocks, visible only to these tests. The real logger
+// stays in place — it is test-silent by default — and the real
+// ignorable-error set is used, since it already holds exactly
+// NO_INVESTMENT_ACCOUNTS.
 
-const mockLogger = {
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
-  debug: mock(() => {}),
-};
 const mockUpsertItems = mock(() => Promise.resolve());
 const mockUpdateItemStatus = mock(() => Promise.resolve());
 
-// Factored so beforeEach can re-register the mocks: afterEach restores
-// them to the real exports (sibling-file protection), which would otherwise
-// leave tests 2+ running against the real Plaid client.
-
 // The production caller always builds the request with options (see
-// transactions.ts), so the mock only ever sees that shape — no `any` needed.
+// transactions.ts), so the fake only ever sees that shape — no `any` needed.
 type InvestmentTransactionsGetRequestStub = {
   options: { offset: number };
 };
@@ -57,41 +46,21 @@ const mockGetClient = mock(() => ({
     investmentsTransactionsGetImpl(request),
 }));
 
-const registerMocks = () => {
-  mock.module("server/lib/logger", () => ({
-    ...realLoggerMod,
-    logger: mockLogger,
-  }));
-  mock.module("server/lib/postgres/repositories/items", () => ({
-    ...realItemsRepo,
-    upsertItems: mockUpsertItems,
-    updateItemStatus: mockUpdateItemStatus,
-  }));
-  mock.module("./util", () => ({
-    getClient: mockGetClient,
-    getProductionClient: mockGetClient,
-    isPlaidConfigured: true,
-    ignorable_error_codes: new Set(["NO_INVESTMENT_ACCOUNTS"]),
-  }));
+// The injected deps for every test below. The client fake is cast: its
+// stub response carries only the fields these tests use, not the full
+// Plaid response shape.
+const deps = {
+  getClient: mockGetClient as unknown as InvestmentTransactionDeps["getClient"],
+  upsertItems: mockUpsertItems,
+  updateItemStatus: mockUpdateItemStatus,
 };
-registerMocks();
-beforeEach(registerMocks);
 
-// Captured after registration: the busted specifier gives a fresh real
-// instance whose own exports are unaffected by the registered mocks.
-const realUtilForRestore = await import("./util?restore-real");
-
-afterEach(() => {
-  mock.module("server/lib/logger", () => realLoggerMod);
-  mock.module("server/lib/postgres/repositories/items", () => realItemsRepo);
-  mock.module("./util", () => realUtilForRestore);
+// Call-history hygiene only: these are plain function mocks, so clearing
+// them cannot touch any other file.
+beforeEach(() => {
   mockUpsertItems.mockClear();
   mockUpdateItemStatus.mockClear();
 });
-
-// First plain barrel touch happens here (via the busted util's own "server"
-// import above): binds the mocked leaves + mocked ./util.
-const { getInvestmentTransactions } = await import("./transactions");
 
 const makeItem = (overrides: Partial<JSONItem> = {}): JSONTransactionItem =>
   ({
@@ -138,7 +107,7 @@ describe("getInvestmentTransactions", () => {
     };
     const item = makeItem();
 
-    const data = await getInvestmentTransactions(user, [item]);
+    const data = await getInvestmentTransactions(user, [item], deps);
 
     expect(data.items).toHaveLength(1);
     expect(data.investmentTransactions).toHaveLength(250);
@@ -156,7 +125,7 @@ describe("getInvestmentTransactions", () => {
     };
     const item = makeItem();
 
-    const data = await getInvestmentTransactions(user, [item]);
+    const data = await getInvestmentTransactions(user, [item], deps);
 
     // Exactly one push, carrying the error — and the watermark stays put so
     // the next sync re-fetches the window instead of stranding the page.
@@ -176,7 +145,7 @@ describe("getInvestmentTransactions", () => {
     };
     const item = makeItem();
 
-    const data = await getInvestmentTransactions(user, [item]);
+    const data = await getInvestmentTransactions(user, [item], deps);
 
     expect(data.items).toHaveLength(0);
     expect(item.updated).toBe("2020-01-01");
@@ -191,7 +160,7 @@ describe("getInvestmentTransactions", () => {
     };
     const item = makeItem();
 
-    const data = await getInvestmentTransactions(user, [item]);
+    const data = await getInvestmentTransactions(user, [item], deps);
 
     expect(data.items).toHaveLength(0);
     expect(item.updated).toBe("2020-01-01");
