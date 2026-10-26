@@ -96,7 +96,7 @@ const GET_ROUTES = [
   ["GET /transfers", getTransfersRoute],
 ] as const;
 
-describe("query-string validation (#815)", () => {
+describe("query-string validation", () => {
   for (const [label, route] of DELETE_ROUTES) {
     test(`${label} refuses a malformed ?id= before SQL, with no alarm`, async () => {
       failQueries = true;
@@ -170,6 +170,21 @@ describe("query-string validation (#815)", () => {
       // The transaction/snapshot GETs return a lazy JsonStream, not a plain
       // body, so the assertion here is "not a failed answer" rather than a
       // body shape; the malformed tests above carry the guard itself.
+      expect((result as { status?: string } | null)?.status).not.toBe("failed");
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("an empty ?start-date= counts as absent on any GET route, not a failed answer", async () => {
+    for (const [_label, route] of GET_ROUTES) {
+      clearQueryMocks();
+      mockSendAlarm.mockClear();
+      const result = await route.execute(
+        makeReq("GET", route.path, { "start-date": "" }),
+        fakeRes(),
+      );
+      // optionalQueryString maps "" to undefined, so the date guard sees
+      // no value and the route proceeds exactly as with no parameter.
       expect((result as { status?: string } | null)?.status).not.toBe("failed");
       expect(mockSendAlarm).not.toHaveBeenCalled();
     }
