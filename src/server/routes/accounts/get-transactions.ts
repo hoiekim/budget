@@ -4,6 +4,7 @@ import {
   searchTransactions,
   SearchTransactionsOptions,
   optionalQueryString,
+  validateFields,
   validationError,
 } from "server";
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
@@ -30,6 +31,11 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
 
     const endResult = optionalQueryString(req, "end-date");
     if (!endResult.success) return validationError(endResult.error!);
+    // The parsed `start-date`/`end-date` become TIMESTAMPTZ predicates below:
+    // reject a malformed or non-calendar date here instead of
+    // letting Postgres raise 22007/22008 inside Route.execute.
+    const dateCheck = validateFields({ "start-date": startResult.data, "end-date": endResult.data }, [{ path: "start-date", type: "date" }, { path: "end-date", type: "date" }]);
+    if (!dateCheck.success) return validationError(dateCheck.error!);
 
     const accountResult = optionalQueryString(req, "account-id");
     if (!accountResult.success) return validationError(accountResult.error!);

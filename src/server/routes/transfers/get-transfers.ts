@@ -1,4 +1,4 @@
-import { Route, getTransferPairs, TransferPair, optionalQueryString, validationError } from "server";
+import { Route, getTransferPairs, TransferPair, optionalQueryString, validateFields, validationError } from "server";
 
 export type TransfersGetResponse = TransferPair[];
 
@@ -18,6 +18,11 @@ export const getTransfersRoute = new Route<TransfersGetResponse>("GET", "/transf
 
   const startResult = optionalQueryString(req, "start-date");
   if (!startResult.success) return validationError(startResult.error!);
+  // The parsed `start-date` becomes a TIMESTAMPTZ predicate below: reject a
+  // malformed or non-calendar date here instead of letting
+  // Postgres raise 22007/22008 inside Route.execute.
+  const dateCheck = validateFields({ "start-date": startResult.data }, [{ path: "start-date", type: "date" }]);
+  if (!dateCheck.success) return validationError(dateCheck.error!);
 
   const pairs = await getTransferPairs(user, {
     includeDeleted: includeDeletedResult.data === "true",
