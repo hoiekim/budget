@@ -1,4 +1,4 @@
-import { describe, it, expect, mock, afterEach } from "bun:test";
+import { describe, it, expect, mock, afterEach, beforeEach } from "bun:test";
 import { Products, PlaidErrorType } from "plaid";
 import { getDateString } from "common";
 import type { JSONItem } from "common";
@@ -31,31 +31,51 @@ const mockLogger = {
 const mockUpsertItems = mock(() => Promise.resolve());
 const mockUpdateItemStatus = mock(() => Promise.resolve());
 
-mock.module("server/lib/logger", () => ({
-  ...realLoggerMod,
-  logger: mockLogger,
-}));
-mock.module("server/lib/postgres/repositories/items", () => ({
-  ...realItemsRepo,
-  upsertItems: mockUpsertItems,
-  updateItemStatus: mockUpdateItemStatus,
-}));
+// Factored so beforeEach can re-register the mocks: afterEach restores
+// them to the real exports (sibling-file protection), which would otherwise
+// leave tests 2+ running against the real Plaid client.
 
-let investmentsTransactionsGetImpl: (request: any) => Promise<any> =
-  async () => ({
-    data: { investment_transactions: [], total_investment_transactions: 0 },
-  });
+// The production caller always builds the request with options (see
+// transactions.ts), so the mock only ever sees that shape — no `any` needed.
+type InvestmentTransactionsGetRequestStub = {
+  options: { offset: number };
+};
+type InvestmentTransactionsGetResponseStub = {
+  data: {
+    investment_transactions: { investment_transaction_id: string }[];
+    total_investment_transactions: number;
+  };
+};
+
+let investmentsTransactionsGetImpl: (
+  request: InvestmentTransactionsGetRequestStub,
+) => Promise<InvestmentTransactionsGetResponseStub> = async () => ({
+  data: { investment_transactions: [], total_investment_transactions: 0 },
+});
 const mockGetClient = mock(() => ({
-  investmentsTransactionsGet: (request: any) =>
+  investmentsTransactionsGet: (request: InvestmentTransactionsGetRequestStub) =>
     investmentsTransactionsGetImpl(request),
 }));
 
-mock.module("./util", () => ({
-  getClient: mockGetClient,
-  getProductionClient: mockGetClient,
-  isPlaidConfigured: true,
-  ignorable_error_codes: new Set(["NO_INVESTMENT_ACCOUNTS"]),
-}));
+const registerMocks = () => {
+  mock.module("server/lib/logger", () => ({
+    ...realLoggerMod,
+    logger: mockLogger,
+  }));
+  mock.module("server/lib/postgres/repositories/items", () => ({
+    ...realItemsRepo,
+    upsertItems: mockUpsertItems,
+    updateItemStatus: mockUpdateItemStatus,
+  }));
+  mock.module("./util", () => ({
+    getClient: mockGetClient,
+    getProductionClient: mockGetClient,
+    isPlaidConfigured: true,
+    ignorable_error_codes: new Set(["NO_INVESTMENT_ACCOUNTS"]),
+  }));
+};
+registerMocks();
+beforeEach(registerMocks);
 
 // Captured after registration: the busted specifier gives a fresh real
 // instance whose own exports are unaffected by the registered mocks.
@@ -110,7 +130,7 @@ const user = {} as unknown as MaskedUser;
 
 describe("getInvestmentTransactions", () => {
   it("pushes the item exactly once and advances the watermark on a clean multi-page run", async () => {
-    investmentsTransactionsGetImpl = async (request: any) => {
+    investmentsTransactionsGetImpl = async (request: InvestmentTransactionsGetRequestStub) => {
       const offset = request.options.offset as number;
       const remaining = 250 - offset;
       const count = Math.min(100, remaining);
@@ -128,7 +148,7 @@ describe("getInvestmentTransactions", () => {
   });
 
   it("does not advance the watermark when a mid-pagination page fails", async () => {
-    investmentsTransactionsGetImpl = async (request: any) => {
+    investmentsTransactionsGetImpl = async (request: InvestmentTransactionsGetRequestStub) => {
       const offset = request.options.offset as number;
       if (offset === 100) throw plaidFailure("INTERNAL_SERVER_ERROR");
       const remaining = 250 - offset;
@@ -141,7 +161,7 @@ describe("getInvestmentTransactions", () => {
     // Exactly one push, carrying the error — and the watermark stays put so
     // the next sync re-fetches the window instead of stranding the page.
     expect(data.items).toHaveLength(1);
-    expect((data.items[0] as any).plaidError?.error_code).toBe(
+    expect(data.items[0].plaidError?.error_code).toBe(
       "INTERNAL_SERVER_ERROR",
     );
     expect(data.items[0].updated).toBe("2020-01-01");
@@ -165,7 +185,7 @@ describe("getInvestmentTransactions", () => {
 
   it("pushes nothing on ignorable errors and keeps looping", async () => {
     const seenOffsets: number[] = [];
-    investmentsTransactionsGetImpl = async (request: any) => {
+    investmentsTransactionsGetImpl = async (request: InvestmentTransactionsGetRequestStub) => {
       seenOffsets.push(request.options.offset as number);
       throw plaidFailure("NO_INVESTMENT_ACCOUNTS");
     };
