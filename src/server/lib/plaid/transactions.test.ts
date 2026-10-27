@@ -139,6 +139,64 @@ describe("getInvestmentTransactions", () => {
     expect(data.investmentTransactions).toHaveLength(100);
   });
 
+  it("does not advance the watermark when a mid-pagination page fails without a Plaid response payload", async () => {
+    investmentsTransactionsGetImpl = async (request: InvestmentTransactionsGetRequestStub) => {
+      const offset = request.options.offset as number;
+      // A transport error: no response.data, so no plaidError is ever set.
+      if (offset === 100) throw new Error("socket hangup");
+      const remaining = 250 - offset;
+      return okResponse(offset, Math.min(100, remaining), 250);
+    };
+    const item = makeItem();
+
+    const data = await getInvestmentTransactions(user, [item], deps);
+
+    // One push, carrying no plaidError — and the watermark stays put, so
+    // the next sync re-fetches the window. Gating on plaidError
+    // nullability advanced the watermark here (succeeded was already true).
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].plaidError).toBeUndefined();
+    expect(data.items[0].updated).toBe("2020-01-01");
+    expect(item.updated).toBe("2020-01-01");
+    expect(data.investmentTransactions).toHaveLength(100);
+  });
+
+  it("pushes the item (without a plaidError) when the first page fails without a Plaid response payload", async () => {
+    investmentsTransactionsGetImpl = async () => {
+      throw new Error("socket hangup");
+    };
+    const item = makeItem();
+
+    const data = await getInvestmentTransactions(user, [item], deps);
+
+    // The old code pushed the item on a first-page failure; dropping it
+    // silently loses the item from the sync result.
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].plaidError).toBeUndefined();
+    expect(data.items[0].updated).toBe("2020-01-01");
+    expect(data.investmentTransactions).toHaveLength(0);
+  });
+
+  it("pushes the item without advancing the watermark when PRODUCTS_NOT_SUPPORTED follows a successful page", async () => {
+    investmentsTransactionsGetImpl = async (request: InvestmentTransactionsGetRequestStub) => {
+      const offset = request.options.offset as number;
+      if (offset === 100) throw plaidFailure("PRODUCTS_NOT_SUPPORTED");
+      return okResponse(offset, 100, 250);
+    };
+    const item = makeItem();
+
+    const data = await getInvestmentTransactions(user, [item], deps);
+
+    // The old code had already pushed the item for page 1 before the
+    // failure; the rewrite dropped it. The watermark must not advance
+    // past the failed page.
+    expect(data.items).toHaveLength(1);
+    expect(data.items[0].updated).toBe("2020-01-01");
+    expect(item.updated).toBe("2020-01-01");
+    expect(data.investmentTransactions).toHaveLength(100);
+    expect(mockUpsertItems).toHaveBeenCalled();
+  });
+
   it("pushes nothing and leaves the watermark alone on PRODUCTS_NOT_SUPPORTED", async () => {
     investmentsTransactionsGetImpl = async () => {
       throw plaidFailure("PRODUCTS_NOT_SUPPORTED");

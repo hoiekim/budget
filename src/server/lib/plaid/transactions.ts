@@ -179,6 +179,12 @@ export const getInvestmentTransactions = async (
     let total: number | undefined;
     let plaidError: PlaidError | null = null;
     let succeeded = false;
+    // A non-ignorable page failure, set in the failure branch below. The
+    // watermark gate reads this flag, not plaidError nullability: a failure
+    // with no Plaid response payload (a transport error with no
+    // response.data) leaves plaidError null, and gating on nullability
+    // advanced the watermark past the failed page.
+    let failed = false;
 
     while (total === undefined || options.offset < total) {
       if (total === undefined) total = 0;
@@ -204,13 +210,21 @@ export const getInvestmentTransactions = async (
           upsertItemsFn(user, [{ ...item, available_products: updated_products }]).catch((e) => {
             logger.error("Failed to update available_products for item", { itemId: item_id }, e);
           });
-          return;
+          // On the first page nothing was ever pushed, so keep the
+          // existing no-push behavior and return. After a successful
+          // page the old code had already pushed the item once, so fall
+          // through to the post-loop push (without advancing the
+          // watermark) instead of dropping it.
+          if (!succeeded) return;
+          failed = true;
+          break;
         } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
           logger.error(
             "Failed to get investment transaction data",
             { itemId: item_id },
             errorData || error,
           );
+          failed = true;
           if (!plaidError) plaidError = errorData ?? null;
           if (errorData && errorData.error_type === PlaidErrorType.ItemError) {
             updateItemStatusFn(user, item_id, ItemStatus.BAD, errorData.error_code).catch((e) => {
@@ -227,9 +241,13 @@ export const getInvestmentTransactions = async (
     // The watermark advances only when every page succeeded: this path is
     // offset-based, so a skipped offset is never revisited — unlike the
     // cursor-based cash path, where the cursor itself is the resume point.
-    // The item is pushed exactly once per sync, never once per page.
-    if (succeeded && !plaidError) item.updated = end_date;
+    // A failed page still pushes the item (carrying plaidError when the
+    // failure had a Plaid payload, plain when it did not), so the item is
+    // never silently dropped from the result. The item is pushed exactly
+    // once per sync, never once per page.
+    if (succeeded && !failed) item.updated = end_date;
     if (plaidError) data.items.push({ ...item, plaidError });
+    else if (failed) data.items.push({ ...item });
     else if (succeeded) data.items.push({ ...item });
   });
 
