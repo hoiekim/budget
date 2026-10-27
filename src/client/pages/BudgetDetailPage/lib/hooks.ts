@@ -24,9 +24,14 @@ export const useBudgetGraph = (budget: Budget) => {
     const isIncome = currentAmount < 0;
     const sign = isIncome ? -1 : 1;
 
+    // Normalize into the same positive-is-magnitude space the capacity
+    // line uses: for an income budget the raw amounts are negative, and
+    // the clamp below would flatten every period to the baseline. The
+    // clamp itself stays — it keeps a stray opposite-signed row from
+    // dropping the line below the axis.
     const spendingHistory: number[] = budgetHistory
       .toArray(graphViewDate)
-      .map(({ sorted_amount, unsorted_amount }) => sorted_amount + unsorted_amount);
+      .map(({ sorted_amount, unsorted_amount }) => sign * (sorted_amount + unsorted_amount));
 
     const { length } = spendingHistory;
     if (length < 2) return {};
