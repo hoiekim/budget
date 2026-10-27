@@ -6,18 +6,18 @@
  */
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { PostgresSessionStore } = await import("./session");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 /** Raw sessions-table row matching SessionModel's schema. */
@@ -48,22 +48,22 @@ const store = new PostgresSessionStore();
 
 describe("PostgresSessionStore.get", () => {
   test("returns null for an unknown sid", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await store.get("s-nope")).toBeNull();
   });
 
   test("returns the session for a row whose expiry is in the future", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [sessionRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [sessionRow()], rowCount: 1 });
     const data = await store.get("s-1");
     expect(data?.user.user_id).toBe("u-1");
-    const deletes = mockQuery.mock.calls.filter(([sql]) =>
+    const deletes = mockUnsafe.mock.calls.filter(([sql]) =>
       String(sql).startsWith("DELETE"),
     );
     expect(deletes).toHaveLength(0);
   });
 
   test("an expired row does not authenticate and is hard-deleted on the way out", async () => {
-    mockQuery.mockImplementation(async (sql: unknown) => {
+    mockUnsafe.mockImplementation(async (sql: unknown) => {
       if (String(sql).startsWith("DELETE")) return { rows: [], rowCount: 1 };
       return {
         rows: [sessionRow({ cookie_expires: new Date(Date.now() - 1000).toISOString() })],
@@ -71,7 +71,7 @@ describe("PostgresSessionStore.get", () => {
       };
     });
     expect(await store.get("s-1")).toBeNull();
-    const deletes = mockQuery.mock.calls.filter(([sql]) =>
+    const deletes = mockUnsafe.mock.calls.filter(([sql]) =>
       String(sql).startsWith("DELETE"),
     );
     expect(deletes).toHaveLength(1);
@@ -84,18 +84,18 @@ describe("PostgresSessionStore.get", () => {
     // existed or sessions persisted without a cookie expiry; there is nothing
     // to enforce, so behavior is unchanged (the purge sweep agrees —
     // NULL <= now is never true).
-    mockQuery.mockResolvedValueOnce({ rows: [sessionRow({ cookie_expires: null })], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [sessionRow({ cookie_expires: null })], rowCount: 1 });
     const data = await store.get("s-1");
     expect(data?.user.user_id).toBe("u-1");
   });
 
   test("an unparseable cookie_expires fails closed", async () => {
-    mockQuery.mockImplementation(async (sql: unknown) => {
+    mockUnsafe.mockImplementation(async (sql: unknown) => {
       if (String(sql).startsWith("DELETE")) return { rows: [], rowCount: 1 };
       return { rows: [sessionRow({ cookie_expires: "not-a-date" })], rowCount: 1 };
     });
     expect(await store.get("s-1")).toBeNull();
-    const deletes = mockQuery.mock.calls.filter(([sql]) =>
+    const deletes = mockUnsafe.mock.calls.filter(([sql]) =>
       String(sql).startsWith("DELETE"),
     );
     expect(deletes).toHaveLength(1);
