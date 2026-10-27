@@ -32,6 +32,11 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          # The production posture (Secure session cookie, HSTS) is folded
+          # into the bundle at build time; without this the published image
+          # ships the non-production posture. See Dockerfile + #812.
+          build-args: |
+            NODE_ENV=production
           push: true
           tags: |
             ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
