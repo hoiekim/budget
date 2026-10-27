@@ -50,7 +50,7 @@ export const getBudgetData = (
   });
 
   const processTransaction = (transaction: Transaction) => {
-    const { transaction_id, authorized_date, date, account_id, label, amount } = transaction;
+    const { transaction_id, authorized_date, date, account_id, label, amount, source } = transaction;
     if (transfers.byTransactionId.hasConfirmed(transaction_id)) return;
     const transactionDate = new LocalDate(authorized_date || date);
     const account = accounts.get(account_id);
@@ -78,9 +78,17 @@ export const getBudgetData = (
 
       const parentBudget = budgets.get(budgetId);
       if (!parentBudget) return;
+      // The transaction list hides zero-amount rows (except manual
+      // mints, which need a surface to reach), so the badge must not
+      // count them either — otherwise it reports items the user can
+      // never open and clear, and can never reach zero (#823). This is
+      // the list's exact predicate (`!amount`, manual exception). The
+      // amount itself still accumulates (it is zero here in the
+      // reported cases, and split-adjusted amounts stay untouched).
+      const countsAsUnsortedItem = Boolean(amount) || source === "manual";
       budgetData.add(parentBudget.id, transactionDate, {
         unsorted_amount: amountAfterSplit,
-        number_of_unsorted_items: 1,
+        number_of_unsorted_items: countsAsUnsortedItem ? 1 : 0,
       });
       if (
         parentBudget.roll_over &&
