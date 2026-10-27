@@ -36,7 +36,11 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
     const provider = providerResult.data;
 
     if (provider === ItemProvider.SIMPLE_FIN) {
-      const { public_token } = req.body;
+      // req.body is absent when the request has no JSON content-type, the
+      // JSON is unparseable, or the payload is a literal null (start.ts) —
+      // default to {} so the typeof guard below fails closed instead of
+      // the destructure throwing a 500.
+      const { public_token } = req.body ?? {};
       if (typeof public_token !== "string") {
         return {
           status: "failed",
@@ -54,7 +58,8 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
 
       return { status: "success", body: { item } };
     } else if (provider === ItemProvider.PLAID) {
-      const { public_token, institution_id } = req.body;
+      // Same absent-body guard as the simple_fin branch above.
+      const { public_token, institution_id } = req.body ?? {};
       if (typeof public_token !== "string" || typeof institution_id !== "string") {
         return {
           status: "failed",
