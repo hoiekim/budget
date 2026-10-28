@@ -1,4 +1,4 @@
-import { plaid, Route, optionalQueryString, validationError } from "server";
+import { plaid, Route, optionalQueryString, validationError, getItem } from "server";
 
 export type LinkTokenGetResponse = string;
 
@@ -14,6 +14,24 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
       };
     }
 
+    const itemIdResult = optionalQueryString(req, "item_id");
+    if (!itemIdResult.success) return validationError(itemIdResult.error!);
+
+    // The browser names the item; the server resolves the stored credential
+    // itself. The lookup is scoped to the requesting user, so a caller can
+    // never mint an update-mode link token for another user's item.
+    let accessToken: string | undefined;
+    if (itemIdResult.data) {
+      const item = await getItem(user, itemIdResult.data);
+      if (!item) {
+        return {
+          status: "failed",
+          message: "Item not found.",
+        };
+      }
+      accessToken = item.access_token;
+    }
+
     if (!plaid.isPlaidConfigured) {
       return {
         status: "failed",
@@ -21,10 +39,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
       };
     }
 
-    const accessTokenResult = optionalQueryString(req, "access_token");
-    if (!accessTokenResult.success) return validationError(accessTokenResult.error!);
-
-    const response = await plaid.getLinkToken(user, accessTokenResult.data);
+    const response = await plaid.getLinkToken(user, accessToken);
     if (!response) throw new Error("Server failed to get link token.");
 
     return {
