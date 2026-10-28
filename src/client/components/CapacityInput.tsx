@@ -18,6 +18,16 @@ type DynamicCapacityInputProps = {
   fixed?: number;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "value">;
 
+// Strip the input's own prefix (e.g. a non-USD currency code like "EUR") plus
+// the "$", whitespace and comma separators, so a prefixed display value
+// parses back to its number. Stripping only "$" left "EUR 1,234.56" as
+// "EUR1234.56", which parses to NaN on focus and posts 0 on blur.
+const stripPrefixAndSeparators = (value: string, prefix: string) => {
+  const withoutPrefix =
+    prefix && value.startsWith(prefix) ? value.slice(prefix.length) : value;
+  return withoutPrefix.replace(/[$\s,]/g, "");
+};
+
 export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
   const {
     value,
@@ -58,11 +68,11 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
         if (onChange) onChange(e);
       }}
       onFocus={(e) => {
-        setValue((+e.target.value.replace(/[$\s,]/g, "")).toString());
+        setValue((+stripPrefixAndSeparators(e.target.value, prefix)).toString());
         if (onFocus) onFocus(e);
       }}
       onBlur={(e) => {
-        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
+        const numberizedValue = +stripPrefixAndSeparators(e.target.value, prefix) || 0;
         const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
         const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
         const commaString = numberToCommaString(minCappedValue, fixed);
