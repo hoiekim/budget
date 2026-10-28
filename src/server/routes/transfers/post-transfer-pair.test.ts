@@ -95,26 +95,29 @@ describe("post-transfer-pair", () => {
       stageConfirmOk();
 
       const result = await postTransferPairRoute.execute(
-        makeReq({ pair_id: "p-confirm" }),
+        makeReq({ pair_id: "a8e9c6d4-1234-4abc-8def-0123456789ab" }),
         fakeRes(),
       );
 
       expect(result?.status).toBe("success");
-      expect(result?.body).toEqual({ pair_id: "p-confirm" });
+      expect(result?.body).toEqual({ pair_id: "a8e9c6d4-1234-4abc-8def-0123456789ab" });
       const updateCall = mockReservedUnsafe.mock.calls.find((c) => {
         const sql = c[0] as string;
         return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
       })!;
       expect(updateCall).toBeDefined();
       expect(updateCall[0] as string).toMatch(/WHERE pair_id = \$1\s+AND user_id = \$2/);
-      expect(updateCall[1] as unknown[]).toEqual(["p-confirm", "u-1"]);
+      expect(updateCall[1] as unknown[]).toEqual(["a8e9c6d4-1234-4abc-8def-0123456789ab", "u-1"]);
     });
 
     test("cross-user confirm: the route uses the session user_id, never a client value", async () => {
       stageConfirmOk();
 
       const result = await postTransferPairRoute.execute(
-        makeReq({ pair_id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
+        makeReq(
+          { pair_id: "b7d8a5c3-2345-4bcd-9efa-1234567890cd" },
+          { user: { user_id: "u-A", username: "a" } },
+        ),
         fakeRes(),
       );
       expect(result?.status).toBe("success");
@@ -128,6 +131,28 @@ describe("post-transfer-pair", () => {
         return Boolean(values?.includes("u-B"));
       });
       expect(anyCrossUser).toBe(false);
+    });
+
+    test("rejects a non-UUID pair_id at the boundary — 400, never reaches the DB", async () => {
+      const result = await postTransferPairRoute.execute(
+        makeReq({ pair_id: "not-a-uuid" }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/pair_id must be a uuid/);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    });
+
+    test("rejects a non-string pair_id at the boundary — 400, never reaches the DB", async () => {
+      const result = await postTransferPairRoute.execute(
+        makeReq({ pair_id: 42 }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/pair_id must be a uuid/);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
     });
   });
 
@@ -160,6 +185,38 @@ describe("post-transfer-pair", () => {
       expect(result?.status).toBe("failed");
       expect(mockUnsafe).not.toHaveBeenCalled();
       expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    });
+
+    test("rejects transaction_id_a longer than 255 chars — never reaches the DB", async () => {
+      const result = await postTransferPairRoute.execute(
+        makeReq({ transaction_id_a: "x".repeat(256), transaction_id_b: "t-b" }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/at most 255 characters/);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    });
+
+    test("rejects transaction_id_b longer than 255 chars — never reaches the DB", async () => {
+      const result = await postTransferPairRoute.execute(
+        makeReq({ transaction_id_a: "t-a", transaction_id_b: "y".repeat(256) }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/at most 255 characters/);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    });
+
+    test("accepts a 255-char transaction_id at the column's length limit", async () => {
+      stagePairOk("p-new");
+
+      const result = await postTransferPairRoute.execute(
+        makeReq({ transaction_id_a: "x".repeat(255), transaction_id_b: "t-b" }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("success");
     });
 
     // `pairTransactions` runs in a DB transaction: BEGIN, advisory lock,
