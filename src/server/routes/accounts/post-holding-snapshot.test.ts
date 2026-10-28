@@ -5,11 +5,11 @@ process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const mockFetch = mock(
   async (): Promise<Response> =>
@@ -58,8 +58,8 @@ const queryRouter = async (sql: string) => {
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   accountRow = null;
   clearPriceCache();
   clearYahooCache();

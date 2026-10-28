@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreEnv, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreEnv, restoreLeaves } from "test-helpers";
 
 type Row = Record<string, unknown>;
 
@@ -140,12 +140,12 @@ const existingRow = (id: string): Row => ({
   source: "manual",
 });
 
-const { pg, mockQuery, mockClientQuery, clearQueryMocks } = createFakePg(async (sql: string, values?: unknown[]) => {
+const { driver, mockUnsafe, mockReservedUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, values?: unknown[]) => {
   const rows = await respond(sql, values);
   return { rows: rows as unknown[], rowCount: rows.length };
 });
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postPlanStatementImportRoute } = await import("./post-plan-statement");
 const { getDailyClosesRoute } = await import("./get-daily-closes");
@@ -216,15 +216,15 @@ const importStatement = (body: unknown, userId: string | null = "usr-1") =>
   postPlanStatementImportRoute.callback(makeReq("POST", "/plan-statement/import", body, {}, userId), {} as never, () => {});
 
 const clientCalls = () =>
-  mockClientQuery.mock.calls.map(([sql, values]) => ({ sql: String(sql), values: (values ?? []) as unknown[] }));
+  mockReservedUnsafe.mock.calls.map(([sql, values]) => ({ sql: String(sql), values: (values ?? []) as unknown[] }));
 
 const writes = () =>
-  [...mockQuery.mock.calls, ...mockClientQuery.mock.calls]
+  [...mockUnsafe.mock.calls, ...mockReservedUnsafe.mock.calls]
     .map(([sql]) => String(sql))
     .filter((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql));
 
 beforeEach(() => {
-  clearQueryMocks();
+  clearSqlMocks();
   db.provider = "manual";
   db.accountType = "investment";
   db.existingIds = [];
@@ -299,7 +299,7 @@ describe("POST /plan-statement/import", () => {
       [{ ...shareLeg(), reinvested_distribution: { ...record, shares_held: "40" } }],
       [{ ...shareLeg(), reinvested_distribution: "2026-03-02" }],
     ]) {
-      clearQueryMocks();
+      clearSqlMocks();
       const res = await importStatement(importBody({ transactions }));
       expect(res).toMatchObject({ status: "failed", message: expect.stringContaining("unreadable reinvestment") });
       expect(writes()).toEqual([]);
@@ -392,7 +392,7 @@ describe("POST /plan-statement/import", () => {
     const transactions = Array.from({ length: 2200 }, (_, i) => shareLeg(`plan-${i.toString(16).padStart(32, "0")}`));
     const res = await importStatement(importBody({ transactions }));
     expect(res).toMatchObject({ status: "success", body: { written: 2200 } });
-    const inserts = mockClientQuery.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO investment_transactions"));
+    const inserts = mockReservedUnsafe.mock.calls.filter(([sql]) => String(sql).includes("INSERT INTO investment_transactions"));
     expect(inserts).toHaveLength(3);
     for (const [, values] of inserts) expect((values as unknown[]).length).toBeLessThan(65_535);
   });

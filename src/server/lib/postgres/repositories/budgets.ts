@@ -68,7 +68,7 @@ export const updateBudget = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
   const model = await budgetsTable.update(budget_id, updates, undefined, user.user_id);
@@ -165,7 +165,7 @@ export const updateSection = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
   const model = await sectionsTable.update(section_id, updates, undefined, user.user_id);
@@ -223,7 +223,7 @@ export const updateCategory = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
   const model = await categoriesTable.update(category_id, updates, undefined, user.user_id);

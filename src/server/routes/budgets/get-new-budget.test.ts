@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 type Row = Record<string, unknown>;
 
@@ -7,22 +7,12 @@ const db = {
   insertReturns: [] as Row[],
 };
 
-const mockQuery = mock(async (sql: string, _values?: unknown[]) => {
+const { driver, mockUnsafe } = createFakeSql(async (sql: string, _values?: unknown[]) => {
   const rows = /^\s*INSERT\s+INTO\s+budgets\b/i.test(sql) ? db.insertReturns : [];
   return { rows: rows as unknown[], rowCount: rows.length as number | null };
 });
 
-class FakePool {
-  query = mockQuery;
-  end = async () => {};
-  connect = async () => ({ query: mockQuery, release: () => {} });
-}
-
-mock.module("pg", () => ({
-  Pool: FakePool,
-  types: { setTypeParser: () => {} },
-  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
-}));
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getNewBudgetRoute } = await import("./get-new-budget");
 
@@ -31,7 +21,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  mockQuery.mockClear();
+  mockUnsafe.mockClear();
   db.insertReturns = [];
 });
 
@@ -131,7 +121,7 @@ describe("get-new-budget response body", () => {
       fakeRes(),
     );
 
-    const [, values] = mockQuery.mock.calls[0];
+    const [, values] = mockUnsafe.mock.calls[0];
     expect(values).toContain("New Budget");
     expect(values).toContain("USD");
     expect(values).toContain(false);
@@ -154,6 +144,6 @@ describe("get-new-budget response body", () => {
     const result = await getNewBudgetRoute.execute(makeReq(undefined), fakeRes());
 
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

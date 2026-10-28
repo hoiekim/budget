@@ -21,38 +21,24 @@
 // client. The lock/transaction statements are produced by the repo's own
 // code; the stub only returns scripted information_schema rows.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-type QueryResult = { rows: Record<string, unknown>[]; rowCount: number | null };
+const { driver, mockReservedUnsafe, mockReserve, mockRelease } = createFakeSql();
 
-const mockClientQuery = mock(async (): Promise<QueryResult> => ({ rows: [], rowCount: 0 }));
-const mockRelease = mock(() => {});
-const mockConnect = mock(async () => ({ query: mockClientQuery, release: mockRelease }));
-const mockPoolQuery = mock(async (): Promise<QueryResult> => ({ rows: [], rowCount: 0 }));
-
-class RecordingPool {
-  query = mockPoolQuery;
-  connect = mockConnect;
-}
-
-mock.module("pg", () => ({
-  Pool: RecordingPool,
-  types: { setTypeParser: () => {}, builtins: {}, getTypeParser: () => null },
-  default: { Pool: RecordingPool, types: { setTypeParser: () => {} } },
-}));
+mock.module("./sql-driver", () => driver);
 
 const { runMigrations, migrateTable } = await import("./migration");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  mockClientQuery.mockClear();
+  mockReservedUnsafe.mockClear();
   mockRelease.mockClear();
-  mockConnect.mockClear();
-  mockClientQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+  mockReserve.mockClear();
+  mockReservedUnsafe.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
 });
 
-const statements = () => mockClientQuery.mock.calls.map((c) => c[0] as string);
+const statements = () => mockReservedUnsafe.mock.calls.map((c) => c[0] as string);
 const LOCK = "SELECT pg_advisory_lock($1)";
 const UNLOCK = "SELECT pg_advisory_unlock($1)";
 const LOCK_KEY = 6453604;
@@ -69,7 +55,7 @@ const infoRow = (overrides: Record<string, unknown> = {}) => ({
 describe("runMigrations lock + transaction discipline", () => {
   test("happy path: lock, BEGIN, info query, COMMIT, unlock, release", async () => {
     await runMigrations([{ name: "t", schema: { a: "TEXT" } }]);
-    const calls = mockClientQuery.mock.calls;
+    const calls = mockReservedUnsafe.mock.calls;
     expect(statements()).toEqual([
       LOCK,
       "BEGIN",
@@ -84,7 +70,7 @@ describe("runMigrations lock + transaction discipline", () => {
   });
 
   test("a missing column issues the inferred-default ALTER, then commits", async () => {
-    mockClientQuery.mockImplementation(async (sql: string) => {
+    mockReservedUnsafe.mockImplementation(async (sql: string) => {
       if (String(sql).includes("information_schema.columns")) {
         return { rows: [infoRow()], rowCount: 1 };
       }
@@ -101,7 +87,7 @@ describe("runMigrations lock + transaction discipline", () => {
   });
 
   test("a type mismatch is fatal: ROLLBACK twice, unlock, release, exact error", async () => {
-    mockClientQuery.mockImplementation(async (sql: string) => {
+    mockReservedUnsafe.mockImplementation(async (sql: string) => {
       if (String(sql).includes("information_schema.columns")) {
         return {
           rows: [infoRow({ data_type: "integer", udt_name: "int4" })],
@@ -128,7 +114,7 @@ describe("runMigrations lock + transaction discipline", () => {
 
   test("a thrown query rolls back, unlocks, releases, and rethrows the original error", async () => {
     const boom = new Error("boom");
-    mockClientQuery.mockImplementation(async (sql: string) => {
+    mockReservedUnsafe.mockImplementation(async (sql: string) => {
       if (String(sql).includes("information_schema.columns")) throw boom;
       return { rows: [], rowCount: 0 };
     });
@@ -144,7 +130,7 @@ describe("runMigrations lock + transaction discipline", () => {
   });
 
   test("an unlock failure is swallowed and the run still resolves", async () => {
-    mockClientQuery.mockImplementation(async (sql: string) => {
+    mockReservedUnsafe.mockImplementation(async (sql: string) => {
       if (sql === UNLOCK) throw new Error("connection gone");
       return { rows: [], rowCount: 0 };
     });
@@ -162,6 +148,6 @@ describe("migrateTable", () => {
     expect(statements()).not.toContain("BEGIN");
     expect(statements()).not.toContain("COMMIT");
     expect(mockRelease).toHaveBeenCalledTimes(1);
-    expect(mockConnect).toHaveBeenCalledTimes(1);
+    expect(mockReserve).toHaveBeenCalledTimes(1);
   });
 });

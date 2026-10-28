@@ -1,13 +1,14 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import type { QueryExecutor } from "../models";
 import { AccountType, AccountSubtype } from "plaid";
+import { JSONItem, ItemProvider, ItemStatus } from "common";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
-const { deleteItem, upsertItems } = await import("./items");
+const { deleteItem, upsertItems, toClientItem } = await import("./items");
 
 afterAll(restoreLeaves);
 
@@ -42,14 +43,14 @@ const testUser = { user_id: "usr-1", username: "hoie" };
 
 describe("deleteItem", () => {
   beforeEach(() => {
-    resetQueryMocks();
+    resetSqlMocks();
   });
 
   test("soft-deletes snapshots by BOTH account_id and holding_account_id", async () => {
     // The initial account lookup must return an account so the per-account
     // cascade runs; every other query (the soft-deletes, BEGIN/COMMIT) returns
     // empty.
-    mockQuery.mockImplementation(async (sql: string) => {
+    mockUnsafe.mockImplementation(async (sql: string) => {
       if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
         return {
           rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
@@ -65,7 +66,7 @@ describe("deleteItem", () => {
     // under `holding_account_id` (their `account_id` is NULL). Both passes must
     // fire or the item-delete path orphans the holding-snapshot history — the
     // bug PR 475 fixed for deleteAccounts but never propagated here.
-    const snapshotDeletes = mockClientQuery.mock.calls
+    const snapshotDeletes = mockReservedUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter(
         (sql): sql is string =>
@@ -77,7 +78,7 @@ describe("deleteItem", () => {
   });
 
   test("cascades to transaction_pairs on BOTH join columns, scoped to the user", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
+    mockUnsafe.mockImplementation(async (sql: string) => {
       if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
         return {
           rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
@@ -89,7 +90,7 @@ describe("deleteItem", () => {
 
     await deleteItem(testUser, "item-del");
 
-    const pairDeletes = mockClientQuery.mock.calls.filter(
+    const pairDeletes = mockReservedUnsafe.mock.calls.filter(
       ([sql]) =>
         typeof sql === "string" &&
         /UPDATE\s+transaction_pairs\b/i.test(sql) &&
@@ -113,7 +114,7 @@ describe("deleteItem", () => {
     // On the pool the cascade commits on its own: a later failure in this
     // block rolls the accounts back and leaves their pairs soft-deleted.
     expect(
-      mockQuery.mock.calls.some(
+      mockUnsafe.mock.calls.some(
         ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
       ),
     ).toBe(false);
@@ -135,7 +136,7 @@ describe("deleteItem", () => {
   });
 
   test("runs the pairs cascade AFTER the transactions soft-delete", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
+    mockUnsafe.mockImplementation(async (sql: string) => {
       if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
         return {
           rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
@@ -147,7 +148,7 @@ describe("deleteItem", () => {
 
     await deleteItem(testUser, "item-del");
 
-    const sqls = mockClientQuery.mock.calls
+    const sqls = mockReservedUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter((sql): sql is string => typeof sql === "string");
     const transactionsDelete = sqls.findIndex(
@@ -165,7 +166,7 @@ describe("deleteItem", () => {
   });
 
   test("issues every write on the transaction client, never on the pool", async () => {
-    mockQuery.mockImplementation(async (sql: string) => {
+    mockUnsafe.mockImplementation(async (sql: string) => {
       if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
         return {
           rows: [makeAccountRow({ account_id: "acc-del", item_id: "item-del" })],
@@ -178,13 +179,13 @@ describe("deleteItem", () => {
     await deleteItem(testUser, "item-del");
 
     // The account lookup is the only statement outside `withTransaction`.
-    const poolWrites = mockQuery.mock.calls
+    const poolWrites = mockUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter((sql): sql is string => typeof sql === "string")
       .filter((sql) => /^\s*(UPDATE|INSERT|DELETE)\b/i.test(sql));
     expect(poolWrites).toEqual([]);
 
-    const clientUpdates = mockClientQuery.mock.calls
+    const clientUpdates = mockReservedUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter((sql): sql is string => typeof sql === "string")
       .map((sql) => sql.match(/^\s*UPDATE\s+(\w+)/i)?.[1])
@@ -197,11 +198,11 @@ describe("deleteItem", () => {
   });
 
   test("skips the transaction_pairs cascade when the item owns no accounts", async () => {
-    mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
+    mockUnsafe.mockImplementation(async () => ({ rows: [], rowCount: 0 }));
 
     await deleteItem(testUser, "item-empty");
 
-    const pairDeletes = mockClientQuery.mock.calls.filter(
+    const pairDeletes = mockReservedUnsafe.mock.calls.filter(
       ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
     );
     expect(pairDeletes).toHaveLength(0);
@@ -210,8 +211,8 @@ describe("deleteItem", () => {
 
 describe("upsertItems", () => {
   beforeEach(() => {
-    resetQueryMocks();
-    mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
+    resetSqlMocks();
+    mockUnsafe.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
   });
 
   test("writes through the executor it is handed, leaving the pool untouched", async () => {
@@ -222,13 +223,13 @@ describe("upsertItems", () => {
     } as unknown as QueryExecutor);
 
     expect(clientQuery.mock.calls).toHaveLength(1);
-    expect(mockQuery.mock.calls).toHaveLength(0);
+    expect(mockUnsafe.mock.calls).toHaveLength(0);
   });
 
   test("the write is an upsert — an id the caller supplied never keys a bare UPDATE", async () => {
     await upsertItems(testUser, [{ item_id: "item-1" }]);
 
-    const sqls = mockQuery.mock.calls.map(([sql]) => String(sql));
+    const sqls = mockUnsafe.mock.calls.map(([sql]) => String(sql));
     expect(sqls.filter((sql) => /ON CONFLICT/i.test(sql))).toHaveLength(1);
     expect(sqls.filter((sql) => /^\s*UPDATE\s/i.test(sql))).toHaveLength(0);
   });
@@ -236,12 +237,32 @@ describe("upsertItems", () => {
   test("a conflicting item_id rewrites the item's fields, never its owner", async () => {
     await upsertItems(testUser, [{ item_id: "item-1", institution_id: "ins-1" }]);
 
-    const sql = String(mockQuery.mock.calls[0][0]);
+    const sql = String(mockUnsafe.mock.calls[0][0]);
     const setClause = sql
       .replace(/^[\s\S]*DO UPDATE SET\s+/i, "")
       .replace(/\s+RETURNING[\s\S]*$/i, "");
     expect(setClause).toBe(
       "institution_id = EXCLUDED.institution_id, raw = EXCLUDED.raw, updated = CURRENT_TIMESTAMP",
     );
+  });
+});
+
+describe("toClientItem", () => {
+  test("strips the server-side credential and keeps every other field", () => {
+    const item: JSONItem = {
+      item_id: "i-1",
+      access_token: "access-production-secret",
+      institution_id: "ins-1",
+      available_products: [],
+      provider: ItemProvider.PLAID,
+      status: ItemStatus.OK,
+    };
+    const client = toClientItem(item);
+    expect(client).not.toHaveProperty("access_token");
+    expect(client.item_id).toBe("i-1");
+    expect(client.institution_id).toBe("ins-1");
+    expect(client.provider).toBe(ItemProvider.PLAID);
+    // The input is not mutated — the server still needs the credential.
+    expect(item.access_token).toBe("access-production-secret");
   });
 });

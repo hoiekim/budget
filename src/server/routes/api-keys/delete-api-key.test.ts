@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { deleteApiKeyRoute } = await import("./delete\-api\-key");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -56,29 +56,29 @@ describe("delete-api-key", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects missing key_id query param", async () => {
     const result = await deleteApiKeyRoute.execute(makeReq({}), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns failed when no rows are updated (not found / wrong owner / already revoked)", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await deleteApiKeyRoute.execute(makeReq({ key_id: "k-missing" }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not found or already revoked/);
   });
 
   test("happy path returns { revoked: true } and pins user_id into the WHERE clause", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
     const result = await deleteApiKeyRoute.execute(makeReq({ key_id: "k-1" }), fakeRes());
     expect(result?.status).toBe("success");
     expect(result?.body).toEqual({ revoked: true });
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockQuery.mock.calls[0];
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toContain("UPDATE api_keys");
     expect(sql).toContain("revoked_at");
     expect(sql).toContain("IS NULL");
@@ -87,13 +87,13 @@ describe("delete-api-key", () => {
   });
 
   test("cross-user revoke: the route always uses the *session* user_id, never a client-supplied value", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await deleteApiKeyRoute.execute(
       makeReq({ key_id: "k-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
-    const [, values] = mockQuery.mock.calls[0];
+    const [, values] = mockUnsafe.mock.calls[0];
     expect(values).toContain("k-belongs-to-B");
     expect(values).toContain("u-A");
   });

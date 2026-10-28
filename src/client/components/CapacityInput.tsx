@@ -63,8 +63,8 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
       }}
       onBlur={(e) => {
         const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
-        const maxCappedValue = maxValue ? Math.min(maxValue, numberizedValue) : numberizedValue;
-        const minCappedValue = minValue ? Math.max(minValue, maxCappedValue) : maxCappedValue;
+        const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
+        const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
         const commaString = numberToCommaString(minCappedValue, fixed);
         if (prefix) setValue(prefix + " " + commaString);
         else setValue(commaString);
@@ -192,8 +192,8 @@ export const CapacityNumberInput = (props: CapacityNumberInputProps) => {
       onBlur={(e) => {
         isFocused.current = false;
         const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
-        const maxCappedValue = maxValue ? Math.min(maxValue, numberizedValue) : numberizedValue;
-        const minCappedValue = minValue ? Math.max(minValue, maxCappedValue) : maxCappedValue;
+        const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
+        const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
         _setValue(toDisplayString(minCappedValue));
         if (setValue) setValue(minCappedValue);
         if (onBlur) onBlur(toNumberFocusEvent(e, minCappedValue));

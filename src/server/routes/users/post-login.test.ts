@@ -1,15 +1,10 @@
-//
-// bcrypt is in the framework's DEFAULT_NODE_EXTERNALS list, so the
-// bundle's `import bcrypt from "bcrypt"` resolves at runtime through
-// the real package — same as the original test. Password hash + compare
-// run unmocked.
+// Password hash + compare run unmocked.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
-import bcrypt from "bcrypt";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postLoginRoute } = await import("./post-login");
 const { loginRateLimiter } = await import("server/lib/rate-limit");
@@ -17,7 +12,7 @@ const { loginRateLimiter } = await import("server/lib/rate-limit");
 afterAll(restoreLeaves);
 
 const REAL_PASSWORD = "correct-horse-battery-staple";
-const REAL_HASH = await bcrypt.hash(REAL_PASSWORD, 10);
+const REAL_HASH = await Bun.password.hash(REAL_PASSWORD, { algorithm: "bcrypt", cost: 10 });
 
 /** Raw users row matching UserModel's schema. */
 const userRow = (overrides: Record<string, unknown> = {}) => ({
@@ -33,7 +28,7 @@ const userRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 interface SessionStub {
@@ -88,21 +83,21 @@ describe("post-login validation", () => {
     const result = await postLoginRoute.execute(makeReq(null), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/body/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("missing username → validationError", async () => {
     const result = await postLoginRoute.execute(makeReq({ password: "x" }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/username/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("missing password → validationError", async () => {
     const result = await postLoginRoute.execute(makeReq({ username: "alice" }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/password/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("empty-string username → validationError", async () => {
@@ -118,7 +113,7 @@ describe("post-login validation", () => {
 describe("post-login auth outcomes", () => {
   test("unknown user → generic failure (no enumeration leak)", async () => {
     // searchUser → usersTable.queryOne → pool.query → empty rows
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await postLoginRoute.execute(
       makeReq({ username: "ghost", password: REAL_PASSWORD }),
       fakeRes(),
@@ -126,11 +121,11 @@ describe("post-login auth outcomes", () => {
     expect(result?.status).toBe("failed");
     expect(result?.message).toBe("Invalid username or password.");
     // searchUser was attempted (DUMMY_HASH timing path still issues one SELECT)
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   test("known user + wrong password → same generic failure (no enumeration leak)", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
     const result = await postLoginRoute.execute(
       makeReq({ username: "alice", password: "WRONG" }),
       fakeRes(),
@@ -140,7 +135,7 @@ describe("post-login auth outcomes", () => {
   });
 
   test("known user + correct password → success, session.regenerate called, user set", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
 
     let regenerateCalled = false;
     const session: SessionStub = {
@@ -174,7 +169,7 @@ describe("post-login auth outcomes", () => {
   });
 
   test("session.regenerate callback error → Route layer surfaces error envelope", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
     const ip = "198.51.100.7";
     const req = makeReq(
       { username: "alice", password: REAL_PASSWORD },
@@ -197,7 +192,7 @@ describe("post-login rate-limiter wiring", () => {
   const nextIp = () => `192.0.2.${++ipCounter}`;
 
   const attemptLogin = async (ip: string, password: string, username = "alice") => {
-    mockQuery.mockResolvedValueOnce({ rows: [userRow({ username, user_id: `u-${username}` })], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [userRow({ username, user_id: `u-${username}` })], rowCount: 1 });
     return postLoginRoute.execute(
       makeReq({ username, password }, { ip }),
       fakeRes(),
@@ -252,7 +247,7 @@ describe("post-login rate-limiter wiring", () => {
   test("a burst of concurrent wrong passwords gets five guesses, and the rest are refused", async () => {
     const ip = nextIp();
     const attempts = Array.from({ length: 40 }, () => {
-      mockQuery.mockResolvedValueOnce({ rows: [userRow({ username: "admin", user_id: "u-admin" })], rowCount: 1 });
+      mockUnsafe.mockResolvedValueOnce({ rows: [userRow({ username: "admin", user_id: "u-admin" })], rowCount: 1 });
       const res = fakeRes();
       return postLoginRoute
         .execute(makeReq({ username: "admin", password: "wrong-password" }, { ip }), res)
@@ -267,7 +262,7 @@ describe("post-login rate-limiter wiring", () => {
 
   test("a lookup that fails doesn't charge the IP", async () => {
     const ip = nextIp();
-    mockQuery.mockRejectedValueOnce(new Error("db down"));
+    mockUnsafe.mockRejectedValueOnce(new Error("db down"));
     const result = await postLoginRoute.execute(makeReq({ username: "alice", password: REAL_PASSWORD }, { ip }), fakeRes());
     expect(result?.status).toBe("error");
     expect(loginRateLimiter.remaining(ip)).toBe(5);

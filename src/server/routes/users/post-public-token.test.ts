@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postPublicTokenRoute } = await import("./post\-public\-token");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -77,7 +77,7 @@ describe("post-public-token", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects missing provider query param", async () => {
@@ -87,6 +87,30 @@ describe("post-public-token", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/provider/);
+  });
+
+  test("provider=simple_fin with missing body → wrong-type failure, not a 500", async () => {
+    // start.ts leaves req.body undefined when there is no JSON
+    // content-type, the JSON is unparseable, or the payload is null.
+    for (const body of [undefined, null]) {
+      const result = await postPublicTokenRoute.execute(
+        makeReq({ provider: "simple_fin" }, body),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/wrong type of public_token/);
+    }
+  });
+
+  test("provider=plaid with missing body → wrong-type failure, not a 500", async () => {
+    for (const body of [undefined, null]) {
+      const result = await postPublicTokenRoute.execute(
+        makeReq({ provider: "plaid" }, body),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/wrong type of public_token/);
+    }
   });
 
   test("provider=simple_fin with non-string public_token → wrong-type failure", async () => {
@@ -132,7 +156,7 @@ describe("post-public-token", () => {
     // searchItems calls pool.query (via itemsTable.query). Returning a row
     // shaped like a MANUAL item makes the route's .find() succeed and
     // surface the "already exists" failure without ever touching plaid.
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [itemRow({ item_id: "i-existing", provider: "manual" })],
       rowCount: 1,
     });
@@ -152,6 +176,6 @@ describe("post-public-token", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/wrong type of provider/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

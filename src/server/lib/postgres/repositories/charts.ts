@@ -27,11 +27,15 @@ export const createChart = async (
   user: MaskedUser,
   data: Partial<JSONChart>,
 ): Promise<JSONChart | null> => {
+  // The client sends configuration as a JSON string; parse it to the object
+  // the JSONB column stores (a string bound for JSONB would be stored as a
+  // JSON string value under Bun.sql). No configuration means an empty object,
+  // matching what the old "{}" string parsed to server-side.
   const config = data.configuration
     ? typeof data.configuration === "string"
-      ? data.configuration
-      : JSON.stringify(data.configuration)
-    : "{}";
+      ? JSON.parse(data.configuration)
+      : data.configuration
+    : {};
 
   const row = {
     [USER_ID]: user.user_id,
@@ -57,8 +61,8 @@ export const updateChart = async (
   if (data.configuration !== undefined) {
     updates.configuration =
       typeof data.configuration === "string"
-        ? data.configuration
-        : JSON.stringify(data.configuration);
+        ? JSON.parse(data.configuration)
+        : data.configuration;
   }
 
   if (Object.keys(updates).length === 0) return false;

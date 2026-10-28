@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getApiKeysRoute } = await import("./get\-api\-keys");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(opts: { user?: { user_id: string; username: string } | null } = {}) {
@@ -50,11 +50,11 @@ describe("get-api-keys", () => {
     const result = await getApiKeysRoute.execute(makeReq({ user: null }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("happy path scopes the SELECT to the caller's user_id", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [
         {
           key_id: "k-1",
@@ -76,14 +76,14 @@ describe("get-api-keys", () => {
     expect(result?.body?.api_keys).toHaveLength(1);
     expect(result?.body?.api_keys[0].key_id).toBe("k-1");
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockQuery.mock.calls[0];
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/WHERE user_id = \$1 AND revoked_at IS NULL/);
     expect(values).toEqual(["u-1"]);
   });
 
   test("response surface omits key_hash and revoked_at (contract enforced by SELECT projection)", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [
         {
           key_id: "k-1",
@@ -109,7 +109,7 @@ describe("get-api-keys", () => {
   });
 
   test("empty result returns success with empty array", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getApiKeysRoute.execute(makeReq(), fakeRes());
     expect(result?.status).toBe("success");
     expect(result?.body?.api_keys).toEqual([]);

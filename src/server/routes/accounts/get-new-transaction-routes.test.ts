@@ -7,11 +7,11 @@
 // paths write `source='manual'` and a `manual-<uuid>` id.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getNewTransactionRoute } = await import("./get-new-transaction");
 const { getNewInvestmentTransactionRoute } = await import("./get-new-investment-transaction");
@@ -117,7 +117,7 @@ function insertStub(table: "transactions" | "investment_transactions", values: u
  *  landed on some column). */
 const findInsert = (table: string): { sql: string; values: unknown[] } | null => {
   const re = new RegExp(`INSERT\\s+INTO\\s+${table}\\b`, "i");
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (re.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -158,8 +158,8 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof getNewTransactionRoute.execute>[1];
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  clearSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   accountRow = null;
   itemRow = null;
   securityRow = null;
@@ -275,7 +275,7 @@ describe("get-new-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing account_id", async () => {
@@ -285,7 +285,7 @@ describe("get-new-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/account_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects when the account isn't found for the caller", async () => {
@@ -362,7 +362,7 @@ describe("get-new-investment-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing account_id", async () => {
@@ -372,7 +372,7 @@ describe("get-new-investment-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/account_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects when the account isn't found for the caller", async () => {

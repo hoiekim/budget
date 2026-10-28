@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postSuggestCategoryRoute } = await import("./post\-suggest\-category");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(body: unknown, userId = "u-1") {
@@ -45,13 +45,13 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof postSuggestCategoryRoute.execute>[1];
 
 /**
- * Find the parameterized UPDATE call in mockQuery's call log. The route
+ * Find the parameterized UPDATE call in mockUnsafe's call log. The route
  * issues several SELECTs first (ownership check, category check); the
  * UPDATE on `transactions` is the call that actually applies the
  * suggestion. Returns `null` if no UPDATE was issued.
  */
 const findUpdateCall = (): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (/UPDATE\s+transactions/i.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -116,8 +116,8 @@ describe("post-suggest-category", () => {
   });
 
   test("skips transactions not owned by the user", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    mockQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
@@ -130,11 +130,11 @@ describe("post-suggest-category", () => {
   });
 
   test("refuses to overwrite a confidence=1.0 row", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: 1 }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
@@ -149,11 +149,11 @@ describe("post-suggest-category", () => {
   });
 
   test("rejects unknown category for the user", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: null }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
@@ -165,14 +165,14 @@ describe("post-suggest-category", () => {
   });
 
   test("updates a valid suggestion and writes the confidence", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: 0.5 }],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ category_id: "c-1" }], rowCount: 1 });
     // The UPDATE call returns the updated row; the post-update SELECT (if
     // any) returns whatever the route reads back.
-    mockQuery.mockResolvedValueOnce({ rows: [{ transaction_id: "t-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ transaction_id: "t-1" }], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
@@ -196,7 +196,7 @@ describe("post-suggest-category", () => {
   });
 
   test("requires at least one of category_id / budget_id", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id: "t-1", label_category_confidence: null }],
       rowCount: 1,
     });
