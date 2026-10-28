@@ -42,6 +42,16 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         : getLimitedBudgetsToSync(original, updated, capacityData)
       : getNonSyncedBudgetsToUpdate(original, updated, isIncome, isInfinite);
 
+    // Aggregate the entities whose POSTs succeeded, then write them to the
+    // store in ONE setData call: each setData re-renders the data consumers
+    // and schedules the debounced full recalculation (Utility), so one
+    // call per entity in the loop repeats that work for every entity in
+    // the family. The single write still happens even when a later POST
+    // fails — the entities that already committed stay visible instead of
+    // vanishing until the next full /api/budgets sync (fixes #810) — and
+    // the throw still surfaces the failure for the remainder.
+    const committed: BudgetFamily[] = [];
+    let failure: Error | undefined;
     const iterator = toUpdateList.values();
     let current = iterator.next();
     while (!current.done) {
@@ -49,29 +59,28 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
       const { id, type } = budgetLike;
       const { status, message } = await call.post(`/api/${type}`, budgetLike);
       if (status !== "success") {
-        throw new Error(message || `Failed to update ${type}: ${id}`);
+        failure = new Error(message || `Failed to update ${type}: ${id}`);
+        break;
       }
+      committed.push(budgetLike);
       current = iterator.next();
     }
 
-    setData((oldData) => {
-      const newData = new Data(oldData);
-
-      const iterator = toUpdateList.values();
-      let current = iterator.next();
-      while (!current.done) {
-        const budgetLike = current.value;
-        const { id, type, dictionaryKey } = budgetLike;
-        if (!oldData[dictionaryKey].has(id)) return oldData;
-        const DynamicBudgetFamily = getBudgetClass(type);
-        const newBudgetLike = new DynamicBudgetFamily(budgetLike);
-        indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
-        newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
-        current = iterator.next();
-      }
-
-      return newData;
-    });
+    if (committed.length > 0) {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        for (const budgetLike of committed) {
+          const { id, type, dictionaryKey } = budgetLike;
+          if (!oldData[dictionaryKey].has(id)) continue;
+          const DynamicBudgetFamily = getBudgetClass(type);
+          const newBudgetLike = new DynamicBudgetFamily(budgetLike);
+          indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
+          newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
+        }
+        return newData;
+      });
+    }
+    if (failure) throw failure;
   };
 
   return save;
