@@ -1,8 +1,8 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 // `POST /api/account` is purely UPDATE — create lives on the sibling
-// `GET /api/new-account` mint route. A FakePool intercepts pg so the
+// `GET /api/new-account` mint route. A FakeSQL intercepts the driver so the
 // statement the route actually issues can be asserted: `updateAccounts`
 // must strip `item_id` + `institution_id` so an edit body can't reparent
 // a row or persist an arbitrary institution string; a body naming an
@@ -16,7 +16,7 @@ const db = {
   updateError: null as Error | null,
 };
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _values?: unknown[]) => {
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, _values?: unknown[]) => {
   const rows = (() => {
     if (/^\s*UPDATE\s+accounts\b/i.test(sql)) {
       if (db.updateError) throw db.updateError;
@@ -27,10 +27,10 @@ const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _val
   return { rows: rows as unknown[], rowCount: rows.length as number | null };
 });
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // `mock.module` is process-global in Bun and `restoreLeaves` only restores the
-// `pg` / `bcrypt` leaves, so spread the real module rather than replacing it —
+// driver / `password` leaves, so spread the real module rather than replacing it —
 // `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
 // (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
 // exercise the real `sendAlarm`.
@@ -47,7 +47,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  clearQueryMocks();
+  clearSqlMocks();
   mockSendAlarm.mockClear();
   db.updateReturns = [];
   db.updateError = null;
@@ -85,7 +85,7 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof postAccountRoute.execute>[1];
 
 const findStatement = (re: RegExp): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (re.test(sql)) return { sql, values: (call[1] ?? []) as unknown[] };
   }
@@ -102,21 +102,21 @@ describe("post-account validation", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a non-object body", async () => {
     const result = await postAccountRoute.execute(makeReq("not an object", "u-1"), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/body/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing account_id", async () => {
     const result = await postAccountRoute.execute(makeReq({ custom_name: "renamed" }, "u-1"), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/account_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
@@ -139,7 +139,7 @@ describe("post-account edit path", () => {
       makeReq({ account_id: "acc-1", custom_name: "New Name" }, "u-1"),
       fakeRes(),
     );
-    const accountsStatements = mockQuery.mock.calls.filter(([sql]) =>
+    const accountsStatements = mockUnsafe.mock.calls.filter(([sql]) =>
       /\baccounts\b/i.test(sql as string),
     );
     expect(accountsStatements).toHaveLength(1);
@@ -202,7 +202,7 @@ describe("post-account edit path", () => {
 
   test("never writes plan_fund_mappings — the plan-statement import is their only writer", async () => {
     for (const plan_fund_mappings of [null, [null], [{ investment: "FUND", security_id: "sec-x", restated: false }]]) {
-      clearQueryMocks();
+      clearSqlMocks();
       db.updateReturns = [{ account_id: "acc-1" }];
       const res = await postAccountRoute.execute(
         makeReq({ account_id: "acc-1", custom_name: "renamed", plan_fund_mappings }, "u-1"),
@@ -250,7 +250,7 @@ describe("post-account typed body fields", () => {
 
     expect(result?.status).toBe("failed");
     expect((result as { message?: string })?.message).toBe(expectedError);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(mockSendAlarm).not.toHaveBeenCalled();
   };
 

@@ -2,7 +2,7 @@
 // `refreshActiveSecuritySnapshots` reads holdings + securities from
 // `pool.query` / `searchSecuritiesById` and calls
 // `polygon.getLatestClosePriceOnOrBefore` for each non-cash security.
-// The bundle inlines polygon, so we leaf-mock `pg` for the DB layer and
+// The bundle inlines polygon, so we leaf-mock the SQL driver for the DB layer and
 // `globalThis.fetch` for polygon. The polygon module reads
 // `process.env.POLYGON_API_KEY` / `POLYGON_RATE_LIMIT_PER_MIN` once at
 // module load — set them BEFORE importing so:
@@ -21,11 +21,11 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { BENCHMARK_HISTORY_THROUGH } from "common/constants";
 import { getDateString } from "common";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
 const mockFetch = mock(
   async (_url: string | URL | Request, _init?: RequestInit): Promise<Response> =>
@@ -126,8 +126,8 @@ const passDay = (offset: number) => {
 beforeEach(() => {
   clearPriceCache();
   clearYahooCache();
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   mockFetch.mockReset();
   mockFetch.mockImplementation(
     async () =>
@@ -256,7 +256,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     holdingsRows = [{ security_id: "sec-1" }];
     securitiesRows = [securityRow({ security_id: "sec-1", ticker_symbol: "VOO" })];
     await refreshActiveSecuritySnapshots();
-    const gateCall = mockQuery.mock.calls.find((c) =>
+    const gateCall = mockUnsafe.mock.calls.find((c) =>
       /updated\s*>\s*NOW\(\)\s*-\s*INTERVAL/i.test(c[0] as string),
     );
     expect(gateCall).toBeDefined();
@@ -290,7 +290,7 @@ describe("refreshActiveSecuritySnapshots", () => {
       securityRow({ security_id: "sec-2", ticker_symbol: "MSFT" }),
     ];
     let insertCount = 0;
-    mockQuery.mockImplementation(async (sql: string, values?: unknown[]) => {
+    mockUnsafe.mockImplementation(async (sql: string, values?: unknown[]) => {
       if (/INSERT\s+INTO\s+snapshots/i.test(sql)) {
         insertCount++;
         if (insertCount === 1) throw new Error("db down");
@@ -501,7 +501,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     await refreshActiveSecuritySnapshots();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockQuery.mock.calls.some((c) => /MAX\(snapshot_date\)/i.test(String(c[0])) && (c[1] as unknown[])?.[0] === "sec-1")).toBe(false);
+    expect(mockUnsafe.mock.calls.some((c) => /MAX\(snapshot_date\)/i.test(String(c[0])) && (c[1] as unknown[])?.[0] === "sec-1")).toBe(false);
     expect(String(mockFetch.mock.calls[0][0])).not.toContain("/range/1/day/2026-01-06/");
   });
 

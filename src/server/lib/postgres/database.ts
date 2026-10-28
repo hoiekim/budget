@@ -2,8 +2,8 @@
  * Generic database query helpers for PostgreSQL.
  */
 
-import { Pool, QueryResult, QueryResultRow } from "pg";
 import { isNull, isUndefined, isDate } from "common";
+import type { SqlExecutor, SqlQueryResult } from "./client";
 import { Schema, Constraints } from "./models/base";
 
 export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)";
@@ -16,7 +16,20 @@ export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)
  */
 export const IS_NOT_NULL = Symbol("IS_NOT_NULL");
 
-export type ParamValue = string | number | boolean | Date | null | undefined | string[];
+// JSONB columns take objects/arrays as values (Bun.sql encodes a plain
+// object or array as JSON for json/jsonb columns; a pre-stringified value
+// would be stored as a JSON string instead of the object — see
+// models/budget.ts#fromJSON and repositories/charts.ts).
+export type ParamValue =
+  | string
+  | number
+  | boolean
+  | Date
+  | null
+  | undefined
+  | string[]
+  | Record<string, unknown>
+  | unknown[];
 
 export type QueryData = Record<string, ParamValue | unknown>;
 
@@ -454,16 +467,16 @@ export function buildSelectWithFilters(
   return { sql, values };
 }
 
-export async function query<T extends QueryResultRow>(
-  pool: Pool,
+export async function query<T>(
+  pool: SqlExecutor,
   sql: string,
   values?: ParamValue[],
-): Promise<QueryResult<T>> {
+): Promise<SqlQueryResult<T>> {
   return pool.query<T>(sql, values);
 }
 
-export async function queryOne<T extends QueryResultRow>(
-  pool: Pool,
+export async function queryOne<T>(
+  pool: SqlExecutor,
   sql: string,
   values?: ParamValue[],
 ): Promise<T | null> {

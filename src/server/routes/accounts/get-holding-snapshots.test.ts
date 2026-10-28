@@ -4,18 +4,18 @@
 // routes (delete + get) live in two source files, so they migrate to
 // two bundled tests.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getHoldingSnapshotsRoute } = await import("./get-holding-snapshots");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -108,11 +108,11 @@ describe("GET /api/snapshots/holding", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns an empty list when the user has no snapshots", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await getHoldingSnapshotsRoute.execute(makeReq({}), fakeRes());
 
@@ -120,15 +120,15 @@ describe("GET /api/snapshots/holding", () => {
     expect(result?.body).toEqual({ snapshots: [] });
     // No snapshots → searchSecuritiesById short-circuits on empty input
     // and never issues the second SELECT against `securities`.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   test("hydrates each snapshot with ticker_symbol + security_name from securities lookup", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [snapshotRow({ snapshot_id: "snap-1", holding_security_id: "sec-1" })],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [securityRow()],
       rowCount: 1,
     });
@@ -144,11 +144,11 @@ describe("GET /api/snapshots/holding", () => {
   });
 
   test("returns null ticker/name when the security cannot be found", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [snapshotRow({ snapshot_id: "snap-2", holding_security_id: "sec-missing" })],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await getHoldingSnapshotsRoute.execute(makeReq({}), fakeRes());
 
@@ -159,7 +159,7 @@ describe("GET /api/snapshots/holding", () => {
   });
 
   test("dedupes the security lookup across snapshots that share a security_id", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [
         snapshotRow({ snapshot_id: "snap-a", holding_security_id: "sec-shared" }),
         snapshotRow({ snapshot_id: "snap-b", holding_security_id: "sec-shared" }),
@@ -167,7 +167,7 @@ describe("GET /api/snapshots/holding", () => {
       ],
       rowCount: 3,
     });
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [securityRow({ security_id: "sec-shared", ticker_symbol: "BBB", name: "Shared Security" })],
       rowCount: 1,
     });
@@ -178,7 +178,7 @@ describe("GET /api/snapshots/holding", () => {
     expect(result?.body?.snapshots).toHaveLength(3);
     // 3 snapshots referencing the same security_id → 1 security lookup
     // total (the snapshots SELECT + ONE securities SELECT).
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
     for (const s of result?.body?.snapshots ?? []) {
       expect(s.ticker_symbol).toBe("BBB");
     }

@@ -8,7 +8,7 @@ async function bundle() {
     entrypoints: [path.resolve(import.meta.dir, "start.ts")],
     outdir: path.resolve(root, "..", "build", "server"),
     target: "bun",
-    external: ["bcrypt", "pg", "plaid"],
+    external: ["pg", "plaid"],
     minify: false,
   });
 

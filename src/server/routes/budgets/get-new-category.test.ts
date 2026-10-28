@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 type Row = Record<string, unknown>;
 
@@ -9,7 +9,7 @@ const db = {
   parents: new Map<string, string>(),
 };
 
-const mockQuery = mock(async (sql: string, values: unknown[] = []) => {
+const { driver, mockUnsafe } = createFakeSql(async (sql: string, values: unknown[] = []) => {
   // The parent lookup answers like its WHERE: by id, and by owner only when the query filters on one.
   const rows = /^\s*INSERT\s+INTO\s+categories\b/i.test(sql)
     ? db.insertReturns
@@ -30,17 +30,7 @@ const mockQuery = mock(async (sql: string, values: unknown[] = []) => {
   return { rows: rows as unknown[], rowCount: rows.length as number | null };
 });
 
-class FakePool {
-  query = mockQuery;
-  end = async () => {};
-  connect = async () => ({ query: mockQuery, release: () => {} });
-}
-
-mock.module("pg", () => ({
-  Pool: FakePool,
-  types: { setTypeParser: () => {} },
-  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
-}));
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getNewCategoryRoute } = await import("./get-new-category");
 
@@ -49,7 +39,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  mockQuery.mockClear();
+  mockUnsafe.mockClear();
   db.insertReturns = [];
   db.parents = new Map([[SECTION_ID, USER_ID]]);
 });
@@ -151,7 +141,7 @@ describe("get-new-category response body", () => {
 
     await getNewCategoryRoute.execute(makeReq({ user_id: USER_ID, username: "test" }), fakeRes());
 
-    const [, values] = mockQuery.mock.calls.find(([sql]) => /^\s*INSERT\s+INTO\s+categories\b/i.test(String(sql)))!;
+    const [, values] = mockUnsafe.mock.calls.find(([sql]) => /^\s*INSERT\s+INTO\s+categories\b/i.test(String(sql)))!;
     expect(values).toContain("New Category");
     expect(values).toContain(false);
     expect(values).toContain(SECTION_ID);
@@ -177,20 +167,20 @@ describe("get-new-category response body", () => {
     );
 
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("an unauthenticated request never reaches the insert", async () => {
     const result = await getNewCategoryRoute.execute(makeReq(undefined), fakeRes());
 
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
 describe("get-new-category parent ownership", () => {
   const OTHER_USER = "22222222-2222-2222-2222-222222222222";
-  const inserts = () => mockQuery.mock.calls.filter(([sql]) => /^\s*INSERT\s+INTO\s+categories\b/i.test(String(sql)));
+  const inserts = () => mockUnsafe.mock.calls.filter(([sql]) => /^\s*INSERT\s+INTO\s+categories\b/i.test(String(sql)));
 
   test("a section that exists but belongs to another user is refused before any insert", async () => {
     db.parents = new Map([[SECTION_ID, OTHER_USER]]);
@@ -215,6 +205,6 @@ describe("get-new-category parent ownership", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/parent/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

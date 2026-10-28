@@ -1,6 +1,6 @@
 // Route + repo coverage for the manual-account mint endpoint
 // (`GET /api/new-account` — provider-gated to MANUAL). Mirrors the
-// sibling `get-new-transaction-routes.test.ts` shape: pg-FakePool +
+// sibling `get-new-transaction-routes.test.ts` shape: driver-FakeSQL +
 // SQL router by table, seeded item row, INSERT into accounts.
 //
 // What we're pinning here:
@@ -11,11 +11,11 @@
 // Without these, dropping the provider check or the raw-strip would pass silently.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getNewAccountRoute } = await import("./get-new-account");
 
@@ -66,7 +66,7 @@ function insertStub(values: unknown[]): Record<string, unknown> {
 }
 
 const findInsert = (): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (/\bINSERT\s+INTO\s+accounts\b/i.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -105,8 +105,8 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof getNewAccountRoute.execute>[1];
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  clearSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   itemRow = null;
   insertShouldFail = false;
 });
@@ -149,14 +149,14 @@ describe("get-new-account route", () => {
     const result = await getNewAccountRoute.execute(makeReq({ item_id: "item-manual" }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing item_id", async () => {
     const result = await getNewAccountRoute.execute(makeReq({}, "u-1"), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/item_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects when the item isn't found for the caller", async () => {

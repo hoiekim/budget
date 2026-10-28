@@ -96,9 +96,15 @@ describe("exchangeSetupToken", () => {
     }
   });
 
-  test("a refused claim's body is returned for the caller to report", async () => {
-    respond = async () => new Response("Forbidden", { status: 403 });
-    expect(await exchangeSetupToken(tokenFor("https://bridge.example.com/claim/abc"))).toBe("Forbidden");
+  test("a non-2xx claim throws instead of returning its body to be stored as the token", async () => {
+    respond = async () => new Response("Forbidden", { status: 403, statusText: "Forbidden" });
+    await expect(exchangeSetupToken(tokenFor("https://bridge.example.com/claim/abc"))).rejects.toThrow(
+      "SimpleFin token exchange failed: 403 Forbidden",
+    );
+    respond = async () => new Response("<html>bridge down</html>", { status: 502, statusText: "Bad Gateway" });
+    await expect(exchangeSetupToken(tokenFor("https://bridge.example.com/claim/abc"))).rejects.toThrow(
+      "SimpleFin token exchange failed: 502 Bad Gateway",
+    );
   });
 });
 

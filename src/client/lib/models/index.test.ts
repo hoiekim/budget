@@ -4,7 +4,7 @@ import { Account, Institution, Item } from ".";
 
 test("isEqual should return true when the two input accounts have the same property values", () => {
   const commonInstitution = new Institution();
-  const commonItem = new Item({ access_token: "test_token" });
+  const commonItem = new Item({ item_id: "common-item" });
 
   const accountA = new Account({
     account_id: "1a2b3c",

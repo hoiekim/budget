@@ -1,7 +1,7 @@
 // Success / side-effect coverage for POST /snapshots/holding. The sibling
 // `post-holding-snapshot.test.ts` pins the cheap pre-DB validation guards;
 // this file drives the two real modes (update + create) through a SQL-routing
-// fake `pg` Pool so the ownership gate, the re-sync chain, the deterministic
+// fake driver client so the ownership gate, the re-sync chain, the deterministic
 // snapshot_id, and the no-API-key branch are actually exercised — not just the
 // early returns.
 //
@@ -10,14 +10,14 @@
 // only the two SELECTs are scripted (snapshots → holding rows, securities →
 // security rows); everything else falls through to an empty/ok result.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { getSquashedDateString, LocalDate } from "common";
 
 let snapshotRows: Record<string, unknown>[] = [];
 let securityRows: Record<string, unknown>[] = [];
 let accountRows: Record<string, unknown>[] = [];
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _values?: unknown[]) => {
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, _values?: unknown[]) => {
   if (/select[\s\S]*from\s+snapshots/i.test(sql)) {
     return { rows: snapshotRows, rowCount: snapshotRows.length };
   }
@@ -31,7 +31,7 @@ const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _val
   return { rows: [{ ok: true }], rowCount: 1 };
 });
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postHoldingSnapshotRoute } = await import("./post\-holding\-snapshot");
 
@@ -45,7 +45,7 @@ beforeEach(() => {
   // file installs. Stated here rather than inherited from the ambient env,
   // which a leak from an earlier file can make truthy.
   process.env.POLYGON_API_KEY = "";
-  clearQueryMocks();
+  clearSqlMocks();
   snapshotRows = [];
   securityRows = [];
   accountRows = [];
@@ -83,7 +83,7 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof postHoldingSnapshotRoute.execute>[1];
 
 const findCall = (re: RegExp): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (re.test(sql)) return { sql, values: (call[1] ?? []) as unknown[] };
   }
@@ -232,7 +232,7 @@ describe("post-holding-snapshot update mode", () => {
   // global alarm pages.
   test("rejects an unparseable snapshot_date instead of throwing past the try", async () => {
     for (const snapshot_date of ["garbage", "2026-13-45x"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       snapshotRows = [holdingSnapshotRow()];
 
       const result = await postHoldingSnapshotRoute.execute(
@@ -248,7 +248,7 @@ describe("post-holding-snapshot update mode", () => {
 
   test("rejects a non-string snapshot_date instead of dropping it from the patch", async () => {
     for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
-      clearQueryMocks();
+      clearSqlMocks();
       snapshotRows = [holdingSnapshotRow()];
 
       const result = await postHoldingSnapshotRoute.execute(
@@ -418,7 +418,7 @@ describe("post-holding-snapshot create mode", () => {
 
   test("rejects an unparseable snapshot_date instead of minting a NaN id", async () => {
     for (const snapshot_date of ["garbage", "2026-13-45x"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       securityRows = [existingSecurityRow()];
       accountRows = [accountRow()];
 
@@ -438,7 +438,7 @@ describe("post-holding-snapshot create mode", () => {
   // a real 1970 snapshot into the user's graph rather than failing.
   test("rejects a non-string snapshot_date instead of reading it as epoch ms", async () => {
     for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
-      clearQueryMocks();
+      clearSqlMocks();
       securityRows = [existingSecurityRow()];
       accountRows = [accountRow()];
 

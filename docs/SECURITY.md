@@ -67,8 +67,8 @@ Login endpoints must not reveal whether a username exists.
 ```typescript
 const DUMMY_HASH = "$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
 const pwMatches = user
-  ? await bcrypt.compare(password, user.password)
-  : await bcrypt.compare(password, DUMMY_HASH).then(() => false);
+  ? await verifyPassword(password, user.password)
+  : await verifyPassword(password, DUMMY_HASH).then(() => false);
 ```
 
 Always return the same generic error message regardless of failure reason:

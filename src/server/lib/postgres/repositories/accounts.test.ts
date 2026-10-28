@@ -1,10 +1,10 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { AccountType, AccountSubtype } from "plaid";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const {
   getAccounts,
@@ -48,18 +48,18 @@ function makeAccountRow(overrides: Record<string, unknown> = {}) {
 const testUser = { user_id: "usr-1", username: "hoie" };
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 describe("getAccounts", () => {
   test("returns empty array when no accounts", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getAccounts(testUser);
     expect(result).toEqual([]);
   });
 
   test("returns mapped JSONAccount array", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
     const result = await getAccounts(testUser);
     expect(result).toHaveLength(1);
     expect(result[0].account_id).toBe("acc-1");
@@ -68,7 +68,7 @@ describe("getAccounts", () => {
   });
 
   test("balances are nested correctly", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [
         makeAccountRow({
           balances_available: 500,
@@ -87,14 +87,14 @@ describe("getAccounts", () => {
   });
 
   test("passes user_id filter to query", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getAccounts({ user_id: "usr-99", username: "test" });
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(values).toContain("usr-99");
   });
 
   test("returns multiple accounts", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [
         makeAccountRow({ account_id: "acc-1", name: "Checking" }),
         makeAccountRow({ account_id: "acc-2", name: "Savings" }),
@@ -109,7 +109,7 @@ describe("getAccounts", () => {
 
 describe("getAccount", () => {
   test("returns account when found", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeAccountRow({ account_id: "acc-specific" })],
       rowCount: 1,
     });
@@ -119,7 +119,7 @@ describe("getAccount", () => {
   });
 
   test("returns null when not found", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getAccount(testUser, "nonexistent");
     expect(result).toBeNull();
   });
@@ -127,29 +127,29 @@ describe("getAccount", () => {
 
 describe("searchAccounts", () => {
   test("returns all accounts with no options", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
     const result = await searchAccounts(testUser);
     expect(result).toHaveLength(1);
   });
 
   test("filters by account_id when provided", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchAccounts(testUser, { account_id: "acc-filter" });
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(values).toContain("acc-filter");
   });
 
   test("filters by item_id when provided", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchAccounts(testUser, { item_id: "item-filter" });
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(values).toContain("item-filter");
   });
 
   test("filters by type when provided", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchAccounts(testUser, { type: AccountType.Investment });
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(values).toContain(AccountType.Investment);
   });
 });
@@ -158,11 +158,11 @@ describe("searchAccountsById", () => {
   test("returns empty array for empty ids", async () => {
     const result = await searchAccountsById(testUser, []);
     expect(result).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns accounts for given ids", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeAccountRow({ account_id: "acc-a" })],
       rowCount: 1,
     });
@@ -172,10 +172,10 @@ describe("searchAccountsById", () => {
   });
 
   test("queries all provided ids", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchAccountsById(testUser, ["id-1", "id-2", "id-3"]);
-    const sql = mockQuery.mock.calls[0][0] as string;
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const sql = mockUnsafe.mock.calls[0][0] as string;
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(sql).toContain("IN");
     expect(values.slice(0, 3)).toEqual(["id-1", "id-2", "id-3"]);
   });
@@ -185,11 +185,11 @@ describe("upsertAccounts", () => {
   test("returns empty array for empty input", async () => {
     const result = await upsertAccounts(testUser, []);
     expect(result).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns success result per account", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ account_id: "acc-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValue({ rows: [{ account_id: "acc-1" }], rowCount: 1 });
     const account = {
       account_id: "acc-1",
       item_id: "item-1",
@@ -204,7 +204,7 @@ describe("upsertAccounts", () => {
   });
 
   test("returns error result on query failure", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("DB unavailable"));
+    mockUnsafe.mockRejectedValueOnce(new Error("DB unavailable"));
     const account = {
       account_id: "acc-err",
       item_id: "item-1",
@@ -218,7 +218,7 @@ describe("upsertAccounts", () => {
   });
 
   test("handles multiple accounts in batch", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ account_id: "acc-n" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValue({ rows: [{ account_id: "acc-n" }], rowCount: 1 });
     const accounts = ["acc-1", "acc-2", "acc-3"].map(
       (id) =>
         ({
@@ -237,38 +237,38 @@ describe("upsertAccounts", () => {
 
 describe("createManualAccount", () => {
   test("issues an INSERT into accounts, no ON CONFLICT clause", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow({ account_id: "manual-abc" })], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow({ account_id: "manual-abc" })], rowCount: 1 });
     await createManualAccount(testUser, { item_id: "item-1" });
-    const sql = mockQuery.mock.calls[0][0] as string;
+    const sql = mockUnsafe.mock.calls[0][0] as string;
     expect(sql).toMatch(/^\s*INSERT\s+INTO\s+accounts\b/i);
     expect(sql).not.toMatch(/ON\s+CONFLICT/i);
   });
 
   test("binds the requesting user's id and the item_id", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
     await createManualAccount({ user_id: "usr-99", username: "other" }, { item_id: "item-x" });
-    const values = mockQuery.mock.calls[0][1] as unknown[];
+    const values = mockUnsafe.mock.calls[0][1] as unknown[];
     expect(values).toContain("usr-99");
     expect(values).toContain("item-x");
   });
 
   test("server-generates a `manual-<uuid>` account_id — the FE never supplies one", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
     await createManualAccount(testUser, { item_id: "item-1" });
-    const values = mockQuery.mock.calls[0][1] as unknown[];
+    const values = mockUnsafe.mock.calls[0][1] as unknown[];
     const minted = values.find((v) => typeof v === "string" && /^manual-/.test(v as string));
     expect(minted).toBeDefined();
   });
 
   test("defaults institution_id to \"Unknown\" — the sentinel `sync.ts` recognises", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
     await createManualAccount(testUser, { item_id: "item-1" });
-    const values = mockQuery.mock.calls[0][1] as unknown[];
+    const values = mockUnsafe.mock.calls[0][1] as unknown[];
     expect(values).toContain("Unknown");
   });
 
   test("returns the created JSONAccount when a row comes back", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeAccountRow({ account_id: "manual-abc", name: "Unknown" })],
       rowCount: 1,
     });
@@ -279,21 +279,21 @@ describe("createManualAccount", () => {
   });
 
   test("returns null when the insert returns no row", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await createManualAccount(testUser, { item_id: "item-1" });
     expect(result).toBeNull();
   });
 
   test("returns null when the insert throws — logged, not raised", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("DB unavailable"));
+    mockUnsafe.mockRejectedValueOnce(new Error("DB unavailable"));
     const result = await createManualAccount(testUser, { item_id: "item-1" });
     expect(result).toBeNull();
   });
 
   test("does not write the `raw` column — it exists for a provider's payload, and a manual account has none", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeAccountRow()], rowCount: 1 });
     await createManualAccount(testUser, { item_id: "item-1" });
-    const sql = mockQuery.mock.calls[0][0] as string;
+    const sql = mockUnsafe.mock.calls[0][0] as string;
     expect(sql).not.toMatch(/\braw\b/);
   });
 });
@@ -302,18 +302,18 @@ describe("deleteAccounts", () => {
   test("returns deleted: 0 without querying for empty input", async () => {
     const result = await deleteAccounts(testUser, []);
     expect(result).toEqual({ deleted: 0 });
-    expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("soft-deletes snapshots by BOTH account_id and holding_account_id", async () => {
-    mockClientQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockReservedUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
     await deleteAccounts(testUser, ["acc-del"]);
 
     // Account-balance snapshots live under `account_id`; holding snapshots
     // live under `holding_account_id` (their `account_id` is NULL). Both
     // passes must fire or the holding-snapshot history is orphaned.
-    const snapshotDeletes = mockClientQuery.mock.calls
+    const snapshotDeletes = mockReservedUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter(
         (sql): sql is string =>
@@ -325,10 +325,10 @@ describe("deleteAccounts", () => {
   });
 
   test("cascades to transaction_pairs on both join columns, once for all accounts", async () => {
-    mockClientQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockReservedUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
     await deleteAccounts(testUser, ["acc-a", "acc-b"]);
 
-    const pairDeletes = mockClientQuery.mock.calls.filter(
+    const pairDeletes = mockReservedUnsafe.mock.calls.filter(
       ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
     );
 
@@ -357,7 +357,7 @@ describe("deleteAccounts", () => {
     // soft-deleted. It also drops the row-lock serialization the cascade's
     // ordering against a concurrent pairTransactions depends on.
     expect(
-      mockQuery.mock.calls.some(
+      mockUnsafe.mock.calls.some(
         ([sql]) => typeof sql === "string" && /UPDATE\s+transaction_pairs\b/i.test(sql),
       ),
     ).toBe(false);
@@ -368,9 +368,9 @@ describe("deleteAccounts", () => {
 
     // `deleteAccounts` opens with `withTransaction` and reads nothing first,
     // so the pool must stay untouched for the whole call.
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
 
-    const clientUpdates = mockClientQuery.mock.calls
+    const clientUpdates = mockReservedUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter((sql): sql is string => typeof sql === "string")
       .map((sql) => sql.match(/^\s*UPDATE\s+(\w+)/i)?.[1])
@@ -382,10 +382,10 @@ describe("deleteAccounts", () => {
   });
 
   test("runs the pairs cascade AFTER the transactions soft-delete", async () => {
-    mockClientQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockReservedUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
     await deleteAccounts(testUser, ["acc-del"]);
 
-    const sqls = mockClientQuery.mock.calls
+    const sqls = mockReservedUnsafe.mock.calls
       .map(([sql]) => sql)
       .filter((sql): sql is string => typeof sql === "string");
     const transactionsDelete = sqls.findIndex(

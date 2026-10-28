@@ -10,12 +10,20 @@ import {
   syncPlaidTransactions,
   searchItems,
   requireQueryString,
+  toClientItem,
   validationError,
 } from "server";
-import { getDateString, JSONItem, ItemProvider, ItemStatus, getRandomId } from "common";
+import {
+  getDateString,
+  JSONItem,
+  JSONClientItem,
+  ItemProvider,
+  ItemStatus,
+  getRandomId,
+} from "common";
 
 export interface PublicTokenPostResponse {
-  item: JSONItem;
+  item: JSONClientItem;
 }
 
 export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
@@ -36,7 +44,11 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
     const provider = providerResult.data;
 
     if (provider === ItemProvider.SIMPLE_FIN) {
-      const { public_token } = req.body;
+      // req.body is absent when the request has no JSON content-type, the
+      // JSON is unparseable, or the payload is a literal null (start.ts) —
+      // default to {} so the typeof guard below fails closed instead of
+      // the destructure throwing a 500.
+      const { public_token } = req.body ?? {};
       if (typeof public_token !== "string") {
         return {
           status: "failed",
@@ -52,9 +64,10 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
       await upsertItems(user, [item]);
       await syncSimpleFinData(item.item_id);
 
-      return { status: "success", body: { item } };
+      return { status: "success", body: { item: toClientItem(item) } };
     } else if (provider === ItemProvider.PLAID) {
-      const { public_token, institution_id } = req.body;
+      // Same absent-body guard as the simple_fin branch above.
+      const { public_token, institution_id } = req.body ?? {};
       if (typeof public_token !== "string" || typeof institution_id !== "string") {
         return {
           status: "failed",
@@ -71,7 +84,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
 
       await Promise.all([syncPlaidAccounts(item.item_id), syncPlaidTransactions(item.item_id)]);
 
-      return { status: "success", body: { item } };
+      return { status: "success", body: { item: toClientItem(item) } };
     } else if (provider === ItemProvider.MANUAL) {
       const items = await searchItems(user);
       if (items.find((e) => e.provider === ItemProvider.MANUAL)) {
@@ -90,7 +103,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
           available_products: [],
         };
         await upsertItems(user, [item]);
-        return { status: "success", body: { item } };
+        return { status: "success", body: { item: toClientItem(item) } };
       }
     } else {
       return {

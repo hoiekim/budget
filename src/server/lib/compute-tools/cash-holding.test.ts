@@ -1,17 +1,17 @@
 //
 // `inferCashHoldings` and `ensureUSDCashSecurity` lost their DI seams in
 // this PR — both call into `searchSecurities` / `upsertSecurities` /
-// `pool.query` directly. Tests leaf-mock `pg`: every securities-table
-// SELECT or UPSERT issued by the route surfaces as a `mockQuery.mock.calls`
+// `pool.query` directly. Tests leaf-mock the SQL driver: every securities-table
+// SELECT or UPSERT issued by the route surfaces as a `mockUnsafe.mock.calls`
 // entry. Tests that exercise the cash-security lookup pre-queue the
-// SELECT response (and INSERT response when needed) on `mockQuery`.
+// SELECT response (and INSERT response when needed) on `mockUnsafe`.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { AccountType } from "plaid";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
 const { inferCashHoldings, ensureUSDCashSecurity } = await import("./cash\-holding");
 
@@ -93,11 +93,11 @@ const cashSecurityDbRow = (overrides: Record<string, unknown> = {}) => ({
  * cash holding to be synthesised.
  */
 const queueCashSecurityLookup = () => {
-  mockQuery.mockResolvedValueOnce({ rows: [cashSecurityDbRow()], rowCount: 1 });
+  mockUnsafe.mockResolvedValueOnce({ rows: [cashSecurityDbRow()], rowCount: 1 });
 };
 
 const findInsertCall = (table: RegExp): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (table.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -105,7 +105,7 @@ const findInsertCall = (table: RegExp): { sql: string; values: unknown[] } | nul
 };
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 describe("inferCashHoldings", () => {
@@ -143,7 +143,7 @@ describe("inferCashHoldings", () => {
     expect(result).toHaveLength(0);
     // No cash security lookup was triggered (no SELECT/UPSERT against
     // securities) because `hasCash` short-circuited the per-account loop.
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("skips when a holding's ticker matches Plaid's CUR:* pattern", async () => {
@@ -206,7 +206,7 @@ describe("inferCashHoldings", () => {
     const result = await inferCashHoldings([account], holdings, securities);
 
     expect(result).toHaveLength(0);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("skips when cost_basis is null (DB-NULL collapse) and institution_price=1", async () => {
@@ -239,7 +239,7 @@ describe("inferCashHoldings", () => {
     const account = makeAccount({ type: AccountType.Depository });
     const result = await inferCashHoldings([account], [], []);
     expect(result).toHaveLength(0);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("skips when the inferred amount is below the noise threshold", async () => {
@@ -302,7 +302,7 @@ describe("inferCashHoldings", () => {
   test("returns no holdings (and skips ensureUSDCashSecurity) when input is empty", async () => {
     const result = await inferCashHoldings([], [], []);
     expect(result).toHaveLength(0);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("calls ensureUSDCashSecurity once even across multiple accounts that need cash", async () => {
@@ -318,7 +318,7 @@ describe("inferCashHoldings", () => {
     expect(result).toHaveLength(2);
     // Exactly one SELECT against the securities table — `cashSecurity` is
     // resolved lazily on first use and reused thereafter.
-    const securitiesSelects = mockQuery.mock.calls.filter((c) =>
+    const securitiesSelects = mockUnsafe.mock.calls.filter((c) =>
       /SELECT.*FROM\s+securities/i.test(c[0] as string),
     );
     expect(securitiesSelects).toHaveLength(1);
@@ -328,7 +328,7 @@ describe("inferCashHoldings", () => {
 describe("ensureUSDCashSecurity", () => {
   test("returns the existing USD cash security when one is already in the table", async () => {
     // The SELECT for ticker_symbol='USD' returns the cached row → no INSERT.
-    mockQuery.mockResolvedValueOnce({ rows: [cashSecurityDbRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [cashSecurityDbRow()], rowCount: 1 });
 
     const result = await ensureUSDCashSecurity();
 
@@ -339,9 +339,9 @@ describe("ensureUSDCashSecurity", () => {
 
   test("creates the USD cash security on first call when none exists", async () => {
     // First SELECT returns empty → triggers the UPSERT.
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     // UPSERT returns the newly-created row.
-    mockQuery.mockResolvedValueOnce({ rows: [cashSecurityDbRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [cashSecurityDbRow()], rowCount: 1 });
 
     const result = await ensureUSDCashSecurity();
 
