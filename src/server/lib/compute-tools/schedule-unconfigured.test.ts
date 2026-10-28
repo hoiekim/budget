@@ -14,6 +14,12 @@ import { ItemProvider } from "common";
 const realPlaidUtil = { ...(await import("server/lib/plaid/util")) };
 const realServer = { ...(await import("server")) };
 const realSyncPlaid = { ...(await import("./sync-plaid")) };
+const realAutoSuggest = { ...(await import("./auto-suggest")) };
+const realDetectTransfers = { ...(await import("./detect-transfers")) };
+const realDetectRecurrings = { ...(await import("./detect-recurrings")) };
+const realRefreshSecuritySnapshots = {
+  ...(await import("./refresh-security-snapshots")),
+};
 
 const mockGetAllItems = mock(
   async () => [] as { item_id: string; provider: ItemProvider }[],
@@ -24,6 +30,16 @@ const mockSyncPlaidAccounts = mock(async () => {
 const mockSyncPlaidTransactions = mock(async () => {
   throw new Error("must not be called");
 });
+const mockRunAutoSuggestions = mock(async () => {});
+const mockRunTransferDetection = mock(async () => {});
+const mockRunRecurringDetection = mock(async () => {});
+const mockRefreshActiveSecuritySnapshots = mock(async () => ({
+  refreshed: 0,
+  fresh: 0,
+  cash: 0,
+  empty: 0,
+  errors: 0,
+}));
 const mockLogger = {
   info: mock(() => {}),
   warn: mock(() => {}),
@@ -46,6 +62,24 @@ mock.module("./sync-plaid", () => ({
   syncPlaidAccounts: mockSyncPlaidAccounts,
   syncPlaidTransactions: mockSyncPlaidTransactions,
 }));
+// The sync goes on to these jobs after the Plaid loop. Left real, they reach
+// the database and the global fetch after this file ends, inside other files.
+mock.module("./auto-suggest", () => ({
+  ...realAutoSuggest,
+  runAutoSuggestions: mockRunAutoSuggestions,
+}));
+mock.module("./detect-transfers", () => ({
+  ...realDetectTransfers,
+  runTransferDetection: mockRunTransferDetection,
+}));
+mock.module("./detect-recurrings", () => ({
+  ...realDetectRecurrings,
+  runRecurringDetection: mockRunRecurringDetection,
+}));
+mock.module("./refresh-security-snapshots", () => ({
+  ...realRefreshSecuritySnapshots,
+  refreshActiveSecuritySnapshots: mockRefreshActiveSecuritySnapshots,
+}));
 
 // Fresh module instance that sees isPlaidConfigured=false at load.
 // The `?unconfigured` query keeps this separate from schedule.test.ts's import.
@@ -58,6 +92,10 @@ afterAll(() => {
   mock.module("server/lib/plaid/util", () => realPlaidUtil);
   mock.module("server", () => realServer);
   mock.module("./sync-plaid", () => realSyncPlaid);
+  mock.module("./auto-suggest", () => realAutoSuggest);
+  mock.module("./detect-transfers", () => realDetectTransfers);
+  mock.module("./detect-recurrings", () => realDetectRecurrings);
+  mock.module("./refresh-security-snapshots", () => realRefreshSecuritySnapshots);
 });
 
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 50));
@@ -76,5 +114,10 @@ describe("scheduledSync without Plaid configuration", () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       expect.stringMatching(/Plaid is not configured/),
     );
+    expect(mockRunAutoSuggestions).toHaveBeenCalledTimes(1);
+    expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
+    expect(mockRunRecurringDetection).toHaveBeenCalledTimes(1);
+    expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
+    expect(mockLogger.info).toHaveBeenCalledWith("Scheduled sync completed");
   });
 });
