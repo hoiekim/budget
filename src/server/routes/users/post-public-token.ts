@@ -10,12 +10,20 @@ import {
   syncPlaidTransactions,
   searchItems,
   requireQueryString,
+  toClientItem,
   validationError,
 } from "server";
-import { getDateString, JSONItem, ItemProvider, ItemStatus, getRandomId } from "common";
+import {
+  getDateString,
+  JSONItem,
+  JSONClientItem,
+  ItemProvider,
+  ItemStatus,
+  getRandomId,
+} from "common";
 
 export interface PublicTokenPostResponse {
-  item: JSONItem;
+  item: JSONClientItem;
 }
 
 export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
@@ -56,7 +64,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
       await upsertItems(user, [item]);
       await syncSimpleFinData(item.item_id);
 
-      return { status: "success", body: { item } };
+      return { status: "success", body: { item: toClientItem(item) } };
     } else if (provider === ItemProvider.PLAID) {
       // Same absent-body guard as the simple_fin branch above.
       const { public_token, institution_id } = req.body ?? {};
@@ -76,7 +84,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
 
       await Promise.all([syncPlaidAccounts(item.item_id), syncPlaidTransactions(item.item_id)]);
 
-      return { status: "success", body: { item } };
+      return { status: "success", body: { item: toClientItem(item) } };
     } else if (provider === ItemProvider.MANUAL) {
       const items = await searchItems(user);
       if (items.find((e) => e.provider === ItemProvider.MANUAL)) {
@@ -95,7 +103,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
           available_products: [],
         };
         await upsertItems(user, [item]);
-        return { status: "success", body: { item } };
+        return { status: "success", body: { item: toClientItem(item) } };
       }
     } else {
       return {
