@@ -47,13 +47,13 @@ The app will be available at http://localhost:3005.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in values:
+Copy `.env.example` to `.env.local` and fill in values. `Required` means the value must be set for the deployment to work as described — a `No` row works unset via the documented default or fallback:
 
 | Variable | Required | Description |
 |---|---|---|
 | `ADMIN_PASSWORD` | Yes | Password for the admin user. Unset falls back to the literal `budget`, the credential published for the public demo instance, so a private deployment must set it. |
 | `DEMO_PASSWORD` | Yes | Password for the `demo` user, which is created on every startup alongside `admin`. Unset falls back to the literal `budget`, the credential published for the public demo instance, so a private deployment must set it. |
-| `POSTGRES_HOST` | Yes | Address to your PostgreSQL server |
+| `POSTGRES_HOST` | No | Address of your PostgreSQL server (default: `localhost`) |
 | `POSTGRES_PORT` | No | PostgreSQL port (default: 5432) |
 | `POSTGRES_USER` | No | PostgreSQL user |
 | `POSTGRES_PASSWORD` | No | PostgreSQL password |
