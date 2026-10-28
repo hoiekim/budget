@@ -1,4 +1,4 @@
-import { JSONItem, ItemProvider } from "common";
+import { JSONItem, JSONClientItem, ItemProvider } from "common";
 import {
   MaskedUser,
   ItemModel,
@@ -64,6 +64,15 @@ export const searchItems = async (
 export const getItemByAccessToken = async (access_token: string): Promise<JSONItem | null> => {
   const model = await itemsTable.queryOne({ access_token });
   return model?.toJSON() ?? null;
+};
+
+/**
+ * Project an item to the shape the browser may see. The server-side
+ * credential (`access_token`) never crosses to the client.
+ */
+export const toClientItem = (item: JSONItem): JSONClientItem => {
+  const { access_token: _access_token, ...rest } = item;
+  return rest;
 };
 
 export const getItemsByInstitution = async (
