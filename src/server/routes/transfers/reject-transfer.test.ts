@@ -79,25 +79,41 @@ describe("reject-transfer", () => {
 
   test("happy path returns success and pins user_id into the WHERE clause", async () => {
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    const result = await rejectTransferRoute.execute(makeReq({ id: "p-1" }), fakeRes());
+    const result = await rejectTransferRoute.execute(
+      makeReq({ id: "a8e9c6d4-1234-4abc-8def-0123456789ab" }),
+      fakeRes(),
+    );
     expect(result?.status).toBe("success");
     expect(mockUnsafe).toHaveBeenCalledTimes(1);
     const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/UPDATE transaction_pairs/i);
     expect(sql).toMatch(/user_id/);
-    expect(values).toContain("p-1");
+    expect(values).toContain("a8e9c6d4-1234-4abc-8def-0123456789ab");
     expect(values).toContain("u-1");
+  });
+
+  test("rejects a non-UUID id at the boundary — never reaches the DB", async () => {
+    const result = await rejectTransferRoute.execute(
+      makeReq({ id: "not-a-uuid" }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/id must be a uuid/);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("cross-user delete: the route forwards the session user_id, never a client value", async () => {
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await rejectTransferRoute.execute(
-      makeReq({ id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
+      makeReq(
+        { id: "b7d8a5c3-2345-4bcd-9efa-1234567890cd" },
+        { user: { user_id: "u-A", username: "a" } },
+      ),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
     const [, values] = mockUnsafe.mock.calls[0];
-    expect(values).toContain("p-belongs-to-B");
+    expect(values).toContain("b7d8a5c3-2345-4bcd-9efa-1234567890cd");
     expect(values).toContain("u-A");
     expect(values).not.toContain("u-B");
   });
