@@ -1,17 +1,17 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 // Armed for the malformed-input tests: if a guard is missing, the route
 // reaches SQL, the fake driver throws the way Postgres throws on a bad
 // UUID/TIMESTAMPTZ literal, and `Route.execute` answers 500 + an alarm.
 // With the guard present, no query runs and no alarm fires.
 let failQueries = false;
-const { pg, mockQuery, mockClientQuery, clearQueryMocks } = createFakePg(async () => {
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks, clearSqlMocks } = createFakeSql(async () => {
   if (failQueries) throw new Error('invalid input syntax for type uuid: "not-a-uuid"');
   return { rows: [], rowCount: 0 as number | null };
 });
 
-mock.module("pg", () => pg);
+mock.module("../lib/postgres/sql-driver", () => driver);
 
 // Same alarm-mock pattern as the post-* route tests: spread the real module
 // so only `sendAlarm` is mocked, and restore it afterwards so sibling files
@@ -37,8 +37,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockClientQuery.mockClear();
+  resetSqlMocks();
   mockSendAlarm.mockClear();
   failQueries = false;
 });
@@ -107,8 +106,8 @@ describe("query-string validation", () => {
       );
       expect(result?.status).toBe("failed");
       expect((result as { message?: string }).message).toBe("Field id must be a uuid");
-      expect(mockQuery).not.toHaveBeenCalled();
-      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
       expect(mockSendAlarm).not.toHaveBeenCalled();
       expect((res as unknown as { statusCode: number }).statusCode).toBe(200);
     });
@@ -120,8 +119,8 @@ describe("query-string validation", () => {
       );
       expect(result?.status).toBe("success");
       // deleteSection runs entirely inside withTransaction, so its
-      // statements land on the transaction client, not the pool query.
-      expect(mockQuery.mock.calls.length + mockClientQuery.mock.calls.length).toBeGreaterThan(0);
+      // statements land on the reserved client, not the pool unsafe.
+      expect(mockUnsafe.mock.calls.length + mockReservedUnsafe.mock.calls.length).toBeGreaterThan(0);
       expect(mockSendAlarm).not.toHaveBeenCalled();
     });
   }
@@ -136,8 +135,8 @@ describe("query-string validation", () => {
       );
       expect(result?.status).toBe("failed");
       expect((result as { message?: string }).message).toBe("Field start-date must be a date");
-      expect(mockQuery).not.toHaveBeenCalled();
-      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
       expect(mockSendAlarm).not.toHaveBeenCalled();
       expect((res as unknown as { statusCode: number }).statusCode).toBe(200);
     });
@@ -153,15 +152,15 @@ describe("query-string validation", () => {
       );
       expect(result?.status).toBe("failed");
       expect((result as { message?: string }).message).toBe("Field end-date must be a date");
-      expect(mockQuery).not.toHaveBeenCalled();
-      expect(mockClientQuery).not.toHaveBeenCalled();
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
       expect(mockSendAlarm).not.toHaveBeenCalled();
     });
   }
 
   test("a well-formed ?start-date= is not a failed answer on any GET route", async () => {
     for (const [_label, route] of GET_ROUTES) {
-      clearQueryMocks();
+      clearSqlMocks();
       mockSendAlarm.mockClear();
       const result = await route.execute(
         makeReq("GET", route.path, { "start-date": "2026-01-15" }),
@@ -177,7 +176,7 @@ describe("query-string validation", () => {
 
   test("an empty ?start-date= counts as absent on any GET route, not a failed answer", async () => {
     for (const [_label, route] of GET_ROUTES) {
-      clearQueryMocks();
+      clearSqlMocks();
       mockSendAlarm.mockClear();
       const result = await route.execute(
         makeReq("GET", route.path, { "start-date": "" }),
@@ -196,7 +195,7 @@ describe("query-string validation", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("success");
-    expect(mockQuery).toHaveBeenCalled();
+    expect(mockUnsafe).toHaveBeenCalled();
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 });
