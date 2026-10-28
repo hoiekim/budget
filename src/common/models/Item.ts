@@ -20,7 +20,8 @@ export enum ItemProvider {
 
 export interface JSONItem {
   item_id: string;
-  access_token: string;  institution_id: string | null;
+  access_token: string;
+  institution_id: string | null;
   available_products: Products[];
   cursor?: string;
   status?: ItemStatus;
