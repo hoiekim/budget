@@ -3,7 +3,7 @@ import { describe, test, expect } from "bun:test";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 
 import { LocalDate, ViewDate } from "common";
-import { getSankeyData, SankeyColumn } from "./lib";
+import { getSankeyData, getVerticalLines, SankeyColumn } from "./lib";
 import {
   BudgetDictionary,
   SectionDictionary,
@@ -521,5 +521,58 @@ describe("getSankeyData — budget_ids whitelist filter", () => {
       ["Unknown"],
     );
     expect(tableData.expense).toBe(42);
+  });
+});
+
+describe("getVerticalLines — the gap share is capped (#826)", () => {
+  const col = (n: number, amount = 10): SankeyColumn =>
+    Array.from({ length: n }, (_, i) => ({ id: `r${i}`, name: `Row ${i}`, amount }));
+
+  const barCoverage = (lines: { start: number; end: number }[]) =>
+    lines.reduce((sum, { start, end }) => sum + (start - end), 0);
+
+  const gapTotal = (lines: { start: number; end: number }[]) =>
+    lines.slice(1).reduce((sum, line, i) => sum + (lines[i]!.end - line.start), 0);
+
+  const assertNoInversions = (lines: { start: number; end: number }[]) => {
+    for (const { start, end } of lines) {
+      expect(start).toBeGreaterThanOrEqual(end);
+      expect(end).toBeGreaterThanOrEqual(0);
+    }
+    expect(lines[0]!.start).toBeLessThanOrEqual(1);
+  };
+
+  test("up to 10 gaps the layout is unchanged (3% per gap)", () => {
+    const lines = getVerticalLines(col(11), 10);
+    expect(lines).toHaveLength(11);
+    expect(lines[0]!.end - lines[1]!.start).toBeCloseTo(0.03, 10);
+    expect(barCoverage(lines)).toBeCloseTo(0.7, 10);
+    assertNoInversions(lines);
+  });
+
+  test("23 gaps leave the bars 70% of the height instead of 31%", () => {
+    // The issue's measured case: 24 rows on the Year interval.
+    const lines = getVerticalLines(col(24), 23);
+    expect(lines).toHaveLength(24);
+    assertNoInversions(lines);
+    expect(barCoverage(lines)).toBeCloseTo(0.7, 6);
+    expect(gapTotal(lines)).toBeCloseTo(0.3, 6);
+  });
+
+  test("40 gaps cannot invert a line, with uneven amounts", () => {
+    const uneven: SankeyColumn = Array.from({ length: 41 }, (_, i) => ({
+      id: `r${i}`,
+      name: `Row ${i}`,
+      amount: 41 - i,
+    }));
+    const lines = getVerticalLines(uneven, 40);
+    expect(lines).toHaveLength(41);
+    assertNoInversions(lines);
+    expect(barCoverage(lines)).toBeCloseTo(0.7, 6);
+    expect(gapTotal(lines)).toBeCloseTo(0.3, 6);
+  });
+
+  test("a single row takes the full height", () => {
+    expect(getVerticalLines(col(1), 0)).toEqual([{ start: 1, end: 0 }]);
   });
 });
