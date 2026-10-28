@@ -12,7 +12,7 @@ export const Balance = ({ account }: BalanceProps) => {
   const { type, subtype, balances } = account;
   const { available, current, iso_currency_code, unofficial_currency_code } = balances;
 
-  const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code || "USD");
+  const symbol = currencyCodeToSymbol(iso_currency_code || unofficial_currency_code);
   const currentString = numberToCommaString(current!);
 
   const today = new Date();

@@ -65,7 +65,7 @@ const truncateSecurityId = (id: string) => id.slice(0, 6);
 export const HoldingsComposition = ({ accounts }: Props) => {
   const firstAccount = accounts[0];
   const { iso_currency_code } = firstAccount?.balances ?? {};
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   const { calculations, router, viewDate, data } = useAppContext();
   const { holdingsValueData, balanceData, holdingSnapshots } = calculations;

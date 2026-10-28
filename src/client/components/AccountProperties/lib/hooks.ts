@@ -12,7 +12,7 @@ import {
   indexedDb,
   StoreName,
 } from "client";
-import { AccountGraphOptions, ItemProvider, numberToCommaString, ViewDate } from "common";
+import { AccountGraphOptions, currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
 import { AccountType } from "plaid";
 import { ChangeEventHandler, MouseEventHandler, useEffect, useState } from "react";
 import { AccountPostResponse, SnapshotPostResponse } from "server";
@@ -33,8 +33,13 @@ export const useAccountEventHandlers = (account: Account, cursorAmount?: number)
   const [balanceSnapshotInput, setBalanceSnapshotInput] = useState("");
 
   useEffect(() => {
+    // Derived from the same symbol the input's `prefix` uses — never a hardcoded
+    // "$ ": on a non-USD (or null-code) account the value and the prefix
+    // otherwise disagree about the currency.
     const newDefaultBalanceSnapshotAmount =
-      "$ " + numberToCommaString(cursorAmount ?? (balances.current || 0), 2);
+      currencyCodeToSymbol(balances.iso_currency_code) +
+      " " +
+      numberToCommaString(cursorAmount ?? (balances.current || 0), 2);
     setBalanceSnapshotInput((old) => {
       if (old !== newDefaultBalanceSnapshotAmount) {
         return newDefaultBalanceSnapshotAmount;

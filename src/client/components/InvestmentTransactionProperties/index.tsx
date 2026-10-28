@@ -339,7 +339,7 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
     return sec?.name ?? "";
   })();
 
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "USD");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   return (
     <Properties className="InvestmentTransactionProperties">
