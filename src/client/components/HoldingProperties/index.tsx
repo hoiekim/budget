@@ -182,7 +182,7 @@ export const HoldingProperties = () => {
 
   const isCash = tickerKey === CASH_TICKER;
   const currencySymbol = currencyCodeToSymbol(
-    bucketSnapshots[0]?.holding.iso_currency_code || "USD",
+    bucketSnapshots[0]?.holding.iso_currency_code,
   );
 
   // Aggregate quantity / cost basis across all underlying snapshots.

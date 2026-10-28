@@ -159,7 +159,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
     <div className="SplitTransactionRow">
       <div className="amount">
         {isIncome && <>+&nbsp;</>}
-        {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
+        {currencyCodeToSymbol(iso_currency_code)}&nbsp;
         <CapacityInput defaultValue={Math.abs(amount)} fixed={2} onBlur={onChangeAmount} />
       </div>
       <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>

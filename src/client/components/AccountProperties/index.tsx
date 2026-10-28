@@ -41,7 +41,7 @@ interface Props {
 export const AccountProperties = ({ account }: Props) => {
   const { account_id, balances, name, type, subtype } = account;
   const { available, current, iso_currency_code } = balances;
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 

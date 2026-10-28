@@ -288,7 +288,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
       ? sections.get(categories.get(label.category_id)!.section_id)?.name
       : "";
 
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   const isIncome = transaction.amount < 0;
 
@@ -323,7 +323,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
             : found,
         undefined,
       );
-      const symbol = currencyCodeToSymbol(latest?.iso_currency_code || "");
+      const symbol = currencyCodeToSymbol(latest?.iso_currency_code);
       list.push({
         recurring_id: r.recurring_id,
         merchant_name: r.merchant_name,
@@ -371,7 +371,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
     return {
       first: new LocalDate(dates[0]),
       total,
-      currencySymbol: currencyCodeToSymbol(currency || iso_currency_code || ""),
+      currencySymbol: currencyCodeToSymbol(currency || iso_currency_code),
       next: getNextRecurringDate(latest, existingRecurring.cadence),
     };
   }, [existingRecurring, iso_currency_code]);
@@ -712,7 +712,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
                   <span>
                     {suggestedPartner.amount < 0 && <>+&nbsp;</>}
                     {currencyCodeToSymbol(
-                      suggestedPartner.iso_currency_code || iso_currency_code || "",
+                      suggestedPartner.iso_currency_code || iso_currency_code,
                     )}
                     &nbsp;
                     {numberToCommaString(Math.abs(suggestedPartner.amount))}
@@ -800,7 +800,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
                       )}
                     </div>
                     <div className="amount">
-                      {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
+                      {currencyCodeToSymbol(candidate.iso_currency_code)}&nbsp;
                       {numberToCommaString(Math.abs(candidate.amount))}
                       {isPending && <>&nbsp;…</>}
                     </div>

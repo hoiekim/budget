@@ -31,13 +31,14 @@ export const numberToCommaString = (n: number, fixed = 2) => {
   return sign + integer + fraction;
 };
 
-export const currencyCodeToSymbol = (code: string) => {
-  switch (code) {
-    case "USD":
-      return "$";
-    default:
-      return code;
-  }
+// The one place that decides what symbol a currency code renders as. A missing
+// code (manual accounts are minted with a null code and no UI sets one) renders
+// as "$", so every surface agrees — callers must not re-default with `|| ""`
+// or `|| "USD"` and drift apart again. Non-USD codes render as themselves,
+// matching the previous behavior for known codes.
+export const currencyCodeToSymbol = (code?: string | null) => {
+  if (!code || code === "USD") return "$";
+  return code;
 };
 
 export const getRandomId = () => (65536 + Math.floor(Math.random() * 983040)).toString(16);
