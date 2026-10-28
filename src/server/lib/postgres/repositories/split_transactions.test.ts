@@ -5,7 +5,9 @@ const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
 mock.module("../sql-driver", () => driver);
 
-const { searchSplitTransactions } = await import("./split_transactions");
+const { searchSplitTransactions, repointSplitTransactionsOnPendingPosted } = await import(
+  "./split_transactions"
+);
 
 afterAll(restoreLeaves);
 
@@ -91,5 +93,34 @@ describe("searchSplitTransactions", () => {
     });
     const result = await searchSplitTransactions(testUser);
     expect(result[0].is_deleted).toBe(false);
+  });
+});
+
+describe("repointSplitTransactionsOnPendingPosted", () => {
+  test("UPDATE re-points live splits to the posted id, scoped to the user", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    const n = await repointSplitTransactionsOnPendingPosted(testUser, "tx-pending", "tx-posted");
+    const sql = mockUnsafe.mock.calls[0][0] as string;
+    const values = mockUnsafe.mock.calls[0][1] as string[];
+    expect(sql).toMatch(/UPDATE split_transactions/);
+    expect(sql).toMatch(/SET\s+transaction_id\s*=\s*\$3/);
+    expect(sql).toMatch(/updated\s*=\s*CURRENT_TIMESTAMP/);
+    expect(sql).toMatch(/user_id\s*=\s*\$1/);
+    expect(sql).toMatch(/transaction_id\s*=\s*\$2/);
+    expect(sql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/);
+    expect(values).toEqual(["usr-1", "tx-pending", "tx-posted"]);
+    expect(n).toBe(2);
+  });
+
+  test("returns 0 when no live split matched", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const n = await repointSplitTransactionsOnPendingPosted(testUser, "tx-pending", "tx-posted");
+    expect(n).toBe(0);
+  });
+
+  test("no-op without issuing a query when pending and posted ids match", async () => {
+    const n = await repointSplitTransactionsOnPendingPosted(testUser, "tx-same", "tx-same");
+    expect(n).toBe(0);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

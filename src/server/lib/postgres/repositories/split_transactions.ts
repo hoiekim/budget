@@ -1,4 +1,6 @@
 import { JSONSplitTransaction } from "common";
+import { SPLIT_TRANSACTIONS } from "common/constants";
+import { pool } from "../client";
 import {
   MaskedUser,
   SplitTransactionModel,
@@ -9,6 +11,7 @@ import {
   USER_ID,
   UPDATED,
   DATE,
+  IS_DELETED,
   QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
@@ -135,6 +138,45 @@ export const deleteSplitTransactionsByTransaction = async (
     txs.map((t) => t.split_transaction_id),
     client,
   );
+};
+
+/**
+ * Re-point a pending transaction's live split rows onto the posted
+ * transaction that supersedes it (pending→posted transition, #825).
+ *
+ * Without this, `syncPlaidTransactions` tombstones the pending row's
+ * splits in the removal cascade (`deleteTransactions` soft-deletes
+ * splits by `transaction_id`, and the per-id helper repeats it) while
+ * the label and `rejected_categories` migrate — the user's split
+ * silently disappears and the parent's full amount reverts to a single
+ * category in every rollup. The caller must run this AFTER the posted
+ * row is upserted and BEFORE the removal cascade for the pending id:
+ * the posted id arrives in the same batch, so it carries no user
+ * splits of its own yet, and re-pointing first keeps the cascade from
+ * ever seeing these rows under the pending id.
+ *
+ * Scoped to the caller's `user_id` and to live rows only — a split the
+ * user already deleted stays deleted under the pending id. Bumps
+ * `updated` so delta/cursor syncs pick the re-pointed rows up.
+ * Returns the number of rows re-pointed.
+ */
+export const repointSplitTransactionsOnPendingPosted = async (
+  user: MaskedUser,
+  pending_transaction_id: string,
+  posted_transaction_id: string,
+): Promise<number> => {
+  if (pending_transaction_id === posted_transaction_id) return 0;
+  const result = await pool.query(
+    `
+    UPDATE ${SPLIT_TRANSACTIONS}
+    SET ${TRANSACTION_ID} = $3, ${UPDATED} = CURRENT_TIMESTAMP
+    WHERE ${USER_ID} = $1
+      AND ${TRANSACTION_ID} = $2
+      AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+    `,
+    [user.user_id, pending_transaction_id, posted_transaction_id],
+  );
+  return result.rowCount ?? 0;
 };
 
 export const createSplitTransaction = async (

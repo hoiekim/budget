@@ -27,6 +27,7 @@ import {
   MaskedUser,
   deleteSplitTransactionsByTransaction,
   migrateRejectedCategoriesOnPendingPosted,
+  repointSplitTransactionsOnPendingPosted,
   logger,
 } from "server";
 import {
@@ -57,7 +58,7 @@ export const buildTransactionLookupMaps = (
  * Detect pending→posted transitions across a batch of incoming Plaid
  * transactions. Returns `{pending, posted}` pairs for downstream
  * migrations that need to follow the id rename (currently:
- * `rejected_categories` rows; future work may extend).
+ * `rejected_categories` rows and `split_transactions` rows).
  *
  * Mechanism: Plaid's posted transaction carries
  * `pending_transaction_id` pointing back at the prior pending id. The
@@ -171,23 +172,58 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const removedTransactionIds = removed.map((e) => e.transaction_id);
 
       // Pending → posted transitions across both added and modified
-      // batches. Used to migrate `rejected_categories` rows from the old
-      // pending id to the new posted id after the posted row is upserted.
+      // batches. Used to migrate `rejected_categories` rows and
+      // re-point `split_transactions` rows from the old pending id to
+      // the new posted id after the posted row is upserted.
       const pendingPostedTransitions = detectPendingPostedTransitions([
         ...added,
         ...modified,
       ]);
 
-      const updateJobs = [
-        upsertTransactions(user, [...modeledAdded, ...modeledModified]),
-        deleteTransactions(user, removedTransactionIds),
-        ...removedTransactionIds.map((txId) => deleteSplitTransactionsByTransaction(user, txId)),
-      ];
-
       const updated = getDateString();
 
       const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
-      return Promise.all(updateJobs)
+
+      // Sequenced, not one Promise.all: the re-point MUST run after the
+      // upsert (so the posted row exists) and before the removal
+      // cascade (deleteTransactions soft-deletes splits by
+      // transaction_id, which would tombstone the pending row's splits
+      // before they could ride across — #825). Once re-pointed, the
+      // cascade finds no live splits under the pending id and the
+      // posted id is never in `removed`, so the splits survive.
+      return upsertTransactions(user, [...modeledAdded, ...modeledModified])
+        .then(async () => {
+          // Re-point live splits for each transition. Parallelize with
+          // allSettled like the rejected-categories migration below:
+          // failures are logged at warn and do not interrupt counting;
+          // a failed re-point leaves the splits under the pending id,
+          // where the cascade below tombstones them — the pre-#825
+          // behaviour, not a worse one. The helper is a single UPDATE
+          // per pair and no-ops when the pending side has no splits.
+          const repoints = await Promise.allSettled(
+            pendingPostedTransitions.map((t) =>
+              repointSplitTransactionsOnPendingPosted(user, t.pending, t.posted),
+            ),
+          );
+          repoints.forEach((r, i) => {
+            if (r.status === "rejected") {
+              const t = pendingPostedTransitions[i];
+              logger.warn(
+                "Failed to re-point split_transactions on pending→posted",
+                { pending: t.pending, posted: t.posted },
+                r.reason,
+              );
+            }
+          });
+        })
+        .then(() =>
+          Promise.all([
+            deleteTransactions(user, removedTransactionIds),
+            ...removedTransactionIds.map((txId) =>
+              deleteSplitTransactionsByTransaction(user, txId),
+            ),
+          ]),
+        )
         .then(async () => {
           // Migrate rejected_categories rows from each pending → posted
           // pair. Runs AFTER upsertTransactions so the posted FK target
