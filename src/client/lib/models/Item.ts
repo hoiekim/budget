@@ -24,7 +24,7 @@ export class Item implements JSONClientItem {
     assign(this, init);
     // The server never sends item credentials to the browser, but rows
     // persisted by older clients may still carry one in IndexedDB — scrub it
-    // on load so it can never be written back (hoiekim/budget#807).
+    // on load so it can never be written back.
     delete (this as unknown as Record<string, unknown>).access_token;
   }
 }
