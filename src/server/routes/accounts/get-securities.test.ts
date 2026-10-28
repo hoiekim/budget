@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getSecuritiesRoute } = await import("./get-securities");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -70,11 +70,11 @@ describe("GET /api/securities", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns every security row as JSONSecurity", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [
         securityRow({ security_id: "sec-1", ticker_symbol: "VOO", type: "etf" }),
         securityRow({ security_id: "sec-2", ticker_symbol: "QACDS", type: "cash" }),
@@ -92,10 +92,10 @@ describe("GET /api/securities", () => {
   });
 
   test("scopes the SELECT to the caller's user_id via a JOIN against holdings", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await getSecuritiesRoute.execute(makeReq(), fakeRes());
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockQuery.mock.calls[0];
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(String(sql)).toMatch(/SELECT/i);
     expect(String(sql)).toMatch(/holdings/);
     expect(String(sql)).toMatch(/user_id/);

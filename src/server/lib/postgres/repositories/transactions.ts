@@ -16,6 +16,7 @@ import {
   DATE,
   UPDATED,
   QueryExecutor,
+  toJSONBatches,
 } from "../models";
 import { UpsertResult, successResult, errorResult, noChangeResult, refusedResult } from "../database";
 import { getOwnedLabelIds } from "./budgets";
@@ -27,8 +28,6 @@ export interface SearchTransactionsOptions {
   startDate?: string;
   endDate?: string;
   pending?: boolean;
-  limit?: number;
-  offset?: number;
   /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
    *  the response so the client can treat them as tombstones and evict
    *  them from its local cache (IDB + in-memory dict). Defaults to
@@ -38,30 +37,6 @@ export interface SearchTransactionsOptions {
 }
 
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
-
-export const getTransactions = async (
-  user: MaskedUser,
-  options: SearchTransactionsOptions = {},
-): Promise<JSONTransaction[]> => {
-  const models = await transactionsTable.query(
-    {
-      [USER_ID]: user.user_id,
-      [ACCOUNT_ID]: options.account_id,
-      pending: options.pending,
-    },
-    {
-      dateRange:
-        options.startDate || options.endDate
-          ? { column: UPDATED, start: options.startDate, end: options.endDate }
-          : undefined,
-      orderBy: `${DATE} DESC`,
-      limit: options.limit,
-      offset: options.offset,
-      excludeDeleted: !options.includeDeleted,
-    },
-  );
-  return models.map((m) => m.toJSON());
-};
 
 export const getTransaction = async (
   user: MaskedUser,
@@ -74,31 +49,37 @@ export const getTransaction = async (
   return model?.toJSON() ?? null;
 };
 
-export const searchTransactions = async (
+/**
+ * The user's transactions and investment transactions in primary-key order,
+ * read and yielded one batch at a time. Nothing is queried until the caller
+ * starts iterating.
+ */
+export const searchTransactions = (
   user: MaskedUser,
   options: SearchTransactionsOptions = {},
-): Promise<{
-  transactions: JSONTransaction[];
-  investment_transactions: JSONInvestmentTransaction[];
-}> => {
-  const transactions = await getTransactions(user, options);
-
-  const invModels = await investmentTransactionsTable.query(
-    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
-    {
-      dateRange:
-        options.startDate || options.endDate
-          ? { column: UPDATED, start: options.startDate, end: options.endDate }
-          : undefined,
-      orderBy: `${DATE} DESC`,
-      limit: options.limit,
-      offset: options.offset,
-      excludeDeleted: !options.includeDeleted,
-    },
+): {
+  transactions: AsyncGenerator<JSONTransaction[]>;
+  investment_transactions: AsyncGenerator<JSONInvestmentTransaction[]>;
+} => {
+  const queryOptions = {
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: UPDATED, start: options.startDate, end: options.endDate }
+        : undefined,
+    excludeDeleted: !options.includeDeleted,
+  };
+  const transactions = transactionsTable.queryInBatches(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id, pending: options.pending },
+    queryOptions,
   );
-  const investment_transactions = invModels.map((m) => m.toJSON());
-
-  return { transactions, investment_transactions };
+  const investmentTransactions = investmentTransactionsTable.queryInBatches(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
+    queryOptions,
+  );
+  return {
+    transactions: toJSONBatches(transactions),
+    investment_transactions: toJSONBatches(investmentTransactions),
+  };
 };
 
 export const searchTransactionsById = async (

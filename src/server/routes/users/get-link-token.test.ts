@@ -6,11 +6,26 @@
  * That gives the "not configured" path natural coverage; the configured
  * path (calling `plaid.getLinkToken`) would require a refactor to inject
  * dependencies — tracked as a separate follow-up issue.
+ *
+ * The item lookup (`getItem(user, item_id)`) is scoped to the requesting
+ * user, so the ownership check is exercised here against the fake SQL driver
+ * even though the plaid call itself is unreachable in this env.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-import { getLinkTokenRoute } from "./get-link-token";
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
+
+mock.module("../../lib/postgres/sql-driver", () => driver);
+
+const { getLinkTokenRoute } = await import("./get-link-token");
+
+afterAll(restoreLeaves);
+
+beforeEach(() => {
+  resetSqlMocks();
+});
 
 function makeReq(
   query: Record<string, unknown>,
@@ -48,30 +63,87 @@ const fakeRes = () =>
     end() {},
   }) as unknown as Parameters<typeof getLinkTokenRoute.execute>[1];
 
+/** Raw items-table row matching ItemModel's full schema. */
+const itemRow = (overrides: Record<string, unknown> = {}) => ({
+  item_id: "i-1",
+  user_id: "u-1",
+  access_token: "access-production-secret",
+  institution_id: null,
+  available_products: null,
+  cursor: null,
+  status: null,
+  status_reason: null,
+  provider: "plaid",
+  last_sync_status: null,
+  last_sync_at: null,
+  last_sync_error: null,
+  raw: null,
+  updated: null,
+  is_deleted: false,
+  ...overrides,
+});
+
 describe("get-link-token", () => {
   test("rejects unauthenticated requests", async () => {
     const result = await getLinkTokenRoute.execute(makeReq({}, { user: null }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
-  test("plaid not configured → 'Plaid integration is not configured' failure", async () => {
+  test("create mode (no item_id): plaid not configured → failure", async () => {
     // Test env has no PLAID_* vars set; `isPlaidConfigured` is false at module load.
     const result = await getLinkTokenRoute.execute(makeReq({}), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/Plaid integration is not configured/);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
-  test("plaid not configured short-circuits before access_token validation", async () => {
-    // If access_token validation ran first, an array-shaped value would surface
-    // as "Parameter access_token must be a single value". The route is expected
-    // to return the unconfigured-Plaid failure first.
-    const result = await getLinkTokenRoute.execute(
-      makeReq({ access_token: ["a", "b"] }),
-      fakeRes(),
-    );
+  test("item_id validation runs before the plaid-configured gate", async () => {
+    // An array-shaped value must surface as a validation error, not the
+    // unconfigured-Plaid failure.
+    const result = await getLinkTokenRoute.execute(makeReq({ item_id: ["a", "b"] }), fakeRes());
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/item_id/);
+    expect(result?.message).not.toMatch(/Plaid integration is not configured/);
+    expect(mockUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("unknown item_id → 'Item not found' without touching plaid", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await getLinkTokenRoute.execute(makeReq({ item_id: "i-nope" }), fakeRes());
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/Item not found/);
+  });
+
+  test("the ownership lookup is scoped to the requesting user", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getLinkTokenRoute.execute(makeReq({ item_id: "i-1" }), fakeRes());
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockUnsafe.mock.calls[0] as [string, unknown[]];
+    expect(String(sql)).toMatch(/user_id/);
+    expect(params).toContain("u-1");
+    expect(params).toContain("i-1");
+  });
+
+  test("own item_id passes the ownership check and reaches the plaid gate", async () => {
+    // The lookup returns the caller's own row; the request then fails only on
+    // the unconfigured-Plaid gate, proving the stored credential — never a
+    // caller-supplied token — is what would be handed to plaid.
+    mockUnsafe.mockResolvedValueOnce({ rows: [itemRow()], rowCount: 1 });
+    const result = await getLinkTokenRoute.execute(makeReq({ item_id: "i-1" }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/Plaid integration is not configured/);
-    expect(result?.message).not.toMatch(/access_token/);
+  });
+
+  test("another user's item_id is not found (ownership enforced by the query)", async () => {
+    // The row belongs to u-2; the user-scoped query returns nothing for u-1.
+    mockUnsafe.mockImplementationOnce(async (_sql: unknown, params: unknown[]) => {
+      const scoped = (params as string[]).includes("u-1");
+      return { rows: scoped ? [] : [itemRow({ user_id: "u-2" })], rowCount: scoped ? 0 : 1 };
+    });
+    const result = await getLinkTokenRoute.execute(makeReq({ item_id: "i-1" }), fakeRes());
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/Item not found/);
   });
 });

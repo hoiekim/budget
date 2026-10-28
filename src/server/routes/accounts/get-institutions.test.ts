@@ -6,11 +6,11 @@
 // failing the batch.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // These tests exercise the Plaid fallback, so pretend Plaid is configured
 // (the real flag is false in the test env — no PLAID_* vars).
@@ -90,7 +90,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
   plaidCalls.length = 0;
   unresolvableIds.clear();
   inflight = 0;
@@ -147,20 +147,20 @@ describe("get-institutions route", () => {
     const result = await getInstitutionsRoute.execute(makeReq({ ids: "ins_5" }, null), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing ids param", async () => {
     const result = await getInstitutionsRoute.execute(makeReq({}), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/ids/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("empty ids CSV is rejected — `requireQueryString` treats it as missing", async () => {
     const result = await getInstitutionsRoute.execute(makeReq({ ids: "" }), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("only-`Unknown` sentinel filters to empty — no DB hit", async () => {
@@ -170,11 +170,11 @@ describe("get-institutions route", () => {
     const result = await getInstitutionsRoute.execute(makeReq({ ids: "Unknown,Unknown" }), fakeRes());
     expect(result?.status).toBe("success");
     expect(result?.body).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("all-hits path: one IN query — the N+1 collapse this route exists for", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeInstRow("ins_5"), makeInstRow("ins_56"), makeInstRow("ins_127991")],
       rowCount: 3,
     });
@@ -189,27 +189,27 @@ describe("get-institutions route", () => {
       "ins_56",
     ]);
     // The property this route exists to pin: one SQL query, not N.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockQuery.mock.calls[0];
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/\bIN\s*\(/i);
     expect(values).toEqual(expect.arrayContaining(["ins_5", "ins_56", "ins_127991"]));
   });
 
   test("dedupes at the repo boundary even if the caller passes duplicates", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
     await getInstitutionsRoute.execute(
       makeReq({ ids: "ins_5,ins_5,ins_5" }),
       fakeRes(),
     );
-    const [, values] = mockQuery.mock.calls[0];
+    const [, values] = mockUnsafe.mock.calls[0];
     const ins5Count = (values as unknown[]).filter((v) => v === "ins_5").length;
     expect(ins5Count).toBe(1);
   });
 
   test("trims whitespace around each id — CSVs from URL params can end up padded", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
     await getInstitutionsRoute.execute(makeReq({ ids: " ins_5 , ins_5" }), fakeRes());
-    const [, values] = mockQuery.mock.calls[0];
+    const [, values] = mockUnsafe.mock.calls[0];
     // Post-trim + dedupe → exactly one "ins_5" in the IN clause.
     const ins5Count = (values as unknown[]).filter((v) => v === "ins_5").length;
     expect(ins5Count).toBe(1);
@@ -229,13 +229,13 @@ describe("get-institutions Plaid-fallback bounds", () => {
     expect(result?.message).toMatch(/at most 100/i);
     // Rejected before the SQL layer and before Plaid — the point of the cap is
     // that an oversized list costs nothing downstream.
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(plaidCalls).toEqual([]);
   });
 
   test("accepts a CSV at exactly the cap", async () => {
     const ids = makeIds(100, "ins_hit_");
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: ids.map(makeInstRow),
       rowCount: ids.length,
     });
@@ -260,11 +260,11 @@ describe("get-institutions Plaid-fallback bounds", () => {
     await drainDeferredWrites();
     // One batched IN lookup plus one batched upsert. Upserting per fetched row
     // makes this 21.
-    expect(mockQuery.mock.calls.length).toBe(2);
+    expect(mockUnsafe.mock.calls.length).toBe(2);
   });
 
   test("charges one slot per Plaid round trip and stops at the per-user cap", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_stored")], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeInstRow("ins_stored")], rowCount: 1 });
     const first = await getInstitutionsRoute.execute(
       makeReq({ ids: ["ins_stored", ...makeIds(25)].join(",") }),
       fakeRes(),
@@ -277,8 +277,8 @@ describe("get-institutions Plaid-fallback bounds", () => {
     await drainDeferredWrites();
 
     plaidCalls.length = 0;
-    resetQueryMocks();
-    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_stored")], rowCount: 1 });
+    resetSqlMocks();
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeInstRow("ins_stored")], rowCount: 1 });
     const second = await getInstitutionsRoute.execute(
       makeReq({ ids: ["ins_stored", ...makeIds(5, "ins_other_")].join(",") }),
       fakeRes(),
@@ -293,7 +293,7 @@ describe("get-institutions Plaid-fallback bounds", () => {
   });
 
   test("an id already in the table never charges the limiter", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeInstRow("ins_5"), makeInstRow("ins_56")],
       rowCount: 2,
     });
@@ -312,7 +312,7 @@ describe("get-institutions Plaid-fallback bounds", () => {
   });
 
   test("resolved institutions are returned alongside the stored rows", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
     const result = await getInstitutionsRoute.execute(
       makeReq({ ids: "ins_5,ins_fresh" }),
       fakeRes(),
@@ -365,7 +365,7 @@ describe("get-institutions partial Plaid failure", () => {
 
   test("the route serves the stored rows and the resolvable misses around a failure", async () => {
     unresolvableIds.add("ins_dead");
-    mockQuery.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [makeInstRow("ins_5")], rowCount: 1 });
 
     const result = await getInstitutionsRoute.execute(
       makeReq({ ids: "ins_5,ins_live,ins_dead" }),
@@ -387,7 +387,7 @@ describe("get-institutions partial Plaid failure", () => {
 
   test("a failure still charges its slot, so the limiter cannot be drained for free", async () => {
     unresolvableIds.add("ins_dead");
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     await getInstitutionsRoute.execute(makeReq({ ids: "ins_dead,ins_live" }), fakeRes());
 

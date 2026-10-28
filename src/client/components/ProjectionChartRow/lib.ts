@@ -30,13 +30,19 @@ export const calculateProjection = (config: ProjectionConfig): ProjectionCalcula
     pointColor,
     startDate,
     endDate,
-    startOffset = 0,
+    startOffset: rawStartOffset = 0,
     initialSaving,
     livingCost,
     contribution,
     anualPercentageYield,
     yearOverYearInflation,
   } = config;
+
+  // `startOffset` feeds `new Array(startOffset)` below. A negative offset
+  // (an empty history sequence reaches here as `sequence.length - 1 = -1`)
+  // throws `RangeError: Invalid array length` mid-render — clamp so the
+  // throw is structurally impossible and the chart degrades instead.
+  const startOffset = Math.max(0, rawStartOffset);
 
   const monthlyPercentageYield = Math.pow(anualPercentageYield, 1 / 12);
   const monthOverMonthInflation = Math.pow(yearOverYearInflation, 1 / 12);

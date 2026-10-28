@@ -3,7 +3,7 @@ import { restoreLeaves } from "test-helpers";
 import { ItemStatus } from "common";
 
 // `mock.module` is process-global in Bun, and `restoreLeaves` only restores the
-// `pg` / `bcrypt` leaves. So we capture the real `server` barrel + the deep
+// driver / `password` leaves. So we capture the real `server` barrel + the deep
 // `alarm` / `logger` modules up front, spread their other exports into the mock
 // factories, and restore them in `afterAll` (the schedule.test.ts pattern) so
 // our stubs don't leak into sibling route tests run in the same process.

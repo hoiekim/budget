@@ -19,3 +19,4 @@ export * from "./record-category-rejection";
 export * from "./realtime";
 export * from "./security-headers";
 export * from "./request-limits";
+export * from "./password";

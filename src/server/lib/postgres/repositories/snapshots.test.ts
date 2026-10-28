@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves, updateColumnsOf } from "test-helpers";
+import { createFakeSql, restoreLeaves, updateColumnsOf } from "test-helpers";
 import * as realSecurities from "./securities";
 
 // Snapshot real `./securities` exports before partially overriding the
@@ -8,9 +8,9 @@ import * as realSecurities from "./securities";
 // real-export spread.
 const realSecuritiesSnap = { ...realSecurities };
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const mockSearchSecuritiesById = mock(async (_ids: string[]) => [] as unknown[]);
 mock.module("./securities", () => ({
@@ -19,6 +19,7 @@ mock.module("./securities", () => ({
 }));
 
 const { searchSnapshots, upsertSnapshots, upsertHoldingSnapshots } = await import("./snapshots");
+const { STREAM_BATCH_SIZE } = await import("../models");
 
 afterAll(() => {
   mock.module("./securities", () => realSecuritiesSnap);
@@ -26,6 +27,12 @@ afterAll(() => {
 });
 
 const testUser = { user_id: "usr-1", username: "hoie" };
+
+const collect = async <T,>(batches: AsyncIterable<T[]>): Promise<T[]> => {
+  const all: T[] = [];
+  for await (const batch of batches) all.push(...batch);
+  return all;
+};
 
 function makeBaseRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -76,87 +83,87 @@ function makeSecurityRow(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
   mockSearchSecuritiesById.mockReset();
   mockSearchSecuritiesById.mockImplementation(async () => []);
 });
 
 describe("searchSnapshots", () => {
   test("runs both queries and merges results on the unfiltered global fetch", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [makeAccountRow()], rowCount: 1 }))
       .mockImplementationOnce(async () => ({ rows: [makeSecurityRow()], rowCount: 1 }));
 
-    const result = await searchSnapshots(testUser, { startDate: "2026-01-01" });
+    const result = await collect(searchSnapshots(testUser, { startDate: "2026-01-01" }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(2);
 
-    const userScopedSql = mockQuery.mock.calls[0][0] as string;
+    const userScopedSql = mockUnsafe.mock.calls[0][0] as string;
     expect(userScopedSql).toContain("user_id = $1");
-    expect(mockQuery.mock.calls[0][1]).toEqual(["usr-1", "2026-01-01"]);
+    expect(mockUnsafe.mock.calls[0][1]).toEqual(["usr-1", "2026-01-01", STREAM_BATCH_SIZE]);
 
-    const securitySql = mockQuery.mock.calls[1][0] as string;
+    const securitySql = mockUnsafe.mock.calls[1][0] as string;
     expect(securitySql).not.toContain("user_id = ");
     expect(securitySql).toContain("snapshot_type = $1");
-    expect(mockQuery.mock.calls[1][1]).toEqual(["security", "2026-01-01"]);
+    expect(mockUnsafe.mock.calls[1][1]).toEqual(["security", "2026-01-01", STREAM_BATCH_SIZE]);
   });
 
   test("skips the security query when narrowing to a specific account_id (still runs the holding_account_id query)", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({
         rows: [makeAccountRow({ account_id: "acc-7" })],
         rowCount: 1,
       }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { account_id: "acc-7" });
+    await collect(searchSnapshots(testUser, { account_id: "acc-7" }));
 
     // 1 = account_id-scoped, 2 = holding_account_id-scoped.
     // No 3rd call for global security.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    expect(mockQuery.mock.calls[0][1]).toContain("acc-7");
-    const secondSql = mockQuery.mock.calls[1][0] as string;
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe.mock.calls[0][1]).toContain("acc-7");
+    const secondSql = mockUnsafe.mock.calls[1][0] as string;
     expect(secondSql).toContain("holding_account_id = ");
   });
 
   test("skips the security query when caller asks for snapshot_type='holding'", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { snapshot_type: "holding" });
+    await collect(searchSnapshots(testUser, { snapshot_type: "holding" }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const sql = mockQuery.mock.calls[0][0] as string;
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const sql = mockUnsafe.mock.calls[0][0] as string;
     expect(sql).toContain("snapshot_type = ");
-    expect(mockQuery.mock.calls[0][1]).toContain("holding");
+    expect(mockUnsafe.mock.calls[0][1]).toContain("holding");
   });
 
   test("skips the security query when caller passes a non-empty account_ids list (still runs the holding_account_id query)", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { account_ids: ["acc-1", "acc-2"] });
+    await collect(searchSnapshots(testUser, { account_ids: ["acc-1", "acc-2"] }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const secondSql = mockQuery.mock.calls[1][0] as string;
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const secondSql = mockUnsafe.mock.calls[1][0] as string;
     expect(secondSql).toContain("holding_account_id IN");
   });
 
   test("runs the security query when caller explicitly asks for snapshot_type='security'", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [makeSecurityRow()], rowCount: 1 }));
 
-    const result = await searchSnapshots(testUser, { snapshot_type: "security" });
+    const result = await collect(searchSnapshots(testUser, { snapshot_type: "security" }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({ security: { security_id: "sec-aapl" } });
   });
 
   test("enriches security snapshots with ticker_symbol and name from the securities table", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({
         rows: [makeSecurityRow({ security_id: "sec-aapl", close_price: 195.5 })],
@@ -173,7 +180,7 @@ describe("searchSnapshots", () => {
       },
     ]);
 
-    const result = await searchSnapshots(testUser, { startDate: "2026-01-01" });
+    const result = await collect(searchSnapshots(testUser, { startDate: "2026-01-01" }));
 
     expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(1);
     expect(mockSearchSecuritiesById.mock.calls[0][0]).toEqual(["sec-aapl"]);
@@ -190,14 +197,14 @@ describe("searchSnapshots", () => {
   });
 
   test("leaves security snapshot fields null when the securities table has no matching row", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({
         rows: [makeSecurityRow({ security_id: "sec-orphan" })],
         rowCount: 1,
       }));
 
-    const result = await searchSnapshots(testUser, { startDate: "2026-01-01" });
+    const result = await collect(searchSnapshots(testUser, { startDate: "2026-01-01" }));
 
     expect(result).toHaveLength(1);
     const snap = result[0] as { security: { security_id: string; ticker_symbol?: string | null } };
@@ -205,8 +212,40 @@ describe("searchSnapshots", () => {
     expect(snap.security.ticker_symbol ?? null).toBeNull();
   });
 
+  test("enriches security snapshots across batches, looking each security up once", async () => {
+    const firstBatch = Array.from({ length: STREAM_BATCH_SIZE }, (_, i) =>
+      makeSecurityRow({ snapshot_id: `snap-${String(i).padStart(4, "0")}`, security_id: "sec-one" }),
+    );
+    mockUnsafe
+      .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
+      .mockImplementationOnce(async () => ({ rows: firstBatch, rowCount: firstBatch.length }))
+      .mockImplementationOnce(async () => ({
+        rows: [
+          makeSecurityRow({ snapshot_id: "snap-9998", security_id: "sec-one" }),
+          makeSecurityRow({ snapshot_id: "snap-9999", security_id: "sec-two" }),
+        ],
+        rowCount: 2,
+      }));
+    mockSearchSecuritiesById.mockImplementation(async (ids: string[]) =>
+      ids.map((security_id) => ({ security_id, ticker_symbol: security_id.slice(4).toUpperCase() })),
+    );
+
+    const result = await collect(searchSnapshots(testUser, {}));
+
+    expect(result).toHaveLength(STREAM_BATCH_SIZE + 2);
+    expect(mockSearchSecuritiesById.mock.calls.map(([ids]) => ids)).toEqual([["sec-one"], ["sec-two"]]);
+    const tickers = result.map((s) => (s as { security: { ticker_symbol?: string } }).security.ticker_symbol);
+    expect(new Set(tickers.slice(0, -1))).toEqual(new Set(["ONE"]));
+    expect(tickers.at(-1)).toBe("TWO");
+    expect((mockUnsafe.mock.calls[2] as [string, unknown[]])[1]).toEqual([
+      "security",
+      `snap-${String(STREAM_BATCH_SIZE - 1).padStart(4, "0")}`,
+      STREAM_BATCH_SIZE,
+    ]);
+  });
+
   test("deduplicates security_ids before calling searchSecuritiesById", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({
         rows: [
@@ -229,7 +268,7 @@ describe("searchSnapshots", () => {
         rowCount: 3,
       }));
 
-    await searchSnapshots(testUser, { startDate: "2026-01-01" });
+    await collect(searchSnapshots(testUser, { startDate: "2026-01-01" }));
 
     expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(1);
     const ids = mockSearchSecuritiesById.mock.calls[0][0] as string[];
@@ -237,25 +276,25 @@ describe("searchSnapshots", () => {
   });
 
   test("does not call searchSecuritiesById when there are no security snapshots", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { startDate: "2026-01-01" });
+    await collect(searchSnapshots(testUser, { startDate: "2026-01-01" }));
 
     expect(mockSearchSecuritiesById).toHaveBeenCalledTimes(0);
   });
 
   test("propagates date range to both queries", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { startDate: "2026-01-01", endDate: "2026-06-30" });
+    await collect(searchSnapshots(testUser, { startDate: "2026-01-01", endDate: "2026-06-30" }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const userValues = mockQuery.mock.calls[0][1] as unknown[];
-    const securityValues = mockQuery.mock.calls[1][1] as unknown[];
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const userValues = mockUnsafe.mock.calls[0][1] as unknown[];
+    const securityValues = mockUnsafe.mock.calls[1][1] as unknown[];
     expect(userValues).toContain("2026-01-01");
     expect(userValues).toContain("2026-06-30");
     expect(securityValues).toContain("2026-01-01");
@@ -263,15 +302,15 @@ describe("searchSnapshots", () => {
   });
 
   test("passes security_id filter through to the global security query", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { security_id: "sec-aapl" });
+    await collect(searchSnapshots(testUser, { security_id: "sec-aapl" }));
 
-    const securitySql = mockQuery.mock.calls[1][0] as string;
+    const securitySql = mockUnsafe.mock.calls[1][0] as string;
     expect(securitySql).toContain("security_id = ");
-    expect(mockQuery.mock.calls[1][1]).toContain("sec-aapl");
+    expect(mockUnsafe.mock.calls[1][1]).toContain("sec-aapl");
   });
 });
 
@@ -281,7 +320,7 @@ describe("searchSnapshots — holding_account_id fallback", () => {
     // NULL so this never returns holding rows).
     // Second call: holding_account_id-scoped — returns the brokerage's holding
     // snapshots.
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({
         rows: [
@@ -299,12 +338,12 @@ describe("searchSnapshots — holding_account_id fallback", () => {
         rowCount: 1,
       }));
 
-    const result = await searchSnapshots(testUser, { account_id: "acc-brokerage" });
+    const result = await collect(searchSnapshots(testUser, { account_id: "acc-brokerage" }));
 
     // Two queries — the second is the new holding_account_id branch.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const holdingSql = mockQuery.mock.calls[1][0] as string;
-    const holdingValues = mockQuery.mock.calls[1][1] as unknown[];
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const holdingSql = mockUnsafe.mock.calls[1][0] as string;
+    const holdingValues = mockUnsafe.mock.calls[1][1] as unknown[];
     expect(holdingSql).toContain("holding_account_id = ");
     expect(holdingSql).toContain("snapshot_type = ");
     expect(holdingValues).toContain("acc-brokerage");
@@ -322,80 +361,80 @@ describe("searchSnapshots — holding_account_id fallback", () => {
   });
 
   test("when account_ids[] is set, also queries holdings via holding_account_id IN (...)", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { account_ids: ["acc-a", "acc-b"] });
+    await collect(searchSnapshots(testUser, { account_ids: ["acc-a", "acc-b"] }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const holdingSql = mockQuery.mock.calls[1][0] as string;
-    const holdingValues = mockQuery.mock.calls[1][1] as unknown[];
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const holdingSql = mockUnsafe.mock.calls[1][0] as string;
+    const holdingValues = mockUnsafe.mock.calls[1][1] as unknown[];
     expect(holdingSql).toContain("holding_account_id IN");
     expect(holdingValues).toContain("acc-a");
     expect(holdingValues).toContain("acc-b");
   });
 
   test("when snapshot_type is explicitly 'holding' and account_id is set, the holding_account_id query runs", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { snapshot_type: "holding", account_id: "acc-x" });
+    await collect(searchSnapshots(testUser, { snapshot_type: "holding", account_id: "acc-x" }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const holdingSql = mockQuery.mock.calls[1][0] as string;
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const holdingSql = mockUnsafe.mock.calls[1][0] as string;
     expect(holdingSql).toContain("holding_account_id = ");
   });
 
   test("when snapshot_type is 'account_balance' and account_id is set, the holding query is skipped", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { snapshot_type: "account_balance", account_id: "acc-x" });
+    await collect(searchSnapshots(testUser, { snapshot_type: "account_balance", account_id: "acc-x" }));
 
     // Only the user-scoped query runs. No holding branch, no security branch.
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
   test("when no account narrowing is passed, the holding_account_id branch is skipped", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, {});
+    await collect(searchSnapshots(testUser, {}));
 
     // 1 = user-scoped, 2 = global security. No holding-by-account query.
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const secondSql = mockQuery.mock.calls[1][0] as string;
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const secondSql = mockUnsafe.mock.calls[1][0] as string;
     expect(secondSql).toContain("snapshot_type = ");
-    expect(mockQuery.mock.calls[1][1]).toContain("security");
+    expect(mockUnsafe.mock.calls[1][1]).toContain("security");
   });
 
   test("holding-by-account result is user-scoped to prevent cross-user leakage", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { account_id: "acc-x" });
+    await collect(searchSnapshots(testUser, { account_id: "acc-x" }));
 
-    const holdingSql = mockQuery.mock.calls[1][0] as string;
-    const holdingValues = mockQuery.mock.calls[1][1] as unknown[];
+    const holdingSql = mockUnsafe.mock.calls[1][0] as string;
+    const holdingValues = mockUnsafe.mock.calls[1][1] as unknown[];
     expect(holdingSql).toContain("user_id = ");
     expect(holdingValues).toContain("usr-1");
   });
 
   test("date range is propagated to the holding_account_id query", async () => {
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, {
+    await collect(searchSnapshots(testUser, {
       account_id: "acc-x",
       startDate: "2026-01-01",
       endDate: "2026-06-30",
-    });
+    }));
 
-    const holdingValues = mockQuery.mock.calls[1][1] as unknown[];
+    const holdingValues = mockUnsafe.mock.calls[1][1] as unknown[];
     expect(holdingValues).toContain("2026-01-01");
     expect(holdingValues).toContain("2026-06-30");
   });
@@ -404,15 +443,15 @@ describe("searchSnapshots — holding_account_id fallback", () => {
     // Holding rows store the security in `holding_security_id`; the
     // `security_id` column is NULL for them. Filtering the holding query
     // by `security_id =` would always match zero rows.
-    mockQuery
+    mockUnsafe
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }))
       .mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
 
-    await searchSnapshots(testUser, { account_id: "acc-x", security_id: "sec-voo" });
+    await collect(searchSnapshots(testUser, { account_id: "acc-x", security_id: "sec-voo" }));
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
-    const holdingSql = mockQuery.mock.calls[1][0] as string;
-    const holdingValues = mockQuery.mock.calls[1][1] as unknown[];
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    const holdingSql = mockUnsafe.mock.calls[1][0] as string;
+    const holdingValues = mockUnsafe.mock.calls[1][1] as unknown[];
     expect(holdingSql).toContain("holding_security_id = ");
     // Defensive: make sure the holding query does NOT filter on the
     // wrong column (the bug this test guards against).
@@ -425,7 +464,7 @@ describe("searchSnapshots — holding_account_id fallback", () => {
 
 describe("upsertHoldingSnapshots conflict", () => {
   const upsertOne = async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [{ snapshot_id: "holding-acct-A-sec-1-20260701" }],
       rowCount: 1,
     }));
@@ -441,7 +480,7 @@ describe("upsertHoldingSnapshots conflict", () => {
         institution_value: 999,
       },
     ]);
-    return mockQuery.mock.calls[0][0] as string;
+    return mockUnsafe.mock.calls[0][0] as string;
   };
 
   test("never reassigns the row owner, the account or the snapshot type", async () => {
@@ -475,7 +514,7 @@ describe("upsertHoldingSnapshots conflict", () => {
 
 describe("upsertSnapshots account_balance conflict", () => {
   const upsertAccountSnapshot = async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [{ snapshot_id: "acct-A-20260701" }],
       rowCount: 1,
     }));
@@ -489,7 +528,7 @@ describe("upsertSnapshots account_balance conflict", () => {
         },
       } as unknown as Parameters<typeof upsertSnapshots>[0][number],
     ]);
-    return mockQuery.mock.calls[0][0] as string;
+    return mockUnsafe.mock.calls[0][0] as string;
   };
 
   test("never reassigns the row owner or the account", async () => {
@@ -521,7 +560,7 @@ describe("upsertSnapshots account_balance conflict", () => {
   });
 
   test("rewrites a balance the caller did supply", async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [{ snapshot_id: "acct-A-20260701" }],
       rowCount: 1,
     }));
@@ -535,7 +574,7 @@ describe("upsertSnapshots account_balance conflict", () => {
         },
       } as unknown as Parameters<typeof upsertSnapshots>[0][number],
     ]);
-    expect(updateColumnsOf(mockQuery.mock.calls[0][0] as string)).toContain("balances_limit");
+    expect(updateColumnsOf(mockUnsafe.mock.calls[0][0] as string)).toContain("balances_limit");
   });
 
   test("inserts the owner on a first write", async () => {
@@ -546,7 +585,7 @@ describe("upsertSnapshots account_balance conflict", () => {
 
 describe("upsertSnapshots holding conflict", () => {
   const upsertHoldingBranch = async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [{ snapshot_id: "holding-acct-A-sec-1-20260701" }],
       rowCount: 1,
     }));
@@ -564,7 +603,7 @@ describe("upsertSnapshots holding conflict", () => {
         },
       } as unknown as Parameters<typeof upsertSnapshots>[0][number],
     ]);
-    return mockQuery.mock.calls[0][0] as string;
+    return mockUnsafe.mock.calls[0][0] as string;
   };
 
   test("never reassigns the row owner, the account or the snapshot type", async () => {

@@ -20,6 +20,8 @@ import {
   emitToUser,
   mutationEmitDomain,
   mutationSideEffectDomains,
+  JsonStream,
+  sendAlarm,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -247,6 +249,9 @@ process.on("uncaughtException", async (error) => {
   process.exit(1);
 });
 
+// No logDroppedConnections call: Bun.sql has no attach-after-construction
+// hook, so dropped-connection logging is wired into the client's own
+// `onclose` at construction (see postgres/client.ts).
 await initializePostgres();
 startRateLimitCleanup();
 scheduledSync();
@@ -374,7 +379,7 @@ async function handleApiRequest(
 
   // Route dispatch
   const mutableRes = new MutableResponse();
-  let result: ApiResponse<unknown> | Response | null = null;
+  let result: ApiResponse<unknown> | Response | JsonStream | null = null;
   let routeHandled = false;
 
   if (matchedRoute) {
@@ -392,6 +397,20 @@ async function handleApiRequest(
   // raw-Response route is not a mutation surface, so skip the emit path too.
   if (result instanceof Response) {
     return result;
+  }
+
+  if (result instanceof JsonStream) {
+    const body = result.toReadableStream((error) => {
+      logger.error("Streamed response failed", { method: request.method, path: apiPath }, error);
+      sendAlarm(
+        `Route Error: ${request.method} ${apiPath}`,
+        `**Error:** ${error instanceof Error ? error.message : String(error)}`,
+      ).catch(() => undefined);
+    });
+    return new Response(body, {
+      status: mutableRes.statusCode,
+      headers: await finalResponseHeaders(session, "application/json"),
+    });
   }
 
   // Real-time collaboration signal: a successful mutation broadcasts a
@@ -414,22 +433,34 @@ async function handleApiRequest(
     mutableRes.json(result);
   }
 
-  // Persist session and get Set-Cookie header
-  const setCookieValue = await persistSession(session, isProduction);
+  return new Response(mutableRes.getBody(), {
+    status: mutableRes.statusCode,
+    headers: await finalResponseHeaders(session, mutableRes.getContentType()),
+  });
+}
 
-  // Assemble final response headers
+/** Persists the session and assembles the headers every route response carries. */
+async function finalResponseHeaders(
+  session: Session,
+  contentType: string | null,
+): Promise<Record<string, string>> {
+  // Best-effort: the route already produced its response, and a dead
+  // database must not replace it with the runtime's fallback error page.
+  // If the persist fails, the session simply isn't refreshed this request —
+  // the client keeps its existing cookie and the next request persists again.
+  let setCookieValue: string | null = null;
+  try {
+    setCookieValue = await persistSession(session, isProduction);
+  } catch (error) {
+    logger.error("Session persist failed", {}, error);
+  }
   const responseHeaders: Record<string, string> = { ...SECURITY_HEADERS };
   if (isProduction) {
     responseHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
   }
   if (setCookieValue) responseHeaders["Set-Cookie"] = setCookieValue;
-  const ct = mutableRes.getContentType();
-  if (ct) responseHeaders["Content-Type"] = ct;
-
-  return new Response(mutableRes.getBody(), {
-    status: mutableRes.statusCode,
-    headers: responseHeaders,
-  });
+  if (contentType) responseHeaders["Content-Type"] = contentType;
+  return responseHeaders;
 }
 
 const server = Bun.serve({

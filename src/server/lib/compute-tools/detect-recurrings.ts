@@ -1,6 +1,6 @@
 import { RecurringCadence } from "common";
 import { pool, logger, usersTable, labelConfirmedRecurring } from "server";
-import type { PoolClient } from "pg";
+import type { SqlClient } from "../postgres/client";
 import {
   recurringsTable,
   QueryExecutor,
@@ -604,7 +604,7 @@ export const runRecurringDetection = async (): Promise<void> => {
     const users = await usersTable.query({});
     for (const user of users) {
       const userId = user.user_id;
-      let client: PoolClient | undefined;
+      let client: SqlClient | undefined;
       try {
         client = await pool.connect();
         await client.query("BEGIN");

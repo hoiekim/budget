@@ -2,18 +2,18 @@
 // Originally lived in `holding-snapshot-sibling-routes.test.ts` together
 // `get-holding-snapshots.test.bundle.ts`.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { deleteHoldingSnapshotRoute } = await import("./delete-holding-snapshot");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -82,7 +82,7 @@ const snapshotRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const findUpdateCall = (matcher: RegExp): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (matcher.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -97,7 +97,7 @@ describe("DELETE /api/snapshots/holding", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects requests missing the id query parameter", async () => {
@@ -105,13 +105,13 @@ describe("DELETE /api/snapshots/holding", () => {
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/id/i);
     // No SELECT, no UPDATE should fire when the param is invalid.
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("refuses to delete a snapshot owned by another user", async () => {
     // getHoldingSnapshots SELECT returns user u-1's snap-1 only — snap-other
     // is not among them, so ownership check fails before softDelete.
-    mockQuery.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
 
     const result = await deleteHoldingSnapshotRoute.execute(
       makeReq({ id: "snap-other" }),
@@ -126,9 +126,9 @@ describe("DELETE /api/snapshots/holding", () => {
 
   test("deletes a snapshot the user owns and reports success", async () => {
     // 1: ownership SELECT returns the snapshot
-    mockQuery.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
     // 2: softDelete's UPDATE
-    mockQuery.mockResolvedValueOnce({ rows: [{ snapshot_id: "snap-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ snapshot_id: "snap-1" }], rowCount: 1 });
 
     const result = await deleteHoldingSnapshotRoute.execute(makeReq({ id: "snap-1" }), fakeRes());
 
@@ -142,8 +142,8 @@ describe("DELETE /api/snapshots/holding", () => {
   });
 
   test("surfaces softDelete failure as a 500-style error response", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
-    mockQuery.mockRejectedValueOnce(new Error("connection lost"));
+    mockUnsafe.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
+    mockUnsafe.mockRejectedValueOnce(new Error("connection lost"));
 
     const result = await deleteHoldingSnapshotRoute.execute(
       makeReq({ id: "snap-1" }),

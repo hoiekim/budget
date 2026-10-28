@@ -1,15 +1,15 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
 const { runRecurringDetection } = await import("./detect-recurrings");
 
 afterAll(restoreLeaves);
 
-beforeEach(resetQueryMocks);
+beforeEach(resetSqlMocks);
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -116,12 +116,12 @@ const setupSoftDeletedNetflix = (
     }
     return { rows: [], rowCount: 0 };
   };
-  mockQuery.mockImplementation(respond);
-  mockClientQuery.mockImplementation(respond);
+  mockUnsafe.mockImplementation(respond);
+  mockReservedUnsafe.mockImplementation(respond);
 };
 
 const allCalls = () =>
-  [...mockQuery.mock.calls, ...mockClientQuery.mock.calls].map((c) => ({
+  [...mockUnsafe.mock.calls, ...mockReservedUnsafe.mock.calls].map((c) => ({
     sql: String(c[0]).replace(/\s+/g, " ").trim(),
     values: (c[1] ?? []) as unknown[],
   }));
@@ -226,7 +226,7 @@ describe("runRecurringDetection", () => {
 
     await runRecurringDetection();
 
-    const onClient = mockClientQuery.mock.calls.map((c) => String(c[0]).replace(/\s+/g, " ").trim());
+    const onClient = mockReservedUnsafe.mock.calls.map((c) => String(c[0]).replace(/\s+/g, " ").trim());
     const cleanup = onClient.findIndex((s) => /^UPDATE recurrings r SET is_deleted = TRUE/i.test(s));
     const lookup = onClient.findIndex((s) => /^SELECT .* FROM recurrings/i.test(s) && !LABEL_LOOKUP.test(s));
     expect(cleanup).toBeGreaterThanOrEqual(0);

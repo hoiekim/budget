@@ -1,6 +1,6 @@
 import { TRANSFER_DATE_WINDOW_DAYS } from "common";
 import { pool, logger, usersTable } from "server";
-import type { PoolClient } from "pg";
+import type { SqlClient } from "../postgres/client";
 import { canonicalizePairIds, QueryExecutor } from "../postgres/models";
 
 const BASE_CONFIDENCE = 0.7;
@@ -210,7 +210,7 @@ export const runTransferDetection = async (): Promise<void> => {
       // reads under READ COMMITTED and both INSERT pairs involving A — a
       // transaction in two simultaneous active pairs, violating the
       // one-active-pair-per-transaction invariant.
-      let client: PoolClient | undefined;
+      let client: SqlClient | undefined;
       try {
         client = await pool.connect();
         await client.query("BEGIN");

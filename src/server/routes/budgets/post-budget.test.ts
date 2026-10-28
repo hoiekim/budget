@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 type Row = Record<string, unknown>;
 
@@ -8,7 +8,7 @@ const db = {
   updateError: null as Error | null,
 };
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _values?: unknown[]) => {
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, _values?: unknown[]) => {
   const rows = (() => {
     if (/^\s*UPDATE\s+budgets\b/i.test(sql)) {
       if (db.updateError) throw db.updateError;
@@ -19,10 +19,10 @@ const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _val
   return { rows: rows as unknown[], rowCount: rows.length as number | null };
 });
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // `mock.module` is process-global in Bun and `restoreLeaves` only restores the
-// `pg` / `bcrypt` leaves, so spread the real module rather than replacing it —
+// driver / `password` leaves, so spread the real module rather than replacing it —
 // `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
 // (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
 // exercise the real `sendAlarm`.
@@ -39,7 +39,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  clearQueryMocks();
+  clearSqlMocks();
   mockSendAlarm.mockClear();
   db.updateReturns = [];
   db.updateError = null;
@@ -88,7 +88,7 @@ describe("post-budget typed body fields", () => {
 
     expect(result?.status).toBe("failed");
     expect((result as { message?: string })?.message).toBe(expectedError);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(mockSendAlarm).not.toHaveBeenCalled();
   };
 
@@ -102,7 +102,7 @@ describe("post-budget typed body fields", () => {
 
   test("a non-date roll_over_start_date is refused before it reaches the DATE column", async () => {
     for (const value of ["hello", "", "2026-02-30"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       mockSendAlarm.mockClear();
       await rejects(
         { budget_id: UUID, roll_over_start_date: value },
@@ -117,7 +117,7 @@ describe("post-budget typed body fields", () => {
 
   test("a non-array capacities is refused before it lands in the JSONB column", async () => {
     for (const capacities of ["abc", 5, { a: 1 }, null]) {
-      clearQueryMocks();
+      clearSqlMocks();
       mockSendAlarm.mockClear();
       await rejects({ budget_id: UUID, capacities }, "Field capacities must be an array");
     }
@@ -137,7 +137,7 @@ describe("post-budget typed body fields", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("success");
-    expect(mockQuery).toHaveBeenCalled();
+    expect(mockUnsafe).toHaveBeenCalled();
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 });

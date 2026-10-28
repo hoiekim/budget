@@ -1,6 +1,5 @@
-import { PoolClient } from "pg";
 import { isUndefined } from "common";
-import { pool } from "../client";
+import { pool, type SqlClient, type SqlPool } from "../client";
 import {
   buildSelectWithFilters,
   buildInsert,
@@ -15,7 +14,16 @@ import {
 } from "../database";
 
 /** Query executor - either pool or a transaction client */
-export type QueryExecutor = typeof pool | PoolClient;
+export type QueryExecutor = SqlPool | SqlClient;
+
+/** Rows per database read when a result is streamed rather than returned whole. */
+export const STREAM_BATCH_SIZE = 500;
+
+export async function* toJSONBatches<TJSON>(
+  batches: AsyncIterable<{ toJSON(): TJSON }[]>,
+): AsyncGenerator<TJSON[]> {
+  for await (const models of batches) yield models.map((m) => m.toJSON());
+}
 
 export class ModelValidationError extends Error {
   public readonly errors: string[];
@@ -136,12 +144,46 @@ export abstract class Table<
       primaryKey: options.primaryKey,
       inFilters: options.inFilters,
       dateRange: options.dateRange,
+      after: options.after,
       orderBy: options.orderBy,
       limit: options.limit,
       offset: options.offset,
     });
     const result = await (client ?? pool).query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
+  }
+
+  /**
+   * `query` in primary-key order, `batchSize` rows at a time, so a caller
+   * streaming a large result never holds more than one batch.
+   */
+  async *queryInBatches(
+    filters: Record<string, ParamValue | unknown>,
+    options: Omit<SearchFilters, "filters" | "after" | "orderBy" | "limit" | "offset">,
+    batchSize = STREAM_BATCH_SIZE,
+  ): AsyncGenerator<TModel[]> {
+    this._assertSimplePrimaryKey("queryInBatches");
+    let after: SearchFilters["after"];
+    while (true) {
+      const { sql, values } = buildSelectWithFilters(this.name, "*", {
+        ...options,
+        filters,
+        excludeDeleted: options.excludeDeleted ?? this.supportsSoftDelete,
+        after,
+        orderBy: this.primaryKey,
+        limit: batchSize,
+      });
+      const { rows } = await pool.query(sql, values);
+      if (rows.length === 0) return;
+      yield rows.map((row: unknown) => new this.ModelClass(row));
+      if (rows.length < batchSize) return;
+      // The keyset value comes back from the database for the PK column;
+      // pg's any-rows let it flow untyped, the Record rows need the cast.
+      after = {
+        column: this.primaryKey,
+        value: rows[rows.length - 1][this.primaryKey] as ParamValue,
+      };
+    }
   }
 
   async queryOne(filters: Record<string, ParamValue | unknown>): Promise<TModel | null> {

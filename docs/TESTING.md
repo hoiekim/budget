@@ -14,9 +14,9 @@ runs once before any test file and:
 1. Stubs `globalThis.window = {}` so client-side env detection resolves to
    "unknown" instead of "server" — without it, `Dictionary.set()` no-ops and
    client-side calc tests fail.
-2. Captures the REAL exports of `pg` and `bcrypt` on `globalThis.__REAL_*`
-   so `restoreLeaves()` can re-mock leaf deps back to a known baseline
-   between test files.
+2. Captures the REAL exports of the SQL driver and the password wrapper on
+   `globalThis.__REAL_*` so `restoreLeaves()` can re-mock leaf deps back
+   to a known baseline between test files.
 
 ## Writing Tests
 
@@ -30,42 +30,41 @@ describe("featureName", () => {
 });
 ```
 
-### Mocking `pg` / `bcrypt` (the per-file isolation pattern)
+### Mocking the SQL driver / password wrapper (the per-file isolation pattern)
 
 `bun:test`'s `mock.module(...)` is **process-global** — once any test file
-mocks `"pg"` with a FakePool, every subsequent file in the run sees that
-mock. To keep the pool per-file, two things conspire:
+mocks the SQL driver with a FakeSQL, every subsequent file in the run sees
+that mock. To keep the pool per-file, two things conspire:
 
-1. `src/server/lib/postgres/client.ts` exports a **lazy Proxy** Pool. The
-   actual `new Pool(config)` is deferred to first property access, and the
-   `Pool` reference is a live ESM binding to `pg.Pool` — so when a test
-   mocks `pg`, the proxy's first-access instantiates the test's FakePool.
-2. `scripts/test-helpers.ts#restoreLeaves` re-mocks `pg` and `bcrypt` back
-   to the preload snapshots and calls `resetPool()` to drop the cached
+1. `src/server/lib/postgres/client.ts` constructs its `SQL` client lazily,
+   on first use, and the `SQL` reference is a live ESM binding to
+   `./sql-driver`'s export — so when a test mocks the driver, the first
+   pool use instantiates the test's FakeSQL. Production code imports `SQL`
+   only through `./sql-driver` because `mock.module(...)` cannot override
+   the `"bun"` builtin itself.
+2. `scripts/test-helpers.ts#restoreLeaves` re-mocks the driver and the password wrapper
+   back to the preload snapshots and calls `resetPool()` to drop the cached
    instance, so the NEXT file's first pool use rebuilds against its own
    mock.
 
 ```typescript
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { describe, test, expect, beforeEach, afterAll } from "bun:test";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const mockQuery = mock(async () => ({ rows: [], rowCount: 0 }));
-class FakePool {
-  query = mockQuery;
-  end = async () => {};
-  connect = async () => ({ query: mockQuery, release: () => {} });
-}
-mock.module("pg", () => ({
-  Pool: FakePool,
-  types: { setTypeParser: () => {} },
-  default: { Pool: FakePool, types: { setTypeParser: () => {} } },
-}));
+const { driver, mockUnsafe, mockReservedUnsafe } = createFakeSql();
+mock.module("./sql-driver", () => driver);
 
-// Dynamic-import AFTER the mock so the source resolves pg → FakePool.
+// Dynamic-import AFTER the mock so the source resolves the driver → FakeSQL.
 const { writeUser } = await import("./users");
 
 afterAll(restoreLeaves);
 ```
+
+`createFakeSql` scripts executor-level `{ rows, rowCount }` results; its
+`unsafe` translates those to the Bun-shaped arrays the production adapter
+converts, so the adapter's row mapping runs for real. Pool-level statements
+are asserted against `mockUnsafe`, reserved-connection statements against
+`mockReservedUnsafe`.
 
 ### Mocking sibling source modules (the snapshot-and-restore pattern)
 

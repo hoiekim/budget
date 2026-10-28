@@ -1,17 +1,17 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { getSquashedDateString, type JSONSecurity } from "common";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
 const { upsertSecuritiesWithSnapshots } = await import("./create-snapshots");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  clearQueryMocks();
+  clearSqlMocks();
 });
 
 const mkSecurity = (overrides: Partial<JSONSecurity>): JSONSecurity =>
@@ -39,7 +39,7 @@ describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics", () =
     expect(result.size).toBe(2);
     // No `SELECT ... FROM securities WHERE ticker_symbol` — the caller
     // must not look up an existing row and rewrite the incoming id.
-    const searchCalls = mockQuery.mock.calls.filter(([sql]) =>
+    const searchCalls = mockUnsafe.mock.calls.filter(([sql]) =>
       /SELECT[\s\S]*FROM securities[\s\S]*ticker_symbol/i.test(sql as string),
     );
     expect(searchCalls.length).toBe(0);
@@ -70,7 +70,7 @@ describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics", () =
   test("returns empty set when nothing to upsert", async () => {
     const result = await upsertSecuritiesWithSnapshots([]);
     expect(result.size).toBe(0);
-    expect(mockQuery.mock.calls.length).toBe(0);
+    expect(mockUnsafe.mock.calls.length).toBe(0);
   });
 
   test("returns the same security_id the caller passed in — never rewrites onto an existing row's id", async () => {
@@ -78,7 +78,7 @@ describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics", () =
     // function still ticker-searched — the collision-branch behavior would
     // rewrite the incoming id onto whatever this row's id is. The test
     // asserts we see the INCOMING id back, not this stale id.
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [{ security_id: "existing-old-id", ticker_symbol: "VOO", close_price_as_of: "2020-01-01" }],
       rowCount: 1,
     }));
@@ -92,7 +92,7 @@ describe("upsertSecuritiesWithSnapshots — identity-not-ticker semantics", () =
 
 describe("upsertSecuritiesWithSnapshots — price snapshot date", () => {
   const snapshotParams = () =>
-    mockQuery.mock.calls
+    mockUnsafe.mock.calls
       .filter(([sql]) => /INSERT INTO snapshots/i.test(sql as string))
       .flatMap(([, params]) => (params ?? []) as unknown[]);
   const today = getSquashedDateString();

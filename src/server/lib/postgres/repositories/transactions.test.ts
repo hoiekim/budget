@@ -1,13 +1,13 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { TransactionPaymentChannelEnum } from "plaid";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const {
-  getTransactions,
+  searchTransactions,
   getTransaction,
   searchTransactionsById,
   searchTransactionsByAccountId,
@@ -48,78 +48,99 @@ function makeTxRow(overrides: Record<string, unknown> = {}) {
 const testUser = { user_id: "usr-1", username: "hoie" };
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
-describe("getTransactions", () => {
-  test("returns empty array when no transactions", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    const result = await getTransactions(testUser);
-    expect(result).toEqual([]);
+const collect = async <T,>(batches: AsyncIterable<T[]>): Promise<T[]> => {
+  const all: T[] = [];
+  for await (const batch of batches) all.push(...batch);
+  return all;
+};
+
+const queryAt = (i: number) => mockUnsafe.mock.calls[i] as [string, unknown[]];
+
+describe("searchTransactions", () => {
+  const readBoth = async (...args: Parameters<typeof searchTransactions>) => {
+    const { transactions, investment_transactions } = searchTransactions(...args);
+    return { transactions: await collect(transactions), investments: await collect(investment_transactions) };
+  };
+
+  test("returns mapped JSON transactions with nested labels", async () => {
+    mockUnsafe
+      .mockResolvedValueOnce({
+        rows: [
+          makeTxRow({ transaction_id: "tx-1", label_budget_id: "bud-1", label_memo: "work lunch" }),
+          makeTxRow({ transaction_id: "tx-2" }),
+        ],
+        rowCount: 2,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const { transactions, investments } = await readBoth(testUser);
+
+    expect(transactions.map((t) => t.transaction_id)).toEqual(["tx-1", "tx-2"]);
+    expect(transactions[0].amount).toBe(5.5);
+    expect(transactions[0].label.budget_id).toBe("bud-1");
+    expect(transactions[0].label.memo).toBe("work lunch");
+    expect(investments).toEqual([]);
   });
 
-  test("returns mapped JSON transactions", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [makeTxRow()], rowCount: 1 });
-    const result = await getTransactions(testUser);
-    expect(result).toHaveLength(1);
-    expect(result[0].transaction_id).toBe("tx-1");
-    expect(result[0].account_id).toBe("acc-1");
-    expect(result[0].name).toBe("Coffee Shop");
-    expect(result[0].amount).toBe(5.5);
+  test("scopes both the transactions and the investment transactions read to the user", async () => {
+    mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth({ user_id: "usr-99", username: "test" });
+
+    const [txSql, txValues] = queryAt(0);
+    const [invSql, invValues] = queryAt(1);
+    expect(txSql).toStartWith("SELECT * FROM transactions WHERE user_id = $1");
+    expect(invSql).toStartWith("SELECT * FROM investment_transactions WHERE user_id = $1");
+    expect(txValues[0]).toBe("usr-99");
+    expect(invValues[0]).toBe("usr-99");
   });
 
-  test("label fields are nested correctly", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [
-        makeTxRow({
-          label_budget_id: "bud-1",
-          label_category_id: "cat-1",
-          label_memo: "work lunch",
-          label_category_confidence: 0.95,
-        }),
-      ],
-      rowCount: 1,
-    });
-    const result = await getTransactions(testUser);
-    expect(result[0].label.budget_id).toBe("bud-1");
-    expect(result[0].label.category_id).toBe("cat-1");
-    expect(result[0].label.memo).toBe("work lunch");
-    expect(result[0].label.category_confidence).toBe(0.95);
+  test("a delta read bounds rows by when they changed, not by their date", async () => {
+    mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth(testUser, { startDate: "2026-10-01T00:00:00.000Z" });
+
+    for (const i of [0, 1]) {
+      const [sql, values] = queryAt(i);
+      expect(sql).toContain("updated >= $");
+      expect(sql).not.toMatch(/\bdate >= /);
+      expect(values).toContain("2026-10-01T00:00:00.000Z");
+    }
   });
 
-  test("passes user_id filter to query", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    await getTransactions({ user_id: "usr-99", username: "test" });
-    const sql = mockQuery.mock.calls[0][0] as string;
-    const values = mockQuery.mock.calls[0][1] as string[];
-    expect(sql).toContain("transactions");
-    expect(values).toContain("usr-99");
+  test("soft-deleted rows are included only when asked for, as tombstones", async () => {
+    mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth(testUser, { includeDeleted: true });
+    await readBoth(testUser);
+
+    expect(queryAt(0)[0]).not.toContain("is_deleted");
+    expect(queryAt(1)[0]).not.toContain("is_deleted");
+    expect(queryAt(2)[0]).toContain("is_deleted");
+    expect(queryAt(3)[0]).toContain("is_deleted");
   });
 
-  test("passes account_id filter when provided", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    await getTransactions(testUser, { account_id: "acc-specific" });
-    const values = mockQuery.mock.calls[0][1] as string[];
-    expect(values).toContain("acc-specific");
+  test("narrows both reads to an account when one is given", async () => {
+    mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await readBoth(testUser, { account_id: "acc-specific" });
+
+    expect(queryAt(0)[1]).toContain("acc-specific");
+    expect(queryAt(1)[1]).toContain("acc-specific");
   });
 
-  test("returns multiple transactions", async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
-      rowCount: 2,
-    });
-    const result = await getTransactions(testUser);
-    expect(result).toHaveLength(2);
-    expect(result.map((t: { transaction_id: string }) => t.transaction_id)).toEqual([
-      "tx-1",
-      "tx-2",
-    ]);
+  test("nothing is queried until the batches are read", () => {
+    searchTransactions(testUser);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
 describe("getTransaction", () => {
   test("returns transaction when found", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeTxRow({ transaction_id: "tx-abc" })],
       rowCount: 1,
     });
@@ -129,7 +150,7 @@ describe("getTransaction", () => {
   });
 
   test("returns null when not found", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await getTransaction(testUser, "nonexistent");
     expect(result).toBeNull();
   });
@@ -139,11 +160,11 @@ describe("searchTransactionsById", () => {
   test("returns empty array for empty input", async () => {
     const result = await searchTransactionsById(testUser, []);
     expect(result).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns transactions for given ids", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeTxRow({ transaction_id: "tx-1" }), makeTxRow({ transaction_id: "tx-2" })],
       rowCount: 2,
     });
@@ -152,9 +173,9 @@ describe("searchTransactionsById", () => {
   });
 
   test("includes all ids in query values", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await searchTransactionsById(testUser, ["tx-x", "tx-y", "tx-z"]);
-    const values = mockQuery.mock.calls[0][1] as string[];
+    const values = mockUnsafe.mock.calls[0][1] as string[];
     expect(values).toContain("tx-x");
     expect(values).toContain("tx-y");
     expect(values).toContain("tx-z");
@@ -164,31 +185,31 @@ describe("searchTransactionsById", () => {
 describe("searchTransactionsByAccountId", () => {
   test("defaults to active-only (excludeDeleted when includeDeleted unset)", async () => {
     // Two queries: one for transactions, one for investment_transactions.
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
     await searchTransactionsByAccountId(testUser, ["acc-1"]);
-    const txSql = mockQuery.mock.calls[0][0] as string;
-    const invSql = mockQuery.mock.calls[1][0] as string;
+    const txSql = mockUnsafe.mock.calls[0][0] as string;
+    const invSql = mockUnsafe.mock.calls[1][0] as string;
     expect(txSql).toContain("is_deleted IS NULL OR is_deleted = FALSE");
     expect(invSql).toContain("is_deleted IS NULL OR is_deleted = FALSE");
   });
 
   test("includeDeleted=true drops the soft-delete predicate on both arms", async () => {
-    mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
     await searchTransactionsByAccountId(testUser, ["acc-1"], undefined, {
       includeDeleted: true,
     });
-    const txSql = mockQuery.mock.calls[0][0] as string;
-    const invSql = mockQuery.mock.calls[1][0] as string;
+    const txSql = mockUnsafe.mock.calls[0][0] as string;
+    const invSql = mockUnsafe.mock.calls[1][0] as string;
     expect(txSql).not.toContain("is_deleted IS NULL OR is_deleted = FALSE");
     expect(invSql).not.toContain("is_deleted IS NULL OR is_deleted = FALSE");
   });
 
   test("returns is_deleted=true rows when includeDeleted=true", async () => {
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeTxRow({ transaction_id: "tx-deleted", is_deleted: true })],
       rowCount: 1,
     });
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await searchTransactionsByAccountId(testUser, ["acc-1"], undefined, {
       includeDeleted: true,
     });
@@ -200,7 +221,7 @@ describe("searchTransactionsByAccountId", () => {
   test("short-circuits on empty account_ids without touching the DB", async () => {
     const result = await searchTransactionsByAccountId(testUser, []);
     expect(result).toEqual({ transactions: [], investment_transactions: [] });
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 
@@ -208,11 +229,11 @@ describe("upsertTransactions", () => {
   test("returns empty array for empty input", async () => {
     const result = await upsertTransactions(testUser, []);
     expect(result).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("returns UpsertResult for each transaction", async () => {
-    mockQuery.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValue({ rows: [{ transaction_id: "tx-1" }], rowCount: 1 });
     const tx = {
       transaction_id: "tx-1",
       account_id: "acc-1",
@@ -230,7 +251,7 @@ describe("upsertTransactions", () => {
   });
 
   test("returns error result on query failure", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("DB error"));
+    mockUnsafe.mockRejectedValueOnce(new Error("DB error"));
     const tx = {
       transaction_id: "tx-bad",
       account_id: "acc-1",
@@ -291,13 +312,13 @@ describe("updateTransactions", () => {
     }
     return { rows: [{ transaction_id: "tx" }], rowCount: 1 };
   };
-  const updateCall = () => mockQuery.mock.calls.find((c) => typeof c[0] === "string" && c[0].includes("UPDATE"));
+  const updateCall = () => mockUnsafe.mock.calls.find((c) => typeof c[0] === "string" && c[0].includes("UPDATE"));
 
   beforeEach(() => {
     budgets = new Map([["bud-1", OWNER], ["someone-elses-budget", "usr-2"]]);
     categories = new Map([["cat-1", OWNER], ["cat-2", OWNER], ["someone-elses-cat", "usr-2"]]);
     deleted = new Set();
-    mockQuery.mockImplementation(route);
+    mockUnsafe.mockImplementation(route);
   });
 
   test("preserves caller-supplied category_confidence as-is (repo is pass-through)", async () => {
