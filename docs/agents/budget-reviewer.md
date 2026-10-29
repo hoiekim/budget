@@ -60,8 +60,8 @@ The second one is showing you *main's* changes arriving through the rebase. Comp
 each head against **its own** merge-base instead:
 
 ```bash
-git diff $(git merge-base main <reviewed-sha>) <reviewed-sha> > /tmp/before.diff
-git diff $(git merge-base main <head>)         <head>         > /tmp/after.diff
+git diff $(git merge-base "$BASE_REMOTE/main" <reviewed-sha>) <reviewed-sha> > /tmp/before.diff
+git diff $(git merge-base "$BASE_REMOTE/main" <head>)         <head>         > /tmp/after.diff
 diff /tmp/before.diff /tmp/after.diff    # identical (modulo blob hashes) => no work
 ```
 
