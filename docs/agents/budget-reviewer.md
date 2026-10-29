@@ -27,19 +27,19 @@ Cross-cutting (`F-cross-cutting.md`) is **always** loaded regardless of diff sha
 
 ## Phase 1 — gather the diff
 
-Default scope: the current branch's diff vs the base branch (`$BASE_REMOTE/main`).
+Default scope: the current branch's diff vs the base branch (`$BASE`).
 ```bash
 # run from the repository root
 REPO=$(gh repo view --json nameWithOwner,isFork,parent --jq 'if .isFork and .parent then "\(.parent.owner.login)/\(.parent.name)" else .nameWithOwner end')
 OWNER=${REPO%%/*}
-BASE_REMOTE=$(git remote -v | awk -v r="$REPO" '$2 ~ ("[:/]" r "(\\.git)?$") && $3 == "(fetch)" {print $1; exit}')
-BASE_REMOTE=${BASE_REMOTE:-origin}
-git fetch "$BASE_REMOTE" main 2>&1 | tail -2
-git diff "$BASE_REMOTE/main...HEAD" --stat
-git diff "$BASE_REMOTE/main...HEAD"
+BASE_REMOTE=$(git remote -v | awk -v r="$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" 'tolower($2) ~ ("[:/]" r "(\\.git)?$") && $3 == "(fetch)" {print $1; exit}')
+if [ -n "$BASE_REMOTE" ] && git fetch -q "$BASE_REMOTE" main; then BASE=$(git rev-parse "$BASE_REMOTE/main"); else git fetch -q "https://github.com/$REPO.git" main && BASE=$(git rev-parse FETCH_HEAD); fi
+[ -n "$REPO" ] && [ -n "${BASE:-}" ] && [ -f "$(git rev-parse --show-toplevel)/docs/agents/budget-reviewer.md" ] || echo "BLOCKED: repo-not-resolved"
+git diff "$BASE...HEAD" --stat
+git diff "$BASE...HEAD"
 ```
 
-`REPO` is the GitHub repository PRs land in: the current checkout's repository, or its parent when the checkout is a fork. `BASE_REMOTE` is the local remote that points at it, falling back to `origin`. Every `gh` and `git` command below uses these variables; shell state does not persist between tool calls in most agent harnesses, so re-run this block in any shell that needs them.
+`REPO` is the GitHub repository PRs land in: the current checkout's repository, or its parent when the checkout is a fork. `BASE` is the tip of that repository's `main`, fetched through the local remote that points at it, or straight from GitHub when no local remote does (a fork-only clone, or a remote that fails to fetch). Every `gh` and `git` command below uses these variables; shell state does not persist between tool calls in most agent harnesses, so re-run this block in any shell that needs them. If the block prints `BLOCKED: repo-not-resolved`, the checkout is not a clone of the repository this prompt belongs to (or the lookup failed): stop, don't post, and return your verdict with `"blocked": "repo-not-resolved"`.
 
 If the caller passes a PR number, fetch that diff with `gh pr diff <N> -R "$REPO"`. If they pass a path or commit, use that.
 
@@ -65,10 +65,11 @@ each head against **its own** merge-base instead:
 ```bash
 REPO=$(gh repo view --json nameWithOwner,isFork,parent --jq 'if .isFork and .parent then "\(.parent.owner.login)/\(.parent.name)" else .nameWithOwner end')
 OWNER=${REPO%%/*}
-BASE_REMOTE=$(git remote -v | awk -v r="$REPO" '$2 ~ ("[:/]" r "(\\.git)?$") && $3 == "(fetch)" {print $1; exit}')
-BASE_REMOTE=${BASE_REMOTE:-origin}
-git diff $(git merge-base "$BASE_REMOTE/main" <reviewed-sha>) <reviewed-sha> > /tmp/before.diff
-git diff $(git merge-base "$BASE_REMOTE/main" <head>)         <head>         > /tmp/after.diff
+BASE_REMOTE=$(git remote -v | awk -v r="$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" 'tolower($2) ~ ("[:/]" r "(\\.git)?$") && $3 == "(fetch)" {print $1; exit}')
+if [ -n "$BASE_REMOTE" ] && git fetch -q "$BASE_REMOTE" main; then BASE=$(git rev-parse "$BASE_REMOTE/main"); else git fetch -q "https://github.com/$REPO.git" main && BASE=$(git rev-parse FETCH_HEAD); fi
+[ -n "$REPO" ] && [ -n "${BASE:-}" ] && [ -f "$(git rev-parse --show-toplevel)/docs/agents/budget-reviewer.md" ] || echo "BLOCKED: repo-not-resolved"
+git diff $(git merge-base "$BASE" <reviewed-sha>) <reviewed-sha> > /tmp/before.diff
+git diff $(git merge-base "$BASE" <head>)         <head>         > /tmp/after.diff
 diff /tmp/before.diff /tmp/after.diff    # identical (modulo blob hashes) => no work
 ```
 
@@ -182,7 +183,7 @@ These four patterns recur in the maintainer's PR review comments:
 
 8. **A placement / ownership finding names the PROPERTY, not the target — and enumerates + eliminates the candidates before landing on a specific owner.** When flagging that a helper is loose, belongs on a class, or lives in the wrong module, the requirement is the property (e.g. "a helper that reads exactly one dictionary slot needs an owner; a loose function that lives next to no other logic for that slot is misplaced"). The specific owner you name is a suggestion. Two failure modes: **(a)** naming a target the author (or the maintainer in later review) can point at a NARROWER owner for — budget 681 R4 asked to move `resolveTransferSides` onto `Data`, but the narrower sibling `TransactionsDictionary.byTransactionId` was already the convention next door; the R4 finding stood after clarification only because it had also framed the property ("needs an owner") right, but if it had only said "move to `Data`" it would have been a wrong ruling. **(b)** not enumerating the candidates you ruled out — a reader then has to reconstruct why Data / TransferDictionary / TransactionsDictionary each is or isn't the owner. Write the elimination out loud: "not `X` (holds no handle on Y); not `Z` (all its members are model-to-slot plumbing; this reads a slot's contents); → `W` (already owns the slot; sibling method `byFooId` matches)". When the property is stated well AND the elimination is shown, a follow-up placement challenge is a validation of the target, not a contradiction of it.
 
-9. **A calculation-moving, engine-tuning, or do-less-work PR carries numeric evidence, not prose — the missing table is the finding.** Three shapes: (a) a PR that moves a calculation between layers (persist→derive, FE→BE, sync→read) or claims behavior preservation must show rendered figures tying **cell-for-cell** against the base branch (`$BASE_REMOTE/main`) on the same dataset, with the conserved invariant (row set / count / totals) sourced from CURRENT prod at test time — never a remembered number (budget 439: *"make sure the rendered numbers are exactly the same across before and after the change"*; budget 522: the "66 vs 74" split-transactions delta dismissed as test noise was a real 25-row loss). (b) a scoring/detection/suggestion-engine PR leads with a `main` vs `PR` recognition-rate over the labeled ground-truth set on a prod-clone, plus a bucketed gap analysis of the misses (budget 541: *"That's exactly what i wanted!"*) — "the new algorithm is better" in prose is not evidence. (c) an incrementality/caching/debounce/skip-unchanged PR must enumerate the output classes and say which the optimization drops and WHY that is safe, name the re-entry case (a reject/un-curate that re-frees rows a newness cursor never re-scans), and carry a parity test (`runFullScan() == runIncremental(cursor=0)`) that fails CI on mismatch — the maintainer's standing second question is *"Does it compromise calculation quality?"* (2026-08-26).
+9. **A calculation-moving, engine-tuning, or do-less-work PR carries numeric evidence, not prose — the missing table is the finding.** Three shapes: (a) a PR that moves a calculation between layers (persist→derive, FE→BE, sync→read) or claims behavior preservation must show rendered figures tying **cell-for-cell** against the base branch (`$BASE`) on the same dataset, with the conserved invariant (row set / count / totals) sourced from CURRENT prod at test time — never a remembered number (budget 439: *"make sure the rendered numbers are exactly the same across before and after the change"*; budget 522: the "66 vs 74" split-transactions delta dismissed as test noise was a real 25-row loss). (b) a scoring/detection/suggestion-engine PR leads with a `main` vs `PR` recognition-rate over the labeled ground-truth set on a prod-clone, plus a bucketed gap analysis of the misses (budget 541: *"That's exactly what i wanted!"*) — "the new algorithm is better" in prose is not evidence. (c) an incrementality/caching/debounce/skip-unchanged PR must enumerate the output classes and say which the optimization drops and WHY that is safe, name the re-entry case (a reject/un-curate that re-frees rows a newness cursor never re-scans), and carry a parity test (`runFullScan() == runIncremental(cursor=0)`) that fails CI on mismatch — the maintainer's standing second question is *"Does it compromise calculation quality?"* (2026-08-26).
 
 10. **A fix that produces data shaped to satisfy an existing detection heuristic fixed the wrong layer — question the heuristic; and never default an unrecognized external enum value into a category.** Four flags: (a) an upstream write whose only purpose is to make a downstream magic-value test fire — budget 425 wrote `cost_basis=0` so the FE cash detector would match; the maintainer: *"Should we change FE logic instead? Why is `cost_basis === 0` part of the detection logic?"* (b) a server-side synthesis working around a client display bug — budget 361 (closed) synthesized fake `security_snapshot` rows; the fix belonged in the FE branch with the semantic context (*"FE should skip G/L calculation for cash holdings"*). (c) classification of provider data resting on a numeric proxy when the provider's documented type/enum answers it (`type === 'cash'`, ticker `CUR:*`) — cite the provider doc's field, and a dropped detection signal needs a stated reason. (d) a mapping from an external enum (Plaid account/security/transaction types) with a default-to-category branch for unknown values — budget 309: explicit allowlist on both sides; unknowns are dropped silently, never defaulted into `asset`/`liability`/anything. Also flag the speculative extension: handling a sibling path where the bug has never been observed (*"We don't know if that happens so don't proactively handle it"*).
 
