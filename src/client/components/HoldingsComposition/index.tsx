@@ -306,7 +306,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
           <span className="col-value">Value</span>
           <span className="col-gain">Growth</span>
         </div>
-        {tickerRows.length === 0 && isManualAccount && (
+        {tickerRows.length === 0 && !showUnknownRow && isManualAccount && (
           <div className="holdingsRow holdingsEmpty">
             <span className="col-name disabled">No holdings recorded</span>
           </div>
