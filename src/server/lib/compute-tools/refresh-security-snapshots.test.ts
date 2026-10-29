@@ -93,10 +93,12 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
   }
 
   // Cadence-gate probe — `… updated > NOW() - INTERVAL 'N hours' …`.
+  // Batched: one query for the whole pass, `$1` an array of security
+  // ids; the rows returned are the ids with a recent snapshot.
   if (/updated\s*>\s*NOW\(\)\s*-\s*INTERVAL/i.test(sql)) {
-    const wantId = params[0] as string;
-    const found = recentBySecurity.has(wantId);
-    return { rows: found ? [{ snapshot_id: "recent" }] : [], rowCount: found ? 1 : 0 };
+    const ids = (Array.isArray(params[0]) ? params[0] : [params[0]]) as string[];
+    const rows = ids.filter((id) => recentBySecurity.has(id)).map((security_id) => ({ security_id }));
+    return { rows, rowCount: rows.length };
   }
 
   if (/INSERT\s+INTO\s+snapshots/i.test(sql)) {
@@ -261,6 +263,48 @@ describe("refreshActiveSecuritySnapshots", () => {
     );
     expect(gateCall).toBeDefined();
     expect(gateCall![0]).toMatch(/snapshot_type\s*=\s*'security'/i);
+  });
+
+  test("cadence gate is one batched query for N fresh securities, not N queries", async () => {
+    // Steady state at scale: 5 held securities, all fresh. The old
+    // per-security loop paid 5 gate round trips (plus the benchmark's);
+    // the hoisted gate pays exactly 1.
+    const ids = ["sec-1", "sec-2", "sec-3", "sec-4", "sec-5"];
+    holdingsRows = ids.map((security_id) => ({ security_id }));
+    securitiesRows = ids.map((security_id, i) =>
+      securityRow({ security_id, ticker_symbol: `TICK${i}` }),
+    );
+    for (const id of ids) recentBySecurity.add(id);
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    const gateCalls = mockUnsafe.mock.calls.filter((c) =>
+      /updated\s*>\s*NOW\(\)\s*-\s*INTERVAL/i.test(c[0] as string),
+    );
+    expect(gateCalls).toHaveLength(1);
+    const gateIds = (gateCalls[0][1] as unknown[])?.[0] as string[];
+    expect(gateIds.sort()).toEqual([...ids, BENCHMARK_SECURITY_ID].sort());
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(r).toEqual({ refreshed: 0, fresh: 6, cash: 0, empty: 0, errors: 0 });
+  });
+
+  test("cash securities add no cadence-gate ids — the batched query covers only gate-eligible rows", async () => {
+    holdingsRows = [{ security_id: "cash-1" }];
+    securitiesRows = [
+      securityRow({ security_id: "cash-1", ticker_symbol: "CUR:USD", type: "cash" }),
+    ];
+    const r = await refreshActiveSecuritySnapshots();
+    const gateCalls = mockUnsafe.mock.calls.filter((c) =>
+      /updated\s*>\s*NOW\(\)\s*-\s*INTERVAL/i.test(c[0] as string),
+    );
+    // One query, for the benchmark row the pass creates — the cash id
+    // is not among its parameters.
+    expect(gateCalls).toHaveLength(1);
+    const gateIds = (gateCalls[0][1] as unknown[])?.[0] as string[];
+    expect(gateIds).toEqual([BENCHMARK_SECURITY_ID]);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(r.cash).toBe(1);
+    expect(r.fresh).toBe(1);
   });
 
   test("polygon `no_data` → counted as empty, no upsert", async () => {
