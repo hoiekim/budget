@@ -74,7 +74,13 @@ export class BudgetFamily {
     if (typeof this.roll_over_start_date === "string") {
       this.roll_over_start_date = new LocalDate(this.roll_over_start_date);
     }
-    this.capacities = this.capacities.map((c) => new Capacity(c));
+    // The server models declare capacities nullable (isNullableArray),
+    // and rows with capacities = NULL reach the client: assign()
+    // overwrites the `[]` field default with null, so a bare .map throws
+    // here and aborts the whole hydration pass. Null degrades to the
+    // same empty default an empty payload already gets (a default
+    // Capacity, filled in below).
+    this.capacities = (this.capacities ?? []).map((c) => new Capacity(c));
     if (!this.capacities.length) this.capacities = [new Capacity()];
   };
 
