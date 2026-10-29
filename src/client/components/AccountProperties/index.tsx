@@ -45,8 +45,9 @@ export const AccountProperties = ({ account }: Props) => {
 
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 
-  const { data, viewDate, router, screenType } = useAppContext();
+  const { data, viewDate, router, screenType, calculations } = useAppContext();
   const { budgets, items } = data;
+  const { balanceData, holdingsValueData } = calculations;
 
   const {
     nameInput,
@@ -72,6 +73,34 @@ export const AccountProperties = ({ account }: Props) => {
   const item = items.get(account.item_id);
   const isManualAccount = item?.provider === ItemProvider.MANUAL;
 
+  // The Balance block must answer the selected period, like the graph, the
+  // holdings total, and the Accounts row beside it. `balanceData.get` is the
+  // same recorded value the Accounts row uses (see `getDisplayBalance`); a
+  // past period with no recorded balance keeps the live figures, as today.
+  const viewEndDate = viewDate.getEndDate();
+  const latestViewDate = new ViewDate(viewDate.getInterval());
+  const isPastPeriod = viewEndDate < latestViewDate.getEndDate();
+  const periodBalance = isPastPeriod ? balanceData.get(account_id, viewEndDate) : undefined;
+
+  // View-date cash for investment accounts: the same per-holding history
+  // HoldingsComposition sums for its Cash bucket, at the same view date,
+  // so Invested + In Cash reconciles with that table by construction.
+  // Unknown when no holding has a summary for the period — then the live
+  // partition stays, rather than inventing a $0 cash figure.
+  const periodCash = useMemo(() => {
+    if (type !== AccountType.Investment || periodBalance === undefined) return undefined;
+    const holdingIds = holdingsValueData.getHoldingsForAccount(account_id);
+    let cash = 0;
+    let hasData = false;
+    for (const holdingId of holdingIds) {
+      const summary = holdingsValueData.getHistory(holdingId).get(viewEndDate);
+      if (!summary) continue;
+      hasData = true;
+      if (summary.isCash) cash += summary.value;
+    }
+    return hasData ? cash : undefined;
+  }, [type, periodBalance, holdingsValueData, account_id, viewEndDate]);
+
   const budgetOptions = useMemo(() => {
     const components: JSX.Element[] = [];
     budgets.forEach((e) => {
@@ -96,6 +125,13 @@ export const AccountProperties = ({ account }: Props) => {
     currentLabel = "Spent";
     pendingLabel = "Available";
     pendingAmountString = numberToCommaString(available as number);
+    if (periodBalance !== undefined) {
+      // Spent is the period balance. Available has no historical series,
+      // so it is not shown on past periods rather than mixing a live
+      // figure into a period block.
+      currentAmountString = numberToCommaString(periodBalance);
+      showPendingRow = false;
+    }
   } else if (type === AccountType.Investment) {
     currentLabel = "Invested";
     pendingLabel = "In Cash";
@@ -108,6 +144,17 @@ export const AccountProperties = ({ account }: Props) => {
     pendingAmountString = numberToCommaString(available as number);
     // No cash figure to partition off when Plaid reports no `available`.
     showPendingRow = available != null;
+    if (periodBalance !== undefined && periodCash !== undefined) {
+      currentAmountString = numberToCommaString(periodBalance - periodCash);
+      pendingAmountString = numberToCommaString(periodCash);
+      showPendingRow = true;
+    }
+  } else if (periodBalance !== undefined) {
+    // Depository / loan: the period balance. Pending (current − available)
+    // is a live-derived split with no historical series, so it is not
+    // shown on past periods.
+    currentAmountString = numberToCommaString(periodBalance);
+    showPendingRow = false;
   }
 
   const onClickTransactions = () => {
@@ -146,9 +193,7 @@ export const AccountProperties = ({ account }: Props) => {
     router.go(PATH.PLAN_STATEMENT_IMPORT, { params });
   };
 
-  const latestViewDate = new ViewDate(viewDate.getInterval());
-  const isBalanceInputDisabled =
-    !isManualAccount && viewDate.getEndDate() >= latestViewDate.getEndDate();
+  const isBalanceInputDisabled = !isManualAccount && !isPastPeriod;
 
   return (
     <Properties className="AccountProperties">
@@ -178,7 +223,11 @@ export const AccountProperties = ({ account }: Props) => {
           )}
         </KeyValue>
       </Property>
-      {(!isManualAccount || !!graphData.lines) && <PropertyLabel>Balance</PropertyLabel>}
+      {(!isManualAccount || !!graphData.lines) && (
+        <PropertyLabel>
+          Balance{isPastPeriod && <>&nbsp;({viewDate.toString()})</>}
+        </PropertyLabel>
+      )}
       {!isManualAccount && (
         <Property>
           <KeyValue name={currentLabel}>
