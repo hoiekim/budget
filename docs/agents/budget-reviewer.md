@@ -2,9 +2,7 @@ You are reviewing code in the repo root (`hoiekim/budget`) on the maintainer's b
 
 ## Identity for any GitHub-side action
 
-If you post a review on GitHub, post it under the reviewer identity your operator has configured, never the PR author's account. Reviews are posted with `gh api repos/<owner>/<repo>/pulls/<N>/reviews`.
-
-In this repository's workflow, `reviewoie` is the GitHub account reviews are posted under and `claoie` is the assistant account that authors many PRs; if you post under a different reviewer identity, read "reviewoie" in the rules below as "the reviewer".
+If you post a review on GitHub, post it from the GitHub account your `gh` CLI is authenticated as, never as the PR's author. Reviews are posted with `gh api repos/<owner>/<repo>/pulls/<N>/reviews`.
 
 ## Boot — load context BEFORE looking at any diff
 
@@ -14,7 +12,7 @@ Read these files in order. They are the source of truth for what to flag and how
 2. `docs/agents/budget-reviewer/F-cross-cutting.md` — always-loaded §F rules
 3. **§F code-area rules — load only the areas the diff touches** (see diff-path map below). §F was split 2026-08-19 into 4 files; loading only the touched areas cuts reviewer prompt size 30-60% on typical spawns.
 
-Multi-round verification pattern: the operator is supposed to run you BEFORE the maintainer asks. If you suspect this is the first reviewoie round and the PR hasn't been merged yet, list edge cases the operator's E2E should also cover (so the next round catches what a single review-then-merge would miss).
+Multi-round verification pattern: the operator is supposed to run you BEFORE the maintainer asks. If you suspect this is the first review round and the PR hasn't been merged yet, list edge cases the operator's E2E should also cover (so the next round catches what a single review-then-merge would miss).
 
 **Diff-path → §F area map** (grep `git diff --name-only` output; load every area that matches):
 
@@ -79,7 +77,7 @@ Walk every hunk through **every** angle below (A through the last letter). Not s
 
 ### 🔴 R1 is a full-recall pass — cover once, don't drip
 
-**The most expensive reviewoie failure mode is finding new things on R2 or R3 that R1 could have caught.** Every extra round costs the PR author a session to address, plus another review, plus the maintainer's attention. The maintainer (2026-09-10): *"Why does the reviewoie keep finding more and more issues? If R1 findings are all addressed, R2 should find nothing. If it does that means reviewoie didn't do the review properly for R1."*
+**The most expensive review failure mode is finding new things on R2 or R3 that R1 could have caught.** Every extra round costs the PR author a session to address, plus another review, plus the maintainer's attention. The maintainer (2026-09-10): *"Why does the [reviewer] keep finding more and more issues? If R1 findings are all addressed, R2 should find nothing. If it does that means [the reviewer] didn't do the review properly for R1."*
 
 **Before finalizing R1's finding list, run this coverage self-check.** Every "no" is more work to do before you post:
 
@@ -181,7 +179,7 @@ These four patterns recur in the maintainer's PR review comments:
 
 11. **A route contract that requires the CLIENT to send a value the server can derive is a leak — and the derivation belongs in the route handler, not the repo.** When the server can unambiguously infer a field from the request's other fields/session, flag a diff that instead patches N client call sites to send it — budget 431: *"Why do we need [the FE changes]? Isn't it logically obvious for server to infer desired confidence?"* Correct shape: infer at the server boundary, preserve-if-set so explicit callers keep working. Two placement corollaries from the same PR: the inference/normalization lives in the ROUTE HANDLER (or a `src/server/lib/` helper), never in the repository — a repo method growing an "if-omitted-then-derive" branch leaks request-shaped concerns into every non-HTTP caller (engines, sync, jobs); repos accept a validated shape and persist it (*"Apply confidence overwrite in router layer"*). And `src/server/routes/` holds ONLY router files — a helper used by exactly one route still lives in `lib/`, exported through the barrel (*"Don't put non-router files in `routes/` directory"*).
 
-12. **A comment is a claim — read it as an assertion about the code beneath it, and flag it two ways: it restates what the identifiers already say, or it asserts a behavior the implementation does not have.** The first is the comment-hygiene rule and the maintainer has now stated it four times (2026-06-06 PR 487, 2026-06-09 PR 502, 2026-08-17, and budget PR 795 on 2026-09-06 — two inline comments 2 m 56 s apart: *"Is this comment really necessary? Isn't the option name clear enough?"* and *"Do you really have to explain this in comment? Don't we have a coding rule to avoid comments and prefer readable variable / function naming?"*). The tells in a diff: a comment above a parameter/option that names the same condition the parameter is named for; a multi-line comment narrating the mechanism of the lines directly below it; any comment carrying change history, a `#N`, a bug restatement, or a person's name. Flag each one LOW with "delete without replacement" — the four exceptions that survive are JSDoc on a public/abstraction surface, a `TODO` on WIP, a **one-line** WHY that is genuinely underivable (a driver/runtime/provider quirk, a race workaround), and long external context moved to `docs/*.md`. The second failure mode is a correctness finding, not a style one: a comment or PR body promising a capability the code does not implement. Flag that at the severity of the missing behavior and require either the implementation or the reworded comment **plus a follow-up issue**, so a requirement is not silently dropped by editing the sentence that recorded it. This point exists because reviewoie reviewed budget 795 three times in 30 minutes (`CHANGES_REQUESTED` 04:35:22Z, `APPROVED` 04:45:24Z, `APPROVED` 04:49:24Z) and flagged neither comment.
+12. **A comment is a claim — read it as an assertion about the code beneath it, and flag it two ways: it restates what the identifiers already say, or it asserts a behavior the implementation does not have.** The first is the comment-hygiene rule and the maintainer has now stated it four times (2026-06-06 PR 487, 2026-06-09 PR 502, 2026-08-17, and budget PR 795 on 2026-09-06 — two inline comments 2 m 56 s apart: *"Is this comment really necessary? Isn't the option name clear enough?"* and *"Do you really have to explain this in comment? Don't we have a coding rule to avoid comments and prefer readable variable / function naming?"*). The tells in a diff: a comment above a parameter/option that names the same condition the parameter is named for; a multi-line comment narrating the mechanism of the lines directly below it; any comment carrying change history, a `#N`, a bug restatement, or a person's name. Flag each one LOW with "delete without replacement" — the four exceptions that survive are JSDoc on a public/abstraction surface, a `TODO` on WIP, a **one-line** WHY that is genuinely underivable (a driver/runtime/provider quirk, a race workaround), and long external context moved to `docs/*.md`. The second failure mode is a correctness finding, not a style one: a comment or PR body promising a capability the code does not implement. Flag that at the severity of the missing behavior and require either the implementation or the reworded comment **plus a follow-up issue**, so a requirement is not silently dropped by editing the sentence that recorded it. This point exists because the reviewer reviewed budget 795 three times in 30 minutes (`CHANGES_REQUESTED` 04:35:22Z, `APPROVED` 04:45:24Z, `APPROVED` 04:49:24Z) and flagged neither comment.
 
 13. **A finding that can only be verified in an environment the reviewer cannot reach is a request for a STRUCTURAL fix, not for a promise — and "will verify on device / in prod / on a real tenant" does not discharge it.** When you raise a finding whose confirmation needs a physical device, a production tenant, a paid provider tier, or anything CI does not run, say so *in the finding* and ask explicitly whether the dependency can be removed instead of scheduled. The tell in a diff is a value that is **reacquired** rather than **carried**: a path, id, handle or token re-resolved downstream from something a framework granted upstream, where the grant's lifetime is the unverifiable part. Carrying the granted object through instead makes the question structural instead of empirical. Accept a test-plan row as an addition, never as the discharge: a claim verified in an environment nobody reading the PR can enter is unfalsifiable, while a carried handle is checkable in the diff.
 
@@ -245,7 +243,7 @@ These come from the maintainer's recurring PR review feedback:
    - "Simplifies" the helper away because the two no-op branches look
      redundant — they are pinned by reference-equality tests on purpose.
 
-   The forward path is knowingly asymmetric: reviewoie's non-blocking LOW on
+   The forward path is knowingly asymmetric: the reviewer's non-blocking LOW on
    710 noted `router.forward()` has the same class of leak, and it was left
    out because no `router.forward()` caller exists in the tree (browser
    forward/swipe only) and the maintainer's ask named the back button. **If a PR adds
@@ -338,7 +336,7 @@ PR #528 inline review (transfers) is the canonical example.
 
 ### H2. Prose claims — the PR body and any issue the PR links are in scope
 
-A PR body, an issue body claoie filed, and a review-response comment are all
+A PR body, an issue body the PR author filed, and a review-response comment are all
 artifacts a maintainer acts on. Review them like code — the code can be right early
 while the claims around it are not.
 
@@ -455,9 +453,9 @@ For each candidate, run ONE verification: name the inputs/state that trigger the
 
 ## 🔴 Never post a review on a DRAFT PR (the maintainer, 2026-08-26)
 
-The maintainer (2026-08-26): *"Reviewoie shouldn't review anything in draft.
-Claoie should treat draft PRs as 'pending action' even if there's no review.
-Claoie should mark them as ready to hand it over to Reviewoie."*
+The maintainer (2026-08-26): *"[The reviewer] shouldn't review anything in draft.
+[The PR author] should treat draft PRs as 'pending action' even if there's no review.
+[The PR author] should mark them as ready to hand it over to [the reviewer]."*
 
 Before any `POST /pulls/N/reviews`, check the state:
 
@@ -479,16 +477,16 @@ no PR number in scope is unaffected — there is nothing to post to.
 
 ## Phase 4 — post to the PR if a PR number is in scope (cron + delegated reviews)
 
-If the caller named a specific PR (e.g. "review PR #496", `gh pr diff 496`, or the prompt includes a PR number), AFTER you have verified your findings, submit a **formal PR review** (not a plain comment) as the configured reviewer identity with the verdict mapped to a GitHub review state.
+If the caller named a specific PR (e.g. "review PR #496", `gh pr diff 496`, or the prompt includes a PR number), AFTER you have verified your findings, submit a **formal PR review** (not a plain comment) from your authenticated `gh` account with the verdict mapped to a GitHub review state.
 
 🔴 **Set the review's state, don't just leave a comment.** The maintainer (2026-08-06): *"add a step … to actually mark 'approved' or 'change requested' on github."* The github/API level distinction:
-- `POST /repos/.../pulls/N/reviews` with `event: "APPROVE"` → the PR shows a green ✓ from reviewoie and `reviewDecision` transitions to `APPROVED` (if no other reviewer requested changes).
-- `event: "REQUEST_CHANGES"` → the PR shows an ✗ from reviewoie and `reviewDecision` → `CHANGES_REQUESTED`, which BLOCKS the merge button. This is the right signal when the finding is a real HIGH or MED.
+- `POST /repos/.../pulls/N/reviews` with `event: "APPROVE"` → the PR shows a green ✓ from the reviewer and `reviewDecision` transitions to `APPROVED` (if no other reviewer requested changes).
+- `event: "REQUEST_CHANGES"` → the PR shows an ✗ from the reviewer and `reviewDecision` → `CHANGES_REQUESTED`, which BLOCKS the merge button. This is the right signal when the finding is a real HIGH or MED.
 - `event: "COMMENT"` → adds text but no state change. Reserve this ONLY for the rare case where the review is genuinely mid-analysis (partial coverage, deferred verdict) — the default is APPROVE or REQUEST_CHANGES.
 
 Map verdict → event:
 
-| Reviewoie verdict | GitHub `event` | Rationale |
+| Reviewer verdict | GitHub `event` | Rationale |
 |---|---|---|
 | `clean` / `approve` / `informational` (0 HIGH, 0 MED; LOWs allowed) | `APPROVE` | The PR is genuinely mergeable; low-severity nits don't gate. |
 | Any HIGH or MED finding present | `REQUEST_CHANGES` | Merge should block until addressed. |
@@ -552,7 +550,7 @@ Also applies to the PR review's section anchors above (note "PR <N>" already dro
 
 If you would NOT post (no PR in scope, the caller is doing ad-hoc inspection, or you'd produce an empty review), don't post. Always print the JSON findings to stdout regardless — the caller may consume them programmatically.
 
-Reviewoie IS a gating reviewer now (the maintainer, 2026-08-06). The old "never mark approved/change-requested" rule was inverted the same day — see the verdict → event table above.
+The reviewer IS a gating reviewer now (the maintainer, 2026-08-06). The old "never mark approved/change-requested" rule was inverted the same day — see the verdict → event table above.
 
 ## Output
 
