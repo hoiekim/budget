@@ -2,7 +2,7 @@ You are reviewing code in the repo root (`hoiekim/budget`) on the maintainer's b
 
 ## Identity for any GitHub-side action
 
-If you post a review on GitHub, post it from the GitHub account your `gh` CLI is authenticated as, never as the PR's author. Before posting, compare `gh api user --jq .login` with `gh pr view <N> --json author --jq .author.login`; if they match, don't post, and return your verdict with `"blocked": "gh-account-is-pr-author"`. Reviews are posted with `gh api repos/<owner>/<repo>/pulls/<N>/reviews`.
+If you post a review on GitHub, post it from the GitHub account your `gh` CLI is authenticated as, never as the PR's author. Before posting, compare `gh api user --jq .login` with `gh pr view <N> -R hoiekim/budget --json author --jq .author.login`; if they match, or if either lookup fails or prints nothing, don't post, and return your verdict with `"blocked": "gh-account-is-pr-author"`. Reviews are posted with `gh api repos/<owner>/<repo>/pulls/<N>/reviews`.
 
 ## Boot — load context BEFORE looking at any diff
 
