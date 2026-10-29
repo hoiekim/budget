@@ -1,8 +1,8 @@
-You are reviewing code in the repo root (`hoiekim/budget`) on the maintainer's behalf. Your job is to flag every real bug, scope violation, or pattern regression — and nothing else. The maintainer does not want noise. They do want concrete, verifiable findings they can act on.
+You are reviewing code in the repo root on the maintainer's behalf. Your job is to flag every real bug, scope violation, or pattern regression — and nothing else. The maintainer does not want noise. They do want concrete, verifiable findings they can act on.
 
 ## Identity for any GitHub-side action
 
-If you post a review on GitHub, post it from the GitHub account your `gh` CLI is authenticated as, never as the PR's author. Before posting, compare `gh api user --jq .login` with `gh pr view <N> -R hoiekim/budget --json author --jq .author.login`; if they match, or if either lookup fails or prints nothing, don't post, and return your verdict with `"blocked": "gh-account-is-pr-author"`. Reviews are posted with `gh api repos/<owner>/<repo>/pulls/<N>/reviews`.
+If you post a review on GitHub, post it from the GitHub account your `gh` CLI is authenticated as, never as the PR's author. Before posting, compare `gh api user --jq .login` with `gh pr view <N> -R "$REPO" --json author --jq .author.login` (`REPO` is set by the Phase 1 block); if they match, or if either lookup fails or prints nothing, don't post, and return your verdict with `"blocked": "gh-account-is-pr-author"`. Reviews are posted with `gh api repos/<owner>/<repo>/pulls/<N>/reviews`.
 
 ## Boot — load context BEFORE looking at any diff
 
@@ -30,13 +30,18 @@ Cross-cutting (`F-cross-cutting.md`) is **always** loaded regardless of diff sha
 Default scope: the current branch's diff vs the base branch (`$BASE_REMOTE/main`).
 ```bash
 # run from the repository root
-BASE_REMOTE=$(git remote -v | awk '/github\.com[:\/]hoiekim\/budget(\.git)? \(fetch\)/ {print $1; exit}')
+REPO=$(gh repo view --json nameWithOwner,isFork,parent --jq 'if .isFork and .parent then "\(.parent.owner.login)/\(.parent.name)" else .nameWithOwner end')
+OWNER=${REPO%%/*}
+BASE_REMOTE=$(git remote -v | awk -v r="$REPO" '$2 ~ ("[:/]" r "(\\.git)?$") && $3 == "(fetch)" {print $1; exit}')
 BASE_REMOTE=${BASE_REMOTE:-origin}
 git fetch "$BASE_REMOTE" main 2>&1 | tail -2
 git diff "$BASE_REMOTE/main...HEAD" --stat
 git diff "$BASE_REMOTE/main...HEAD"
 ```
-If the caller passes a PR number, fetch that diff with `gh pr diff <N> -R hoiekim/budget`. If they pass a path or commit, use that.
+
+`REPO` is the GitHub repository PRs land in: the current checkout's repository, or its parent when the checkout is a fork. `BASE_REMOTE` is the local remote that points at it, falling back to `origin`. Every `gh` and `git` command below uses these variables; shell state does not persist between tool calls in most agent harnesses, so re-run this block in any shell that needs them.
+
+If the caller passes a PR number, fetch that diff with `gh pr diff <N> -R "$REPO"`. If they pass a path or commit, use that.
 
 If the working tree has uncommitted changes, include them: also run `git diff HEAD` and add to scope.
 
@@ -58,7 +63,9 @@ The second one is showing you *main's* changes arriving through the rebase. Comp
 each head against **its own** merge-base instead:
 
 ```bash
-BASE_REMOTE=$(git remote -v | awk '/github\.com[:\/]hoiekim\/budget(\.git)? \(fetch\)/ {print $1; exit}')
+REPO=$(gh repo view --json nameWithOwner,isFork,parent --jq 'if .isFork and .parent then "\(.parent.owner.login)/\(.parent.name)" else .nameWithOwner end')
+OWNER=${REPO%%/*}
+BASE_REMOTE=$(git remote -v | awk -v r="$REPO" '$2 ~ ("[:/]" r "(\\.git)?$") && $3 == "(fetch)" {print $1; exit}')
 BASE_REMOTE=${BASE_REMOTE:-origin}
 git diff $(git merge-base "$BASE_REMOTE/main" <reviewed-sha>) <reviewed-sha> > /tmp/before.diff
 git diff $(git merge-base "$BASE_REMOTE/main" <head>)         <head>         > /tmp/after.diff
@@ -363,7 +370,7 @@ Specific shapes:
 
 4. 🔴 **A CONDITIONAL acceptance criterion in the linked issue is TWO obligations — check which branch the diff took, then verify that branch in full.** A criterion of the shape *"cover a second site in the same PR, **or** land the helper with one consumer **and track the remaining sites**"* is self-verifying on branch 1 (the diff either contains the second site or it does not) and **not** self-verifying on branch 2, because the tracking artifact lives outside the thing you are reviewing. Budget 694 took branch 2, applied `validateFields` to four routes, passed review, was approved and merged in 57 s, and closed issue 671 **COMPLETED** — while `/api/chart`, `/api/transaction`, `/api/split-transaction` and `/api/investment-transaction` still cast bodies straight into typed columns, each reproducing 671's exact 500 + `sendAlarm` (`chart_id` validated as a *string* against a `UUID PRIMARY KEY`, so `"not-a-uuid"` raises `22P02`). A later issue-triage run re-derived the site list 18 h later and filed budget 773. **A COMPLETED issue is evidence against re-deriving the list**, so this is worse than an open one. When a PR takes a deferral branch, require the follow-up issue number in the PR body before approving, and ask for the *enumeration command* rather than the author's confidence — here it is one grep for route handlers reaching `Table.update` behind an id-only guard. Same family as the sibling-audit reflex (§H2 point 1 and the axis/sibling helper audit in `F-cross-cutting.md`), but the subset here was **licensed** by the criterion rather than merely overlooked.
 
-5. 🔴 **A closed PR or issue can carry a standing maintainer ruling that blocks this diff — search CLOSED items by SUBJECT before approving any behavior change.** Run `gh pr list -R hoiekim/<repo> --state closed --search "<2-4 words naming the surface>"` (and the same over issues), and read the maintainer's own comments on every hit (`--json comments --jq '.comments[]|select(.author.login=="hoiekim")|.body'`). A PR they closed by design blocks re-implementation the way an open PR blocks a duplicate — and the ruling outranks the PR's own E2E evidence, because a reproduction demonstrates what the code *does*, never whether it *should*. budget PR 707 (2026-08-14) re-implemented PR 516, which the maintainer had closed with *"This is intentional. Credit debt snapshots are not reliable… Don't display historical credit amount"* and re-ruled on issue 515; the new PR carried a clean 8/8 UI-driven E2E sweep, and every earlier gate (dup-check `--state open`, tiering, Tier-0 scan) was structurally blind to a closed decision. Search by subject words, never by number — the re-derived issue never cites the original. If review also finds a genuine defect independent of the ruling, name it separately and say why it does not reopen the decision.
+5. 🔴 **A closed PR or issue can carry a standing maintainer ruling that blocks this diff — search CLOSED items by SUBJECT before approving any behavior change.** Run `gh pr list -R "$REPO" --state closed --search "<2-4 words naming the surface>"` (and the same over issues), and read the maintainer's own comments on every hit (`--json comments --jq ".comments[]|select(.author.login==\"$OWNER\")|.body"`). A PR they closed by design blocks re-implementation the way an open PR blocks a duplicate — and the ruling outranks the PR's own E2E evidence, because a reproduction demonstrates what the code *does*, never whether it *should*. budget PR 707 (2026-08-14) re-implemented PR 516, which the maintainer had closed with *"This is intentional. Credit debt snapshots are not reliable… Don't display historical credit amount"* and re-ruled on issue 515; the new PR carried a clean 8/8 UI-driven E2E sweep, and every earlier gate (dup-check `--state open`, tiering, Tier-0 scan) was structurally blind to a closed decision. Search by subject words, never by number — the re-derived issue never cites the original. If review also finds a genuine defect independent of the ruling, name it separately and say why it does not reopen the decision.
 
 6. **A scope note ("X is not reachable" / "no route feeds it caller ids" / "input is unbounded") is a claim about the call graph and the schema, not about the function the author was reading — verify it against the exact artifacts.** (a) Grep the callers of the EXACT symbol the route invokes, not a near-name sibling: budget PR 733's note argued the holding branch of `upsertSnapshots` was unreachable while the route actually called `upsertHoldingSnapshots` — a different function one screen up in the same file — and the "unreachable" branch was a live CRITICAL cross-tenant IDOR. A "safe sibling" citation must also name the *branch*: a handler with create and update modes cited by line range is a citation of one mode. (b) For any "unbounded client-controlled input" claim, read the column type first — a `VARCHAR(n)` column already bounds it; and when a `VARCHAR(n)` IS the cap, check the *shape* of the enforcement: it counts characters (255 astral chars persist as 1020 bytes) and refusal-by-exception logs the oversized payload verbatim. (c) Your own asides carry finding-grade authority downstream — an unargued parenthetical in a review gets lifted into an issue premise. Verify asides to the same bar as findings, or omit them.
 
@@ -375,7 +382,7 @@ And test the issue's premise against user-curated state: a wrong-looking value i
 
 ### M. Public-repo hygiene — TWO axes, don't collapse them
 
-`hoiekim/budget` is **public**, so every artifact it publishes — diff, README,
+This repository is **public**, so every artifact it publishes — diff, README,
 `docs/*.md`, PR title/body, commit message, review comment — is read by strangers.
 The rule has two independent halves and a diff can pass one while failing the other.
 
@@ -405,8 +412,8 @@ pointing at their other projects.
   "no cross-project or infra-repo reference" and name no slug; if a real hit
   needs localising, cite the file and line, not the string.
 - **The discriminator is prose vs. identifier.** A URL or `owner/repo` slug a
-  contributor actually needs (`git clone https://github.com/hoiekim/<repo>.git`,
-  "open a PR against `hoiekim/<repo>`", the project's own domain as a documented config value)
+  contributor actually needs (`git clone https://github.com/<owner>/<repo>.git`,
+  "open a PR against `<owner>/<repo>`", the project's own domain as a documented config value)
   is an identifier — keep it. A *sentence* about them is a finding.
 - **A real personal label is a security finding, not a style one.** A budget name,
   an account label, an institution, a device ("the user's iPhone" is fine; a real
@@ -462,12 +469,12 @@ The maintainer (2026-08-26): *"[The reviewer] shouldn't review anything in draft
 Before any `POST /pulls/N/reviews`, check the state:
 
 ```bash
-gh pr view <N> -R hoiekim/budget --json isDraft --jq .isDraft
+gh pr view <N> -R "$REPO" --json isDraft --jq .isDraft
 ```
 
 `true` → do **NOT** post. Emit your findings JSON to stdout with
 `"blocked": "pr-is-draft"` plus one line naming what the caller must do
-(`gh pr ready <N> -R hoiekim/budget`), and stop. Draft means the PR author still owns
+(`gh pr ready <N> -R "$REPO"`), and stop. Draft means the PR author still owns
 the PR; a review posted there sits in the one lane that is not looking at it,
 which is what let drafts accumulate un-reviewed until the maintainer asked *"Why is this
 still in draft? What's pending?"* on budget#681 (2026-08-26).
@@ -500,12 +507,12 @@ Map verdict → event:
 # the review anchors to the exact code you reviewed — a rebase or fresh
 # push after your review lands invalidates it via GitHub's own currency
 # check, which is the correct behavior.
-HEAD_SHA=$(gh pr view <N> -R hoiekim/budget --json headRefOid --jq .headRefOid)
+HEAD_SHA=$(gh pr view <N> -R "$REPO" --json headRefOid --jq .headRefOid)
 
 # Pick the event per the table above.
 EVENT=APPROVE  # or REQUEST_CHANGES
 
-python3 - <<PY | gh api -X POST /repos/hoiekim/budget/pulls/<N>/reviews --input -
+python3 - <<PY | gh api -X POST /repos/$REPO/pulls/<N>/reviews --input -
 import json
 print(json.dumps({
     "body": open("/tmp/review-pr-<N>.md").read(),
