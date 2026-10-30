@@ -185,12 +185,15 @@ const getClosesToWrite = async (
  * exists for the latest trading day that polygon can serve. Designed to
  * ride the existing hourly `scheduledSync` loop.
  *
- * Per-security cadence is enforced by a cheap pre-flight SELECT against
- * `snapshots.updated` — if any security_snapshot for this security was
- * touched within the last `REFRESH_SKIP_WINDOW_HOURS`, the polygon call
- * is skipped. This keeps steady-state runs at one cheap SELECT per
- * security (no polygon calls) and bounds the polygon load to roughly
- * one call per security per day in the limit.
+ * Per-security cadence is enforced by one batched pre-flight SELECT
+ * against `snapshots.updated`, run once for the whole pass over
+ * exactly the securities the loop would gate — if any security_snapshot
+ * for a security was touched within the last
+ * `REFRESH_SKIP_WINDOW_HOURS`, the polygon call is skipped. This keeps
+ * steady-state runs at one SELECT total (no polygon calls) and bounds
+ * the polygon load to roughly one call per security per day in the
+ * limit, instead of paying one round trip per security to decide
+ * nothing needs doing.
  *
  * Provider-synced securities go through `upsertSecuritiesWithSnapshots`
  * during sync, which writes a snapshot with `updated = CURRENT_TIMESTAMP`
@@ -224,6 +227,26 @@ export const refreshActiveSecuritySnapshots = async (now = new Date()): Promise<
   const securities = await searchSecuritiesById(security_ids);
   const today = now;
 
+  // One batched cadence gate for the whole pass, over exactly the
+  // securities the loop would gate: cash and tickerless rows `continue`
+  // before the gate, so including their ids would pay for rows the loop
+  // never checks. When no security is gate-eligible the query is skipped
+  // entirely, so a pass with nothing to gate costs no round trip here.
+  const gateIds = securities
+    .filter((s) => s.ticker_symbol && !isCash(s))
+    .map((s) => s.security_id);
+  const fresh = new Set<string>();
+  if (gateIds.length > 0) {
+    const recent = await pool.query<{ security_id: string }>(
+      `SELECT DISTINCT ${SECURITY_ID} FROM ${SNAPSHOTS}
+       WHERE ${SECURITY_ID} = ANY($1::text[])
+         AND ${SNAPSHOT_TYPE} = 'security'
+         AND ${UPDATED} > NOW() - INTERVAL '${REFRESH_SKIP_WINDOW_HOURS} hours'`,
+      [gateIds],
+    );
+    for (const row of recent.rows) fresh.add(row.security_id);
+  }
+
   for (const security of securities) {
     const { security_id, ticker_symbol } = security;
     if (!ticker_symbol) continue;
@@ -232,21 +255,13 @@ export const refreshActiveSecuritySnapshots = async (now = new Date()): Promise<
       continue;
     }
 
-    // Pre-flight cadence gate. If any security_snapshot for this
-    // security was touched in the last `REFRESH_SKIP_WINDOW_HOURS`,
-    // skip the polygon call. Cheap SELECT, no API spend. The gate
+    // Batched cadence gate (one query for the whole pass, above). If any
+    // security_snapshot for this security was touched in the last
+    // `REFRESH_SKIP_WINDOW_HOURS`, skip the polygon call. The gate
     // also rate-limits the "soft-deleted snapshot" loop — a
     // soft-delete sets `updated` to NOW(), so the gate skips it until
     // the window expires.
-    const recent = await pool.query<{ snapshot_id: string }>(
-      `SELECT snapshot_id FROM ${SNAPSHOTS}
-       WHERE ${SECURITY_ID} = $1
-         AND ${SNAPSHOT_TYPE} = 'security'
-         AND ${UPDATED} > NOW() - INTERVAL '${REFRESH_SKIP_WINDOW_HOURS} hours'
-       LIMIT 1`,
-      [security_id],
-    );
-    if (recent.rows.length > 0) {
+    if (fresh.has(security_id)) {
       result.fresh++;
       continue;
     }
