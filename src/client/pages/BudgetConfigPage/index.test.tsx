@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { Budget, Calculations, Capacity, ContextType, Data, PATH } from "client";
-import { buildContext, buildRouter, renderWithContext, resetDom } from "test-render";
+import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { BudgetConfigPage } from ".";
+
+let fetchStub: ReturnType<typeof stubFetch> | undefined;
+const originalConfirm = window.confirm;
 
 afterEach(() => {
   cleanup();
+  fetchStub?.restore();
+  fetchStub = undefined;
+  window.confirm = originalConfirm;
   resetDom();
 });
 
@@ -95,5 +101,45 @@ describe("BudgetConfigPage", () => {
 
     expect(nameField().value).toBe("Utilities");
     expect(rollOverToggle().checked).toBe(false);
+  });
+
+  it("returns to the Budgets list after deleting a budget, not to its detail page", async () => {
+    const data = buildData();
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router, calls } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ budget_id: BUDGET_ID }),
+    );
+    window.confirm = () => true;
+    fetchStub = stubFetch([{ path: "/api/budget", response: { status: "success" } }]);
+
+    renderWithContext(
+      <BudgetConfigPage />,
+      buildContext({ data: store.data, setData, router }),
+    );
+
+    // The delete button arms on the first click and deletes on the second.
+    const deleteButton = screen.getByText("⌫").closest("button") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(deleteButton);
+    });
+    expect(screen.getByText("Delete")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(deleteButton);
+    });
+
+    expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+      `DELETE /api/budget?id=${BUDGET_ID}`,
+    ]);
+    expect(store.data.budgets.has(BUDGET_ID)).toBe(false);
+
+    // The deleted budget's detail page no longer exists — going back would
+    // strand the user on its empty body (#834). The list still exists.
+    expect(calls.back).toBe(0);
+    expect(calls.go).toHaveLength(1);
+    expect(calls.go[0].path).toBe(PATH.BUDGETS);
   });
 });
