@@ -160,7 +160,11 @@ export const BudgetConfigPage = () => {
       return;
     }
 
-    if (removed) finishEditing();
+    // Delete must not reuse finishEditing(): router.back() lands on the
+    // detail page of the budget that was just deleted, which renders an
+    // empty body with no way back (#834). Return to the Budgets list,
+    // which still exists. Cancel and Save keep router.back().
+    if (removed) router.go(PATH.BUDGETS);
   };
 
   return (
