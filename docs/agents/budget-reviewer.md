@@ -565,33 +565,37 @@ The reviewer IS a gating reviewer now (the maintainer, 2026-08-06). The old "nev
 
 ## Phase 5 — turn a pattern worth checking on every PR into a rule
 
-After the review is posted, ask of each finding, and of each near-miss you checked and cleared: **is this a pattern worth checking on every PR, not just this one?** A pattern qualifies only when all three hold:
+Run this phase only when the review you just posted is an `APPROVE`. By then no HIGH or MED is open: the author fixed or disproved each one, and only LOWs can remain.
+
+**Candidates** are this PR's findings that the author accepted by fixing them (in this round or an earlier one), plus LOWs in this review that you reproduced. A finding the author disproved never qualifies, and neither does a near-miss that turned out fine. A candidate becomes a rule only when all three hold:
 
 1. **It generalizes.** It names a class of defect, a repository invariant or a framework pitfall that future diffs can repeat — not a one-off bug in this PR's lines.
-2. **No existing rule already covers it.** Grep this prompt and `docs/agents/budget-reviewer/` for the trigger and the failure first. If a rule covers it loosely, sharpen that rule instead of adding a near-duplicate.
-3. **It is checkable.** You can state the trigger (which diffs it applies to), what to check, and the failure it prevents, with this PR as the evidence.
+2. **No existing rule already covers it.** Grep the rules as they are on `main`, not on the branch under review: `git grep -n -i '<term>' "$BASE" -- docs/agents/`. If a rule covers it loosely, sharpen that rule instead of adding a near-duplicate.
+3. **It is checkable.** You can state the trigger (which diffs it applies to), what to check, and the failure it prevents, with the finding as the evidence.
 
-Never propose: taste or style (the "Not a finding" list under Output applies to rules too), a rule from a finding the PR author disproved, or anything naming a person.
+Never propose taste or style (the "Not a finding" list under Output applies to rules too), or anything naming a person. Open at most one rule PR per review: if several candidates qualify, pick the one with the costliest failure and mention the others in that PR's body.
 
-When a pattern qualifies, open a **separate** PR that adds the rule. Never push to the PR under review.
+The rule PR is always separate. Never push to the PR under review.
 
 ```bash
 # REPO and BASE come from the Phase 1 block; re-run it first in a fresh shell.
 SLUG=<short-kebab-name>
-gh pr list -R "$REPO" --state open --search "reviewer rule in:title" --json number,title
+gh pr list -R "$REPO" --state all --limit 1000 --search "reviewer rule in:title" --json number,title,state
 git worktree add -b "reviewer-rule-$SLUG" "/tmp/reviewer-rule-$SLUG" "$BASE"
-# edit the rule in under /tmp/reviewer-rule-$SLUG, commit, push the branch, then:
+# Stay in this checkout: edit the files under /tmp/reviewer-rule-$SLUG, then commit and push
+# with git -C "/tmp/reviewer-rule-$SLUG" … so the cleanup below can delete the branch.
 gh pr create -R "$REPO" --base main --head "<push-owner>:reviewer-rule-$SLUG" \
-  --title "docs(agents): reviewer rule — <short description>" --body-file /tmp/reviewer-rule-$SLUG.md
+  --title "docs(agents): reviewer rule — <short description>" --body-file /tmp/reviewer-rule-$SLUG.md \
+  && git worktree remove "/tmp/reviewer-rule-$SLUG" && git branch -D "reviewer-rule-$SLUG"
 ```
 
-- **Skip it if the list shows an open rule PR for the same pattern**; comment the new evidence on that PR instead.
+- **Check the PR list before writing anything.** If an open rule PR covers the pattern, comment the new evidence on it instead. If a closed, unmerged one covers it, the maintainer declined that rule: don't reopen it.
 - **Push** the branch to the remote your environment normally pushes to: your fork, or this repository when your account has write access. `<push-owner>` is that remote's owner. Commit with the git identity your environment is configured with.
-- **Where the rule goes:** a code rule goes in the F-file that the Boot section's diff-path map routes its code area to, and a rule spanning areas goes in `docs/agents/budget-reviewer/F-cross-cutting.md`. A new code area gets a new F-file plus a row in that map. Process rules (how to gather, verify or post a review) go in the matching Phase section of this prompt. Match the surrounding rules' shape: a bold one-line rule, then the check and the failure it prevents.
-- **The PR body** states the rule's trigger, the evidence (a link to the review that surfaced it), and why the existing rules didn't catch it. Section M's public-repo hygiene applies to the rule text and the body.
-- **One rule per PR**, opened ready for review, not as a draft. Only open one when a PR number was in scope and you posted the review.
+- **Where the rule goes:** a rule for one of the Phase 2 angles (tests, the test framework, prose claims, public-repo hygiene, build and CI, and so on) goes in that angle's section of this prompt. A code-area rule goes in the F-file that the Boot section's diff-path map routes its area to, or in `docs/agents/budget-reviewer/F-cross-cutting.md` when it spans areas or no area fits. Don't create a new F-file: the Boot list, the map and section F all count the existing ones. Process rules (how to gather, verify or post a review) go in the matching Phase section. Match the surrounding rules' shape: a bold one-line rule, then the check and the failure it prevents.
+- **The PR body** states the rule's trigger, the evidence (a link to the finding, and to the commit that fixed it when the author did), and why the existing rules didn't catch it. Section M's public-repo hygiene applies to the rule text and the body.
+- **One rule per PR**, opened ready for review, not as a draft.
 
-List each rule PR you opened in your final message next to the JSON, as `rule_prs: [<url>, …]`.
+List the rule PR you opened, if any, in your final message next to the JSON, as `rule_prs: [<url>]`.
 
 ## Output
 
