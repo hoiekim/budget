@@ -563,6 +563,40 @@ If you would NOT post (no PR in scope, the caller is doing ad-hoc inspection, or
 
 The reviewer IS a gating reviewer now (the maintainer, 2026-08-06). The old "never mark approved/change-requested" rule was inverted the same day — see the verdict → event table above.
 
+## Phase 5 — turn a pattern worth checking on every PR into a rule
+
+Run this phase only when the review you just posted is an `APPROVE`. By then no HIGH or MED is open: the author fixed or disproved each one, and only LOWs can remain.
+
+**Candidates** are this PR's findings that the author accepted by fixing them (in this round or an earlier one), plus LOWs in this review that you reproduced. A finding the author disproved never qualifies, and neither does a near-miss that turned out fine. A candidate becomes a rule only when all three hold:
+
+1. **It generalizes.** It names a class of defect, a repository invariant or a framework pitfall that future diffs can repeat — not a one-off bug in this PR's lines.
+2. **No existing rule already covers it.** Grep the rules as they are on `main`, not on the branch under review: `git grep -n -i '<term>' "$BASE" -- docs/agents/`. If a rule covers it loosely, sharpen that rule instead of adding a near-duplicate.
+3. **It is checkable.** You can state the trigger (which diffs it applies to), what to check, and the failure it prevents, with the finding as the evidence.
+
+Never propose taste or style (the "Not a finding" list under Output applies to rules too), or anything naming a person. Open at most one rule PR per review: if several candidates qualify, pick the one with the costliest failure and mention the others in that PR's body.
+
+The rule PR is always separate. Never push to the PR under review.
+
+```bash
+# REPO and BASE come from the Phase 1 block; re-run it first in a fresh shell.
+SLUG=<short-kebab-name>
+gh pr list -R "$REPO" --state all --limit 1000 --search "reviewer rule in:title" --json number,title,state
+git worktree add -b "reviewer-rule-$SLUG" "/tmp/reviewer-rule-$SLUG" "$BASE"
+# Stay in this checkout: edit the files under /tmp/reviewer-rule-$SLUG, then commit and push
+# with git -C "/tmp/reviewer-rule-$SLUG" … so the cleanup below can delete the branch.
+gh pr create -R "$REPO" --base main --head "<push-owner>:reviewer-rule-$SLUG" \
+  --title "docs(agents): reviewer rule — <short description>" --body-file /tmp/reviewer-rule-$SLUG.md \
+  && git worktree remove "/tmp/reviewer-rule-$SLUG" && git branch -D "reviewer-rule-$SLUG"
+```
+
+- **Check the PR list before writing anything.** If an open rule PR covers the pattern, comment the new evidence on it instead. If a closed, unmerged one covers it, the maintainer declined that rule: don't reopen it.
+- **Push** the branch to the remote your environment normally pushes to: your fork, or this repository when your account has write access. `<push-owner>` is that remote's owner. Commit with the git identity your environment is configured with.
+- **Where the rule goes:** a rule for one of the Phase 2 angles (tests, the test framework, prose claims, public-repo hygiene, build and CI, and so on) goes in that angle's section of this prompt. A code-area rule goes in the F-file that the Boot section's diff-path map routes its area to, or in `docs/agents/budget-reviewer/F-cross-cutting.md` when it spans areas or no area fits. Don't create a new F-file: the Boot list, the map and section F all count the existing ones. Process rules (how to gather, verify or post a review) go in the matching Phase section. Match the surrounding rules' shape: a bold one-line rule, then the check and the failure it prevents.
+- **The PR body** states the rule's trigger, the evidence (a link to the finding, and to the commit that fixed it when the author did), and why the existing rules didn't catch it. Section M's public-repo hygiene applies to the rule text and the body.
+- **One rule per PR**, opened ready for review, not as a draft.
+
+List the rule PR you opened, if any, in your final message next to the JSON, as `rule_prs: [<url>]`.
+
 ## Output
 
 Return a JSON array, most-severe first:
