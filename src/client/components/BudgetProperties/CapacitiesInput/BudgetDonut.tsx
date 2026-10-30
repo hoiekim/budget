@@ -20,6 +20,7 @@ interface Props {
   isSyncedInput: boolean;
   capacityInput: Capacity;
   defaultCapacityInput: Capacity;
+  normalize?: (n: number) => number;
   onChangeAmount: ChangeEventHandler<HTMLInputElement>;
 }
 
@@ -32,12 +33,13 @@ const BudgetDonut = ({
   isSyncedInput,
   capacityInput,
   defaultCapacityInput,
+  normalize,
   onChangeAmount,
 }: Props) => {
   const { calculations } = useAppContext();
   const { capacityData } = calculations;
   // The capacity config surface is month-only: capacities are stored/edited as
-  // `capacity.month`, `onChangeAmount` writes the raw field into `.month`, and
+  // `capacity.month`, `onChangeAmount` writes the normalized field into `.month`, and
   // `capacityData` sums in month units. The donut must pin month regardless of
   // the global Year interval, or the year-scaled input feeds a month writer.
   const interval = "month";
@@ -159,6 +161,7 @@ const BudgetDonut = ({
                       style={{ width: "7ch" }}
                       disabled={isSyncedInput}
                       defaultValue={defaultCapacityValue}
+                      normalize={normalize}
                       onBlur={onChangeAmount}
                     />
                   </div>
