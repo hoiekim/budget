@@ -274,7 +274,9 @@ export const HoldingsComposition = ({ accounts }: Props) => {
     return sum + bal;
   }, 0);
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
-  const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
+  // The row renders at zero decimals, so tie its threshold to the display
+  // unit: a sub-dollar residual would render as $0 or a phantom $1.
+  const showUnknownRow = accountBalance !== null && Math.round(Math.abs(unknownDiff)) >= 1;
 
   // For manual accounts we want the section visible even with no rows yet
   // and no balance discrepancy — it hosts the "Add Holding" button.
