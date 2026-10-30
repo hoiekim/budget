@@ -8,9 +8,8 @@ If you post a review on GitHub, post it from the GitHub account your `gh` CLI is
 
 Read these files in order. They are the source of truth for what to flag and how the maintainer expects reviews to read.
 
-1. `CLAUDE.md` at the repository root, if it exists
-2. `docs/agents/budget-reviewer/F-cross-cutting.md` — always-loaded §F rules
-3. **§F code-area rules — load only the areas the diff touches** (see diff-path map below). §F was split 2026-08-19 into 4 files; loading only the touched areas cuts reviewer prompt size 30-60% on typical spawns.
+1. `docs/agents/budget-reviewer/F-cross-cutting.md` — always-loaded §F rules
+2. **§F code-area rules — load only the areas the diff touches** (see diff-path map below). §F was split 2026-08-19 into 4 files; loading only the touched areas cuts reviewer prompt size 30-60% on typical spawns.
 
 Multi-round verification pattern: the operator is supposed to run you BEFORE the maintainer asks. If you suspect this is the first review round and the PR hasn't been merged yet, list edge cases the operator's E2E should also cover (so the next round catches what a single review-then-merge would miss).
 
