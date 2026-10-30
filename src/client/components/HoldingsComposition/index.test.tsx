@@ -103,6 +103,25 @@ describe("holdings of a security with no price snapshot", () => {
   });
 });
 
+describe("Unknown reconciliation row", () => {
+  // The fixture holding is worth $500, so the account balance sets the
+  // residual directly (balance falls back to balances.current here).
+  const renderWithBalance = (balance: number) => {
+    const world = buildWorld();
+    world.account.balances.current = balance;
+    const { container } = renderWithContext(<HoldingsComposition accounts={[world.account]} />, world.context);
+    return container;
+  };
+
+  it("does not render for a sub-dollar residual", () => {
+    expect(renderWithBalance(500.4).querySelector(".holdingsRow.unknown")).toBeNull();
+  });
+
+  it("renders for a whole-dollar residual", () => {
+    expect(renderWithBalance(512).querySelector(".holdingsRow.unknown")).not.toBeNull();
+  });
+});
+
 describe("holdings whose price snapshot carries an older ticker", () => {
   it("are listed under the security's current ticker and name", () => {
     const container = listedRow(buildWorld({ ticker: "NEWT", snapshotTicker: "OLDT" }));
