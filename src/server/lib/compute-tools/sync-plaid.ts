@@ -188,7 +188,7 @@ export const syncPlaidTransactions = async (item_id: string) => {
       // upsert (so the posted row exists) and before the removal
       // cascade (deleteTransactions soft-deletes splits by
       // transaction_id, which would tombstone the pending row's splits
-      // before they could ride across — #825). Once re-pointed, the
+      // before they could ride across). Once re-pointed, the
       // cascade finds no live splits under the pending id and the
       // posted id is never in `removed`, so the splits survive.
       return upsertTransactions(user, [...modeledAdded, ...modeledModified])
@@ -197,9 +197,11 @@ export const syncPlaidTransactions = async (item_id: string) => {
           // allSettled like the rejected-categories migration below:
           // failures are logged at warn and do not interrupt counting;
           // a failed re-point leaves the splits under the pending id,
-          // where the cascade below tombstones them — the pre-#825
+          // where the cascade below tombstones them — the pre-fix
           // behaviour, not a worse one. The helper is a single UPDATE
-          // per pair and no-ops when the pending side has no splits.
+          // per pair: a same-id pair short-circuits without a query,
+          // and a pending id with no live splits still issues one
+          // UPDATE returning 0.
           const repoints = await Promise.allSettled(
             pendingPostedTransitions.map((t) =>
               repointSplitTransactionsOnPendingPosted(user, t.pending, t.posted),

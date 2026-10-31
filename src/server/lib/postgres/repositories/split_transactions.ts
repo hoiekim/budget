@@ -142,7 +142,7 @@ export const deleteSplitTransactionsByTransaction = async (
 
 /**
  * Re-point a pending transaction's live split rows onto the posted
- * transaction that supersedes it (pending→posted transition, #825).
+ * transaction that supersedes it (pending→posted transition).
  *
  * Without this, `syncPlaidTransactions` tombstones the pending row's
  * splits in the removal cascade (`deleteTransactions` soft-deletes
@@ -155,6 +155,13 @@ export const deleteSplitTransactionsByTransaction = async (
  * splits of its own yet, and re-pointing first keeps the cascade from
  * ever seeing these rows under the pending id.
  *
+ * Guard: if the posted id already carries live splits — the posted row
+ * was re-served in a later modified batch after splits were created
+ * against it — merging the pending side's splits on top would stack
+ * two sets under one parent and double-count in rollups. Skip and
+ * warn instead; the pending side's splits stay put and the removal
+ * cascade handles them as before.
+ *
  * Scoped to the caller's `user_id` and to live rows only — a split the
  * user already deleted stays deleted under the pending id. Bumps
  * `updated` so delta/cursor syncs pick the re-pointed rows up.
@@ -166,6 +173,26 @@ export const repointSplitTransactionsOnPendingPosted = async (
   posted_transaction_id: string,
 ): Promise<number> => {
   if (pending_transaction_id === posted_transaction_id) return 0;
+  // Non-canonical path: the posted row was re-served in a later batch
+  // after live splits were created against it. Merging on top would
+  // stack two sets under one parent, so skip and warn instead.
+  const postedLive = await pool.query(
+    `
+    SELECT 1 FROM ${SPLIT_TRANSACTIONS}
+    WHERE ${USER_ID} = $1
+      AND ${TRANSACTION_ID} = $2
+      AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
+    LIMIT 1
+    `,
+    [user.user_id, posted_transaction_id],
+  );
+  if ((postedLive.rowCount ?? 0) > 0) {
+    logger.warn("Skipping split re-point: posted transaction already has live splits", {
+      pending: pending_transaction_id,
+      posted: posted_transaction_id,
+    });
+    return 0;
+  }
   const result = await pool.query(
     `
     UPDATE ${SPLIT_TRANSACTIONS}
