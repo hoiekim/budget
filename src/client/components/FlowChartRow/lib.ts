@@ -304,7 +304,10 @@ export interface SankeyRow {
 export type SankeyColumn = SankeyRow[];
 
 export const getVerticalLines = (column: SankeyColumn, numberOfMargins: number): Line[] => {
-  const margin = 0.03;
+  // Gaps may take at most 30% of the canvas. Pricing every gap at a fixed
+  // 3% leaves the bars 31% of the height at 23 gaps and inverts them past
+  // 33 (#826). Up to 10 gaps the margin is unchanged (0.3 / 10 = 0.03).
+  const margin = Math.min(0.03, 0.3 / Math.max(numberOfMargins, 1));
   const numberOfMarginsInThisColumn = column.length - 1;
   const unusedNumberOfMargins = numberOfMargins - numberOfMarginsInThisColumn;
   const numberOfExtraMarginsOntheTop = unusedNumberOfMargins / 2;
