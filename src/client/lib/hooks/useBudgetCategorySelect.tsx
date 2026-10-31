@@ -94,13 +94,20 @@ export const useBudgetCategorySelect = (
       });
     });
 
-    return availableCategories.map((e) => {
-      return (
-        <option key={`${optionKeyPrefix}_category_option_${e.category_id}`} value={e.category_id}>
-          {e.name}
-        </option>
-      );
-    });
+    // Skip empty-named categories the way `budgetOptions` skips empty-named
+    // budgets: they render as a blank selectable option. `?.` because the
+    // column is nullable — a pre-existing null-named row reaches here as
+    // `null` at runtime (`assign` copies it verbatim), and an unguarded
+    // `.trim()` would turn the blank option into a TypeError.
+    return availableCategories
+      .filter((e) => e.name?.trim())
+      .map((e) => {
+        return (
+          <option key={`${optionKeyPrefix}_category_option_${e.category_id}`} value={e.category_id}>
+            {e.name}
+          </option>
+        );
+      });
   }, [optionKeyPrefix, label.budget_id, account?.label.budget_id, sections, categories]);
 
   return {

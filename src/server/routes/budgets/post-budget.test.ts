@@ -115,6 +115,23 @@ describe("post-budget typed body fields", () => {
     await rejects({ budget_id: UUID, name: null }, "Field name must be a string");
   });
 
+  test("a blank name is refused with the budget message, before it reaches the repo", async () => {
+    for (const name of ["", "   "]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      await rejects(
+        {
+          budget_id: UUID,
+          name,
+          roll_over: true,
+          roll_over_start_date: "2026-08-24T00:00:00",
+          capacities: [{ month: 100 }],
+        },
+        "Budget name cannot be empty.",
+      );
+    }
+  });
+
   test("a non-array capacities is refused before it lands in the JSONB column", async () => {
     for (const capacities of ["abc", 5, { a: 1 }, null]) {
       clearSqlMocks();
