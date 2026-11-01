@@ -4,6 +4,7 @@ import {
   requireBodyObject,
   requireTickerSymbol,
   optionalDateField,
+  validateFields,
   validationError,
   upsertHoldingSnapshots,
   upsertHoldings,
@@ -18,6 +19,7 @@ import {
   POLYGON_LOOKUP_SHED_MESSAGE,
   backfillMonthlySecuritySnapshotsForward,
 } from "server";
+import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
 import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositories";
 
@@ -25,6 +27,37 @@ export interface HoldingSnapshotPostResponse {
   snapshot_id: string;
   security_id: string;
 }
+
+/**
+ * The numeric fields a holding-snapshot edit can set, mirroring their
+ * DECIMAL columns in `models/snapshot.ts` (QUANTITY DECIMAL(15, 6),
+ * COST_BASIS / INSTITUTION_VALUE DECIMAL(15, 2), INSTITUTION_PRICE
+ * DECIMAL(15, 6)). All four columns are nullable, so an explicit null
+ * clears the column rather than failing — the specs say so instead of
+ * letting the write decide.
+ *
+ * Both specs run BEFORE the ownership lookup, matching #776: a client type
+ * error is a `failed` answer with the field named, never a 22P02 at the
+ * write that `Route.execute` turns into a 500 plus an alarm.
+ *
+ * Overflow stays out of scope here: `validateFields`'s `number` pins
+ * finiteness only, so a 1e300 still reaches the column — that range bound
+ * belongs to #880, which adds it to `FieldSpec` for all eight swept routes
+ * at once.
+ */
+const HOLDING_SNAPSHOT_PATCH_SPEC: FieldSpec[] = [
+  { path: "quantity", type: "number", nullable: true },
+  { path: "cost_basis", type: "number", nullable: true },
+  { path: "institution_price", type: "number", nullable: true },
+  { path: "institution_value", type: "number", nullable: true },
+];
+
+const HOLDING_SNAPSHOT_CREATE_SPEC: FieldSpec[] = [
+  { path: "quantity", type: "number", required: true },
+  { path: "cost_basis", type: "number", nullable: true },
+  { path: "institution_price", type: "number", nullable: true },
+  { path: "institution_value", type: "number", nullable: true },
+];
 
 /**
  * Resolve an already-validated ticker symbol to a security_id, creating the
@@ -113,6 +146,9 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     // only the fields included in the body are written. Powers the on-blur
     // edit flow on the Holding Detail page.
     if (provided_snapshot_id) {
+      const patchFieldsResult = validateFields(body, HOLDING_SNAPSHOT_PATCH_SPEC);
+      if (!patchFieldsResult.success) return validationError(patchFieldsResult.error!);
+
       const userSnapshots = await getHoldingSnapshots(user);
       const existing = userSnapshots.find((s) => s.snapshot_id === provided_snapshot_id);
       if (!existing) {
@@ -190,7 +226,6 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
     // ── Create mode ─────────────────────────────────────────────────────────
     const account_id = body.account_id as string | undefined;
-    const quantity = body.quantity as number | undefined;
 
     if (!account_id) return validationError("account_id is required");
     if (typeof account_id !== "string") return validationError("account_id must be a string");
@@ -202,7 +237,16 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     }
     const tickerResult = given_security_id ? null : requireTickerSymbol(body, "ticker_symbol");
     if (tickerResult && !tickerResult.success) return validationError(tickerResult.error!);
-    if (quantity === undefined || quantity === null) return validationError("quantity is required");
+    // `quantity` is the only required number; the other three are optional
+    // and nullable (see HOLDING_SNAPSHOT_CREATE_SPEC). Replaces the old
+    // presence-only check, which let a string or boolean through to the
+    // DECIMAL column. Runs before the ownership lookup, so the refusal
+    // issues no SQL and no alarm.
+    const createFieldsResult = validateFields(body, HOLDING_SNAPSHOT_CREATE_SPEC);
+    if (!createFieldsResult.success) return validationError(createFieldsResult.error!);
+    // The spec just proved `quantity` is a finite number — the cast below
+    // is the same narrowing the old presence check used to give.
+    const quantity = body.quantity as number;
 
     const parsedDate = optionalDateField(body, "snapshot_date");
     if (!parsedDate.success) return validationError(parsedDate.error!);

@@ -15,9 +15,21 @@ const { driver } = createFakeSql(async (sql: string, values?: unknown[]) => {
 
 mock.module("../../lib/postgres/sql-driver", () => driver);
 
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// driver / `password` leaves, so spread the real module rather than replacing it —
+// and put it back in `afterAll` (the post-transaction-routes.test.ts pattern)
+// so sibling files sharing the process exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
+mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
+
 const { postSnapshotRoute } = await import("./post-snapshot");
 
-afterAll(restoreLeaves);
+afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
+  restoreLeaves();
+});
 
 const ACCOUNT_ROW = {
   account_id: "acct-A",
@@ -84,6 +96,7 @@ const victimsAccount = {
 beforeEach(() => {
   issued.length = 0;
   ownedAccountRows = [];
+  mockSendAlarm.mockClear();
 });
 
 describe("post-snapshot ownership", () => {
@@ -184,6 +197,53 @@ describe("post-snapshot body validation", () => {
     );
     expect(result!.status).toBe("failed");
     expect(result!.message).toMatch(/must be a string/i);
+  });
+
+  test("rejects a non-number balance before any SQL or alarm", async () => {
+    // The #776 pattern: the balance fields are validated before the
+    // ownership lookup, so a client type error issues no SQL and no alarm.
+    // Without the guard the route reaches the accounts SELECT and then the
+    // DECIMAL write, so both assertions discriminate.
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    for (const [field, value] of [
+      ["current", "abc"],
+      ["available", true],
+      ["limit", "abc"],
+      ["iso_currency_code", 42],
+    ] as [string, unknown][]) {
+      issued.length = 0;
+      mockSendAlarm.mockClear();
+      const result = await postSnapshotRoute.execute(
+        makeReq(
+          { account: { account_id: "acct-A", balances: { [field]: value } }, snapshot: {} },
+          "owner",
+        ),
+        fakeRes(),
+      );
+      expect(result!.status).toBe("failed");
+      expect(result!.message).toBe(
+        field === "iso_currency_code"
+          ? "Field account.balances.iso_currency_code must be a string"
+          : `Field account.balances.${field} must be a number`,
+      );
+      expect(issued).toHaveLength(0);
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("an explicit null balance clears the column instead of failing", async () => {
+    // The three balance columns are nullable, so null is a legitimate
+    // "clear this field" value — the spec says so, the write must agree.
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    const result = await postSnapshotRoute.execute(
+      makeReq(
+        { account: { account_id: "acct-A", balances: { current: null } }, snapshot: { date: "2026-07-01" } },
+        "owner",
+      ),
+      fakeRes(),
+    );
+    expect(result!.status).toBe("success");
+    expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(true);
   });
 
   test("a snapshot with no date still defaults to today and writes", async () => {

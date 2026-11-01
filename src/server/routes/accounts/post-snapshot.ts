@@ -4,9 +4,11 @@ import {
   upsertSnapshots,
   requireBodyObject,
   optionalDateField,
+  validateFields,
   validationError,
   getAccount,
 } from "server";
+import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
 
 export interface SnapshotPostResponse {
@@ -17,6 +19,25 @@ export interface SnapshotPostResponse {
    *  sync whenever the browser and the server sit in different zones. */
   date: string;
 }
+
+/**
+ * The typed fields an account snapshot can carry, mirroring their columns
+ * in `models/snapshot.ts` (BALANCES_AVAILABLE / CURRENT / LIMIT
+ * DECIMAL(15, 2), BALANCES_ISO_CURRENCY_CODE VARCHAR(10)). All four are
+ * nullable, so an explicit null clears the column rather than failing.
+ * Runs BEFORE the ownership lookup, matching #776: a client type error is
+ * a `failed` answer with the field named, never a 22P02 at the write that
+ * `Route.execute` turns into a 500 plus an alarm. `account.balances`
+ * itself is optional — absent leaves nothing to check, and the write side
+ * defaults each balance to null. Overflow stays out of scope here (see
+ * #880, which adds the range bound to `FieldSpec` for all swept routes).
+ */
+const SNAPSHOT_BODY_SPEC: FieldSpec[] = [
+  { path: "account.balances.available", type: "number", nullable: true },
+  { path: "account.balances.current", type: "number", nullable: true },
+  { path: "account.balances.limit", type: "number", nullable: true },
+  { path: "account.balances.iso_currency_code", type: "string", nullable: true },
+];
 
 export const postSnapshotRoute = new Route<SnapshotPostResponse>(
   "POST",
@@ -44,6 +65,9 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     if (!account || typeof account !== "object" || typeof account.account_id !== "string") {
       return validationError("Request body must contain an account with an account_id");
     }
+
+    const fieldsResult = validateFields(body, SNAPSHOT_BODY_SPEC);
+    if (!fieldsResult.success) return validationError(fieldsResult.error!);
 
     if (!(await getAccount(user, account.account_id))) {
       return { status: "failed", message: "Account not found or access denied." };

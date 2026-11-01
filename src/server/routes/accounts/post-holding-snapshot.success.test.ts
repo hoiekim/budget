@@ -33,9 +33,21 @@ const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, 
 
 mock.module("../../lib/postgres/sql-driver", () => driver);
 
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// driver / `password` leaves, so spread the real module rather than replacing it —
+// and put it back in `afterAll` (the post-transaction-routes.test.ts pattern)
+// so sibling files sharing the process exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
+mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
+
 const { postHoldingSnapshotRoute } = await import("./post\-holding\-snapshot");
 
-afterAll(restoreLeaves);
+afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
+  restoreLeaves();
+});
 
 beforeEach(() => {
   // The create path starts a monthly backfill it does not await, so this file
@@ -46,6 +58,7 @@ beforeEach(() => {
   // which a leak from an earlier file can make truthy.
   process.env.POLYGON_API_KEY = "";
   clearSqlMocks();
+  mockSendAlarm.mockClear();
   snapshotRows = [];
   securityRows = [];
   accountRows = [];
@@ -262,6 +275,47 @@ describe("post-holding-snapshot update mode", () => {
     }
   });
 
+  test("rejects a non-number patch field before any SQL or alarm", async () => {
+    // The #776 pattern: the numeric patch fields are validated before the
+    // ownership lookup, so a client type error issues no SQL and no alarm.
+    // Without the guard the route reaches the snapshots SELECT and then the
+    // DECIMAL write, so both assertions discriminate.
+    snapshotRows = [holdingSnapshotRow()];
+    for (const [field, value] of [
+      ["quantity", "abc"],
+      ["cost_basis", "abc"],
+      ["institution_price", true],
+      ["institution_value", "abc"],
+    ] as [string, unknown][]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", [field]: value }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(`Field ${field} must be a number`);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("an explicit null patch clears the column instead of failing", async () => {
+    // The four numeric columns are nullable, so null is a legitimate
+    // "clear this field" edit — the spec says so, the write must agree.
+    snapshotRows = [holdingSnapshotRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: null }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const upd = findCall(/update\s+snapshots/i);
+    expect(upd).not.toBeNull();
+    expect(upd!.values).toContain(null);
+  });
+
   test("a valid snapshot_date still patches the row", async () => {
     snapshotRows = [holdingSnapshotRow()];
 
@@ -399,6 +453,33 @@ describe("post-holding-snapshot create mode", () => {
     expect(lookup).not.toBeNull();
     expect(lookup!.values).toContain("u-1");
     expect(lookup!.values).toContain("victim-account");
+  });
+
+  test("rejects non-number numerics in create mode before any SQL or alarm", async () => {
+    // Same #776 shape as the update-mode test: validation runs before the
+    // ownership lookup, so a bad quantity (or optional numeric) issues no
+    // SQL and no alarm. Without the guard the route reaches the accounts
+    // SELECT and then the DECIMAL write.
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+    for (const [field, value] of [
+      ["quantity", "abc"],
+      ["quantity", true],
+      ["cost_basis", "abc"],
+      ["institution_price", true],
+      ["institution_value", "abc"],
+    ] as [string, unknown][]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 3, [field]: value }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(`Field ${field} must be a number`);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
   });
 
   test("a create with no snapshot_date defaults to today, not to a fixed instant", async () => {
