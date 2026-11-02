@@ -44,7 +44,7 @@ export default [
     },
   },
   {
-    // #847: the Plaid Node SDK must not reach the browser bundle. The client
+    // Issue 847: the Plaid Node SDK must not reach the browser bundle. The client
     // and common layers take their Plaid enums from src/common/lib/plaid-enums
     // (and the interfaces as types from there); only that module may import
     // "plaid", as a type-only re-export. A future value import fails lint
@@ -58,7 +58,7 @@ export default [
             {
               name: "plaid",
               message:
-                'Import Plaid enums from "common/lib/plaid-enums" instead — a value import of the SDK pulls plaid + axios into the browser bundle (#847).',
+                'Import Plaid enums from "common/lib/plaid-enums" instead — a value import of the SDK pulls plaid + axios into the browser bundle (issue 847).',
             },
           ],
         },
