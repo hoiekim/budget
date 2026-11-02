@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { getDateString } from "common";
 import {
   HoldingSnapshotDictionary,
   InvestmentTransactionDictionary,
@@ -84,11 +85,10 @@ export const useHoldingDivergence = (
 
     // Window: 1y ending at `viewEndDate` (or today if omitted), floored at
     // earliest available data per account.
-    const toIso = (d: Date) => d.toISOString().slice(0, 10);
-    const windowEnd = viewEndDate ?? toIso(new Date());
+    const windowEnd = viewEndDate ?? getDateString();
     const oneYearAgoDate = new Date(windowEnd);
     oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
-    const oneYearAgo = toIso(oneYearAgoDate);
+    const oneYearAgo = getDateString(oneYearAgoDate);
 
     const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
 

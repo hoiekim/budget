@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
 import type { NewTransactionGetResponse, NewInvestmentTransactionGetResponse } from "server";
-import { normalizeShareMovement } from "common";
+import { getDateString, normalizeShareMovement } from "common";
 import {
   Data,
   InvestmentTransaction,
@@ -96,7 +96,7 @@ export const useTransactionEntry = () => {
         name,
         amount: 0,
         iso_currency_code: input.iso_currency_code ?? null,
-        date: new Date().toISOString().split("T")[0],
+        date: getDateString(),
         pending: false,
         source: "manual",
       });
@@ -156,7 +156,7 @@ export const useTransactionEntry = () => {
         investment_transaction_id,
         account_id: input.account_id,
         security_id: input.security_id ?? null,
-        date: input.date ?? new Date().toISOString().split("T")[0],
+        date: input.date ?? getDateString(),
         name,
         // The same values the mint was asked for, so the shell cannot be a
         // differently-shaped row than the record. The amount also keeps it

@@ -7,7 +7,14 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ItemProvider, numberToCommaString, ViewDate, currencyCodeToSymbol } from "common";
+import {
+  ItemProvider,
+  numberToCommaString,
+  ViewDate,
+  currencyCodeToSymbol,
+  dateInputValue,
+  getDateString,
+} from "common";
 import {
   call,
   PATH,
@@ -35,14 +42,6 @@ import { CASH_TICKER } from "../HoldingsComposition";
 import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
 
 import "./index.css";
-
-const toDateInputValue = (d: Date) => d.toISOString().split("T")[0];
-
-const toIsoDateInput = (raw: string | null | undefined): string => {
-  if (!raw) return "";
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? raw.slice(0, 10) : toDateInputValue(date);
-};
 
 interface NewHoldingForm {
   ticker: string;
@@ -235,7 +234,7 @@ export const HoldingProperties = () => {
           next[id] = {
             quantity: snap.holding.quantity != null ? String(snap.holding.quantity) : "",
             costBasis: snap.holding.cost_basis != null ? String(snap.holding.cost_basis) : "",
-            date: toIsoDateInput(snap.snapshot.date),
+            date: dateInputValue(snap.snapshot.date),
             error: "",
           };
         }
@@ -246,7 +245,7 @@ export const HoldingProperties = () => {
 
   const [form, setForm] = useState<NewHoldingForm>(EMPTY_FORM);
   const [snapshotDateInput, setSnapshotDateInput] = useState(
-    toDateInputValue(viewDate.getEndDate()),
+    getDateString(viewDate.getEndDate()),
   );
   const [tickerStatus, setTickerStatus] = useState<"idle" | "validating" | "valid" | "invalid">(
     "idle",
@@ -255,7 +254,7 @@ export const HoldingProperties = () => {
   const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
-    if (isNew) setSnapshotDateInput(toDateInputValue(viewDate.getEndDate()));
+    if (isNew) setSnapshotDateInput(getDateString(viewDate.getEndDate()));
   }, [isNew, viewDate]);
 
   const onChangeField =
@@ -332,7 +331,7 @@ export const HoldingProperties = () => {
       investmentTransactions: data.investmentTransactions,
       securitySnapshots: data.securitySnapshots,
     },
-    viewEndDate.toISOString().slice(0, 10),
+    getDateString(viewEndDate),
   );
   // Second computation at TODAY — the button's presence tracks the security's
   // LATEST unreconciled surplus, not just the current view's window, so the
@@ -593,7 +592,7 @@ export const HoldingProperties = () => {
 
   const onBlurDate = (snap: HoldingSnapshot, raw: string) => async () => {
     if (!raw) return;
-    if (raw === toIsoDateInput(snap.snapshot.date)) return;
+    if (raw === dateInputValue(snap.snapshot.date)) return;
     await updateSnapshot(snap, { snapshot_date: raw });
   };
 

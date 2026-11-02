@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { resolve } from "path";
 import {
   getDateString,
+  dateInputValue,
   getSquashedDateString,
   getDateTimeString,
   getYearMonthString,
@@ -10,6 +12,8 @@ import {
   IsDate,
   isCalendarDate,
 } from "./date";
+
+const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
 
 describe("getDateString", () => {
   it("should format date as YYYY-MM-DD", () => {
@@ -25,6 +29,65 @@ describe("getDateString", () => {
   it("should pad single-digit days", () => {
     const date = new Date(2024, 11, 5); // December 5, 2024
     expect(getDateString(date)).toBe("2024-12-05");
+  });
+
+  it("reads the LOCAL calendar day in the evening in a western zone", () => {
+    // getDateString builds from local components; toISOString reads UTC.
+    // A midday fixture passes under both, so the fixture is 18:00 on the
+    // last day of a month — UTC already reads the next day (and the next
+    // month). Pin the zone in a child process: process.env.TZ in-process
+    // leaks into every suite that runs after this one.
+    const script = [
+      'import { getDateString } from "./src/common/utils/date";',
+      "const d = new Date(2026, 8, 30, 18, 0, 0);",
+      "console.log(JSON.stringify({ local: getDateString(d), utc: d.toISOString().slice(0, 10) }));",
+    ].join("\n");
+
+    const { stdout, stderr, exitCode } = Bun.spawnSync({
+      cmd: ["bun", "-e", script],
+      cwd: REPO_ROOT,
+      env: { ...process.env, TZ: "America/Los_Angeles" },
+    });
+    expect(exitCode, stderr.toString()).toBe(0);
+
+    const { local, utc } = JSON.parse(stdout.toString());
+    // The fixture only proves anything if the two readings really do differ.
+    expect(utc).toBe("2026-10-01");
+    expect(local).toBe("2026-09-30");
+  });
+});
+
+describe("dateInputValue", () => {
+  it("reads the LOCAL calendar day, not the UTC one", () => {
+    // Same evening-of-the-last-day shape as getDateString above, for a
+    // stored ISO instant with an explicit offset: 18:00 PDT is 01:00 UTC
+    // the next day.
+    const script = [
+      'import { dateInputValue } from "./src/common/utils/date";',
+      'const raw = "2026-09-30T18:00:00-07:00";',
+      "console.log(JSON.stringify({ rendered: dateInputValue(raw), utc: new Date(raw).toISOString().slice(0, 10) }));",
+    ].join("\n");
+
+    const { stdout, stderr, exitCode } = Bun.spawnSync({
+      cmd: ["bun", "-e", script],
+      cwd: REPO_ROOT,
+      env: { ...process.env, TZ: "America/Los_Angeles" },
+    });
+    expect(exitCode, stderr.toString()).toBe(0);
+
+    const { rendered, utc } = JSON.parse(stdout.toString());
+    expect(utc).toBe("2026-10-01");
+    expect(rendered).toBe("2026-09-30");
+  });
+
+  it("returns '' for an empty, null, or undefined value", () => {
+    expect(dateInputValue("")).toBe("");
+    expect(dateInputValue(null)).toBe("");
+    expect(dateInputValue(undefined)).toBe("");
+  });
+
+  it("falls back to the first 10 chars when the value is not a real date", () => {
+    expect(dateInputValue("2026-09-30-garbage")).toBe("2026-09-30");
   });
 });
 

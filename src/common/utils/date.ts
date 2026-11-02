@@ -229,6 +229,17 @@ export const getDateString = (dateObject = new Date()) => {
 };
 
 /**
+ * Render a stored ISO date as a local `YYYY-MM-DD` for a date input.
+ * An unparseable value falls back to its first ten characters — the
+ * `YYYY-MM-DD` the caller already had — and an empty one to `""`.
+ */
+export const dateInputValue = (raw: string | null | undefined): string => {
+  if (!raw) return "";
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? raw.slice(0, 10) : getDateString(d);
+};
+
+/**
  * @param dateObject Date
  * @returns YYYYMMDD
  */

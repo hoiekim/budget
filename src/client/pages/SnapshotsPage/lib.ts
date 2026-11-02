@@ -1,11 +1,8 @@
 import { getDateString } from "common";
 
-/** Render a stored ISO snapshot date as a local `YYYY-MM-DD` for a date input. */
-export const dateInputValue = (iso: string): string => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso.slice(0, 10) : getDateString(d);
-};
+// Shared with HoldingProperties: renders a stored ISO date as a local
+// `YYYY-MM-DD` for a date input (`common/utils/date.ts`).
+export { dateInputValue } from "common";
 
 /**
  * A snapshot belongs on the page when the day it occupies falls inside the
