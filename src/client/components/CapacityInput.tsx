@@ -16,6 +16,11 @@ type DynamicCapacityInputProps = {
   maxValue?: number;
   minValue?: number;
   fixed?: number;
+  // Applied after the min/max clamps on blur, before both the rendered
+  // string and the onBlur payload are derived — so the two can never
+  // disagree the way a rounding display and a flooring consumer did.
+  // Defaults to identity: no normalization, no behavior change.
+  normalize?: (n: number) => number;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "value">;
 
 // Strip the input's own prefix (e.g. a non-USD currency code like "EUR") plus
@@ -35,6 +40,7 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
     maxValue,
     minValue,
     fixed = 0,
+    normalize,
     prefix = "",
     className,
     onClick,
@@ -75,10 +81,11 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
         const numberizedValue = +stripPrefixAndSeparators(e.target.value, prefix) || 0;
         const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
         const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
-        const commaString = numberToCommaString(minCappedValue, fixed);
+        const normalized = normalize ? normalize(minCappedValue) : minCappedValue;
+        const commaString = numberToCommaString(normalized, fixed);
         if (prefix) setValue(prefix + " " + commaString);
         else setValue(commaString);
-        if (onBlur) onBlur({ ...e, target: { ...e.target, value: minCappedValue.toString() } });
+        if (onBlur) onBlur({ ...e, target: { ...e.target, value: normalized.toString() } });
       }}
     />
   );
@@ -143,6 +150,7 @@ export const CapacityNumberInput = (props: CapacityNumberInputProps) => {
     maxValue,
     minValue,
     fixed = 0,
+    normalize,
     prefix = "",
     className,
     onClick,
@@ -204,9 +212,10 @@ export const CapacityNumberInput = (props: CapacityNumberInputProps) => {
         const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
         const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
         const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
-        _setValue(toDisplayString(minCappedValue));
-        if (setValue) setValue(minCappedValue);
-        if (onBlur) onBlur(toNumberFocusEvent(e, minCappedValue));
+        const normalized = normalize ? normalize(minCappedValue) : minCappedValue;
+        _setValue(toDisplayString(normalized));
+        if (setValue) setValue(normalized);
+        if (onBlur) onBlur(toNumberFocusEvent(e, normalized));
       }}
     />
   );

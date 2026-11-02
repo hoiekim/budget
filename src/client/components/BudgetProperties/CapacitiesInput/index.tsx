@@ -46,9 +46,13 @@ const CapacitiesInput = ({
       });
     };
 
+    // The capacity's sign is owned by the Expense/Income radio, not the
+    // field — so the input normalizes (floor + abs) on blur and this
+    // handler takes the payload as-is, instead of re-deriving the rule
+    // in a second place that could drift from the displayed string.
     const onChangeAmount: ChangeEventHandler<HTMLInputElement> = (e) => {
       const newCapacity = new Capacity(capacity);
-      const value = Math.floor(Math.abs(+e.target.value));
+      const value = +e.target.value;
       newCapacity.month = value;
       setCapacitiesInput((capacities) => {
         const newCapacities = capacities.map((e) => new Capacity(e));
@@ -103,6 +107,7 @@ const CapacitiesInput = ({
                 style={{ width: `${"000,000".length}ch` }}
                 disabled={isSyncedInput}
                 defaultValue={defaultCapacityValue}
+                normalize={(n) => Math.floor(Math.abs(n))}
                 onBlur={onChangeAmount}
               />
             </div>
@@ -113,6 +118,7 @@ const CapacitiesInput = ({
               isSyncedInput={isSyncedInput}
               capacityInput={capacity}
               defaultCapacityInput={capacity}
+              normalize={(n) => Math.floor(Math.abs(n))}
               onChangeAmount={onChangeAmount}
             />
           )}
