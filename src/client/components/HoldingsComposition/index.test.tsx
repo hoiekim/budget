@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { cleanup } from "@testing-library/react";
+import { ItemProvider } from "common";
 import {
   Account,
   Calculations,
   Data,
   HoldingSnapshot,
   HoldingValueSummary,
+  Item,
   PATH,
   Security,
   SecuritySnapshot,
@@ -114,5 +116,45 @@ describe("holdings whose price snapshot carries an older ticker", () => {
   it("open on the detail page from the current ticker", () => {
     const world = buildWorld({ ticker: "NEWT", snapshotTicker: "OLDT" });
     expect(detailPage(world, "NEWT").textContent).toContain("Example Total Market Fund");
+  });
+});
+
+/** A manual investment account with a balance but no holding snapshots at all. */
+const buildManualWorld = ({ current = 500 }: { current?: number } = {}) => {
+  const data = new Data();
+  const itemId = "item-manual";
+  data.items.set(itemId, new Item({ item_id: itemId, provider: ItemProvider.MANUAL }));
+  const account = new Account({
+    account_id: ACCOUNT_ID,
+    name: "Employer 401(K)",
+    type: "investment",
+    item_id: itemId,
+    balances: {
+      available: 0,
+      current,
+      limit: 0,
+      iso_currency_code: "USD",
+      unofficial_currency_code: "USD",
+    },
+  } as never);
+  data.accounts.set(ACCOUNT_ID, account);
+  const context = buildContext({ data });
+  return { account, context: { ...context, calculations: new Calculations() } };
+};
+
+describe("manual account with no holding snapshots", () => {
+  it("does not show the empty-state row above a populated Unknown row", () => {
+    const container = listedRow(buildManualWorld());
+    expect(container.textContent).not.toContain("No holdings recorded");
+    expect(container.textContent).toContain("Unknown");
+    expect(container.textContent).toContain("Total");
+    expect(container.textContent).toContain("Add Holding");
+  });
+
+  it("shows the empty-state row when the balance is genuinely zero", () => {
+    const container = listedRow(buildManualWorld({ current: 0 }));
+    expect(container.textContent).toContain("No holdings recorded");
+    expect(container.textContent).not.toContain("Unknown");
+    expect(container.textContent).toContain("Add Holding");
   });
 });
