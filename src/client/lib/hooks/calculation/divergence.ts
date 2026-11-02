@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { getDateString } from "common";
+import { getDateString, LocalDate } from "common";
 import {
   HoldingSnapshotDictionary,
   InvestmentTransactionDictionary,
@@ -56,6 +56,19 @@ export interface DivergenceMap {
 }
 
 /**
+ * One year before a bare `YYYY-MM-DD` day, as a bare day. Parses with
+ * `LocalDate` (local midnight) so the parse and `getDateString` agree in
+ * every zone — `new Date("YYYY-MM-DD")` parses as UTC midnight, so
+ * `setFullYear` then mutates in local time and the result reads a day
+ * early west of UTC.
+ */
+export const oneYearBefore = (windowEnd: string): string => {
+  const d = new LocalDate(windowEnd);
+  d.setFullYear(d.getFullYear() - 1);
+  return getDateString(d);
+};
+
+/**
  * `viewEndDate` (YYYY-MM-DD) pins the detection to the same window boundary
  * the `PerformanceBenchmark` widget is showing. Both surfaces MUST use the
  * same date — otherwise the widget footnote flags an excluded holding while
@@ -86,9 +99,7 @@ export const useHoldingDivergence = (
     // Window: 1y ending at `viewEndDate` (or today if omitted), floored at
     // earliest available data per account.
     const windowEnd = viewEndDate ?? getDateString();
-    const oneYearAgoDate = new Date(windowEnd);
-    oneYearAgoDate.setFullYear(oneYearAgoDate.getFullYear() - 1);
-    const oneYearAgo = getDateString(oneYearAgoDate);
+    const oneYearAgo = oneYearBefore(windowEnd);
 
     const priceAt = buildPriceAt(securitySnapshots, investmentTransactions);
 

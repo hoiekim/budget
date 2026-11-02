@@ -3,6 +3,7 @@ import { resolve } from "path";
 import {
   getDateString,
   dateInputValue,
+  dateFromSnapshotId,
   getSquashedDateString,
   getDateTimeString,
   getYearMonthString,
@@ -88,6 +89,48 @@ describe("dateInputValue", () => {
 
   it("falls back to the first 10 chars when the value is not a real date", () => {
     expect(dateInputValue("2026-09-30-garbage")).toBe("2026-09-30");
+  });
+});
+
+describe("dateFromSnapshotId", () => {
+  it("reads back the day the id encodes", () => {
+    expect(dateFromSnapshotId("a-20260710")).toBe("2026-07-10");
+    expect(dateFromSnapshotId("holding-acct-A-sec-1-20260701")).toBe("2026-07-01");
+    expect(dateFromSnapshotId("acct-99-20260710")).toBe("2026-07-10");
+  });
+
+  it("returns null for an id that is not the expected shape", () => {
+    expect(dateFromSnapshotId("acct-1")).toBe(null);
+    expect(dateFromSnapshotId("")).toBe(null);
+    expect(dateFromSnapshotId("a-2026071")).toBe(null);
+  });
+
+  it("is the day a holding row must show when its stored timestamp renders a day early", () => {
+    // A holding snapshot dated 2026-07-01 reaches the browser as the
+    // midnight-UTC carrier `2026-07-01T00:00:00.000Z`, which renders as
+    // 2026-06-30 in America/Los_Angeles — while its id says 2026-07-01.
+    // Pin the zone in a child process (never `process.env.TZ` in-process).
+    const script = [
+      'import { dateInputValue, dateFromSnapshotId } from "./src/common/utils/date";',
+      'const id = "holding-acct-A-sec-1-20260701";',
+      'const stored = "2026-07-01T00:00:00.000Z";',
+      "console.log(JSON.stringify({",
+      "  fromId: dateFromSnapshotId(id) ?? dateInputValue(stored),",
+      "  fromTimestamp: dateInputValue(stored),",
+      "}));",
+    ].join("\n");
+
+    const { stdout, stderr, exitCode } = Bun.spawnSync({
+      cmd: ["bun", "-e", script],
+      cwd: REPO_ROOT,
+      env: { ...process.env, TZ: "America/Los_Angeles" },
+    });
+    expect(exitCode, stderr.toString()).toBe(0);
+
+    const { fromId, fromTimestamp } = JSON.parse(stdout.toString());
+    // The fixture only proves anything if the two readings really do differ.
+    expect(fromTimestamp).toBe("2026-06-30");
+    expect(fromId).toBe("2026-07-01");
   });
 });
 

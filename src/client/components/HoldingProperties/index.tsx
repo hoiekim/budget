@@ -12,6 +12,7 @@ import {
   numberToCommaString,
   ViewDate,
   currencyCodeToSymbol,
+  dateFromSnapshotId,
   dateInputValue,
   getDateString,
 } from "common";
@@ -50,6 +51,17 @@ interface NewHoldingForm {
 }
 
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
+
+/**
+ * The day a holding snapshot occupies, from its id — not the stored
+ * timestamp. The id (`holding-<account>-<security>-<YYYYMMDD>`) is the
+ * snapshot's identity and both writers derive it the same way; the stored
+ * instant is a midnight-UTC carrier of the picked bare date, so rendering
+ * it reads a day early west of UTC. Falls back to the timestamp rendering
+ * for ids that are not the expected shape.
+ */
+const snapshotDay = (snap: HoldingSnapshot): string =>
+  dateFromSnapshotId(snap.snapshot.snapshot_id) ?? dateInputValue(snap.snapshot.date);
 
 interface SecurityInfo {
   security_id: string | null;
@@ -234,7 +246,7 @@ export const HoldingProperties = () => {
           next[id] = {
             quantity: snap.holding.quantity != null ? String(snap.holding.quantity) : "",
             costBasis: snap.holding.cost_basis != null ? String(snap.holding.cost_basis) : "",
-            date: dateInputValue(snap.snapshot.date),
+            date: snapshotDay(snap),
             error: "",
           };
         }
@@ -592,7 +604,7 @@ export const HoldingProperties = () => {
 
   const onBlurDate = (snap: HoldingSnapshot, raw: string) => async () => {
     if (!raw) return;
-    if (raw === dateInputValue(snap.snapshot.date)) return;
+    if (raw === snapshotDay(snap)) return;
     await updateSnapshot(snap, { snapshot_date: raw });
   };
 
