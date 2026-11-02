@@ -24,7 +24,7 @@ const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
 mock.module("../postgres/sql-driver", () => driver);
 
-const { runAutoSuggestions, CAS_NULL_CONFIDENCE } = await import("./auto\-suggest");
+const { runAutoSuggestions, CAS_NULL_CONFIDENCE, IDENTITY_SCORE_THRESHOLD, ROW_SCORE_THRESHOLD } = await import("./auto\-suggest");
 
 afterAll(restoreLeaves);
 const { buildUpdate } = await import("../postgres/database");
@@ -132,6 +132,13 @@ const updateCalls = (target: RegExp): Array<{ sql: string; values: unknown[] }> 
 
 const signalCalls = (): number =>
   mockUnsafe.mock.calls.filter((c) => isSignalSql(c[0] as string)).length;
+
+// The $12 param of each signal call — the per-row score threshold for
+// that tier (identity first, standard as fallback).
+const signalThresholds = (): unknown[] =>
+  mockUnsafe.mock.calls
+    .filter((c) => isSignalSql(c[0] as string))
+    .map((c) => ((c[1] ?? []) as unknown[])[11]);
 
 describe("runAutoSuggestions", () => {
   test("skips when no users found", async () => {
@@ -319,6 +326,64 @@ describe("runAutoSuggestions", () => {
 
     // Two unlabeled rows → two signal queries.
     expect(signalCalls()).toBe(2);
+  });
+
+  test("identity tier is tried first and skips the fallback when it applies", async () => {
+    userRows = [userRow({ user_id: "u-tier1" })];
+    unlabeledByUser.set("u-tier1", [
+      txRow({ transaction_id: "txn-1", user_id: "u-tier1", merchant_name: "Tier One Co" }),
+    ]);
+    // Passing signal — quality = 1000/(10×107) ≈ 0.935.
+    signalRow = {
+      label_category_id: "cat-tier1",
+      label_budget_id: "bud-tier1",
+      accepted: "1000",
+      count_matched: "10",
+      rejected: "0",
+    };
+
+    await runAutoSuggestions();
+
+    expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(1);
+    // One signal query only: the identity tier applied, so the
+    // standard-tier fallback never runs.
+    expect(signalCalls()).toBe(1);
+    expect(signalThresholds()).toEqual([IDENTITY_SCORE_THRESHOLD]);
+  });
+
+  test("falls back to the standard tier when the identity tier yields no suggestion (budget#1018)", async () => {
+    userRows = [userRow({ user_id: "u-tier2" })];
+    unlabeledByUser.set("u-tier2", [
+      txRow({ transaction_id: "txn-1", user_id: "u-tier2", merchant_name: "Diluted Co" }),
+    ]);
+    // Same shape as the #1018 signal: 50 rows averaging score 30 each
+    // → quality = 1500/(50×107) ≈ 0.28 < 0.30 — fails the gate at
+    // either tier, so the engine tries both and suggests nothing.
+    signalRow = {
+      label_category_id: "cat-tier2",
+      label_budget_id: "bud-tier2",
+      accepted: "1500",
+      count_matched: "50",
+      rejected: "0",
+    };
+
+    await runAutoSuggestions();
+
+    expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
+    // Two signal queries for the one target: identity tier first,
+    // standard tier as fallback — same SQL, different $12.
+    expect(signalCalls()).toBe(2);
+    expect(signalThresholds()).toEqual([IDENTITY_SCORE_THRESHOLD, ROW_SCORE_THRESHOLD]);
+  });
+
+  test("identity threshold sits above the weak-only maximum (budget#1018)", () => {
+    // A row matching only the five non-identity features scores at
+    // most amount(5) + pfc(10) + channel(1) + account(1) + day(1) =
+    // 18. The identity tier must sit above that (and at or below the
+    // smallest identity weight, name at 50) so only merchant/name
+    // matches count there.
+    expect(IDENTITY_SCORE_THRESHOLD).toBe(19);
+    expect(IDENTITY_SCORE_THRESHOLD).toBeGreaterThan(ROW_SCORE_THRESHOLD);
   });
 
   test("continues processing other users when one fails", async () => {
@@ -716,10 +781,11 @@ describe("runAutoSuggestions", () => {
       const day = new Date().getUTCDate();
       expect(values[9]).toBe(day - 3);
       expect(values[10]).toBe(day + 3);
-      // $12 is the per-row score threshold (ROW_SCORE_THRESHOLD) —
+      // $12 is the per-row score threshold for this tier — the FIRST
+      // signal call runs the identity tier (IDENTITY_SCORE_THRESHOLD);
       // a row only contributes to the SUM if its score exceeds this.
       expect(typeof values[11]).toBe("number");
-      expect(values[11] as number).toBeGreaterThan(0);
+      expect(values[11]).toBe(IDENTITY_SCORE_THRESHOLD);
       // $13 carries the target's raw amount — used as the sign source
       // for the merchant/name/pfc gates in SCORE_EXPR.
       expect(values[12]).toBe(100);
