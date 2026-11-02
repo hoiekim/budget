@@ -1,5 +1,5 @@
 import { getRandomId, assign, JSONClientItem, ItemStatus, ItemProvider } from "common";
-import { PlaidError, Products } from "plaid";
+import { PlaidError, Products } from "common/lib/plaid-enums";
 
 export class Item implements JSONClientItem {
   get id() {

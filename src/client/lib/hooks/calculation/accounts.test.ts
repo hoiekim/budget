@@ -4,7 +4,7 @@ import {
   AccountSubtype,
   InvestmentTransactionType,
   InvestmentTransactionSubtype,
-} from "plaid";
+} from "common/lib/plaid-enums";
 import { getYearMonthString } from "common";
 import { getAccountBalance, getBalanceData, getDisplayBalance } from "./accounts";
 import {

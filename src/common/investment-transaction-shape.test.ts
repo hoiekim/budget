@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "./lib/plaid-enums";
 import {
   isCanonical,
   movesShares,

@@ -3,7 +3,7 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
-} from "plaid";
+} from "common/lib/plaid-enums";
 import {
   getRandomId,
   assign,
@@ -30,7 +30,11 @@ export class Account implements JSONAccount {
   mask: string | null = null;
   name: string = "Unknown";
   official_name: string | null = null;
-  type = AccountType.Other;
+  // Explicit annotation: without it the field infers the literal type of
+  // the default (`"other"`), and every comparison against another member
+  // reads as a no-overlap error. The same applies to the other enum
+  // defaults in this file's sibling models.
+  type: AccountType = AccountType.Other;
   subtype: AccountSubtype | null = null;
   verification_status?: AccountBaseVerificationStatusEnum;
   institution_id: string = "Unknown";

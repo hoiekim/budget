@@ -10,7 +10,7 @@
  * ignored and the holding is the transactions' alone.
  */
 
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "./lib/plaid-enums";
 import { JSONInvestmentTransaction } from "./models";
 import { PLAN_STATEMENT_ID_PREFIX } from "./constants";
 

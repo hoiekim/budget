@@ -1,4 +1,4 @@
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "../lib/plaid-enums";
 import { PLAN_STATEMENT_ID_PREFIX, REINVESTED_DISTRIBUTION } from "../constants";
 import { positionBefore, type EnteredPosition, type Movement } from "../holding-positions";
 import { hash128 } from "../utils/hash";

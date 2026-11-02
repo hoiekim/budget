@@ -1,5 +1,5 @@
 import { CSSProperties, ReactNode, useState } from "react";
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { Account, DonutData, useAppContext } from "client";
 import { Placeholder } from "client/components";
 import AccountRow from "./AccountRow";
