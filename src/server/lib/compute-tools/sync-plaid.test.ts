@@ -310,6 +310,53 @@ describe("detectAccountIdChurn", () => {
       },
     ]);
   });
+
+  it("prefers the live successor over an archived predecessor when both match", () => {
+    // Card Issuer G shape: an archived predecessor and the live successor
+    // share (name, mask, subtype); the provider re-issues the successor's
+    // id, so the alarm must name the successor, not the dead end.
+    const storedBoth = [
+      makeAccount({ account_id: "acc-archived", archived: true }),
+      makeAccount({ account_id: "acc-live", archived: false }),
+    ];
+    expect(detectAccountIdChurn([makeAccount({ account_id: "acc-new" })], storedBoth)).toEqual([
+      {
+        item_id: "item-1",
+        old_account_id: "acc-live",
+        new_account_id: "acc-new",
+        name: "Everyday Checking",
+        mask: "1234",
+        subtype: "checking",
+      },
+    ]);
+  });
+
+  it("reports every tied sibling when all matches are archived", () => {
+    // Two archived predecessors and no live successor: the true predecessor
+    // is unknowable from these fields, so no single old id may be named.
+    const storedBoth = [
+      makeAccount({ account_id: "acc-old-1", archived: true }),
+      makeAccount({ account_id: "acc-old-2", archived: true }),
+    ];
+    expect(detectAccountIdChurn([makeAccount({ account_id: "acc-new" })], storedBoth)).toEqual([
+      {
+        item_id: "item-1",
+        old_account_id: "acc-old-1",
+        new_account_id: "acc-new",
+        name: "Everyday Checking",
+        mask: "1234",
+        subtype: "checking",
+      },
+      {
+        item_id: "item-1",
+        old_account_id: "acc-old-2",
+        new_account_id: "acc-new",
+        name: "Everyday Checking",
+        mask: "1234",
+        subtype: "checking",
+      },
+    ]);
+  });
 });
 
 // ─── getPlaidRemovedInvestmentTransactions ────────────────────────────────────

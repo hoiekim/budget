@@ -89,7 +89,10 @@ export const detectPendingPostedTransitions = (
  *
  * Only incoming ids absent from the stored set are candidates: once the
  * new id is upserted, later syncs see it as known, so a pair fires on the
- * sync where it first appears and never again.
+ * sync where it first appears and never again. When several stored
+ * accounts match, the live (non-archived) one is the predecessor — the
+ * archived ones are already dead ends; if all matches are archived,
+ * each is reported rather than an arbitrary first pick.
  */
 export interface AccountIdChurn {
   item_id: string;
@@ -101,21 +104,34 @@ export interface AccountIdChurn {
 }
 
 export const detectAccountIdChurn = (
-  incoming: Pick<JSONAccount, "account_id" | "name" | "mask" | "subtype" | "item_id">[],
-  stored: Pick<JSONAccount, "account_id" | "name" | "mask" | "subtype" | "item_id">[],
+  incoming: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
+  stored: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
 ): AccountIdChurn[] => {
   const storedIds = new Set(stored.map((a) => a.account_id));
   const churn: AccountIdChurn[] = [];
   for (const account of incoming) {
     if (storedIds.has(account.account_id)) continue;
-    const sibling = stored.find(
+    const siblings = stored.filter(
       (s) =>
         s.item_id === account.item_id &&
         s.name.toLowerCase() === account.name.toLowerCase() &&
         s.mask === account.mask &&
         s.subtype === account.subtype,
     );
-    if (sibling) {
+    // The live account is the one being re-issued: prefer non-archived
+    // siblings, since an archived predecessor is already a dead end. If
+    // several remain tied (two archived predecessors), report each rather
+    // than silently picking the first — the true predecessor is
+    // unknowable from these fields, so no single old id may be named.
+    const live = siblings.filter((s) => !s.archived);
+    const candidates = live.length ? live : siblings;
+    for (const sibling of candidates) {
       churn.push({
         item_id: account.item_id,
         old_account_id: sibling.account_id,
@@ -137,8 +153,14 @@ export const detectAccountIdChurn = (
  * fire-and-forget, not as a gate.
  */
 export const reportAccountIdChurn = (
-  incoming: Pick<JSONAccount, "account_id" | "name" | "mask" | "subtype" | "item_id">[],
-  stored: Pick<JSONAccount, "account_id" | "name" | "mask" | "subtype" | "item_id">[],
+  incoming: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
+  stored: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
 ): void => {
   for (const c of detectAccountIdChurn(incoming, stored)) {
     logger.warn("Provider re-issued account_id for an existing account", {
