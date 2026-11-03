@@ -239,6 +239,15 @@ export interface FieldSpec {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Whether a value is a well-formed UUID string — the same shape
+ * `validateFields` accepts for `type: "uuid"`. Exported so routes that
+ * pre-filter ids before binding them against a UUID column can reuse this
+ * exact predicate instead of re-implementing the regex.
+ */
+export const isUuid = (value: unknown): boolean =>
+  isString(value) && UUID_RE.test(value);
+
 // The client serializes a date column as `YYYY-MM-DDT00:00:00`, which a DATE
 // column takes as readily as a bare `YYYY-MM-DD` — so the time part stays
 // allowed and only the calendar day is pinned. `Date.parse` alone is not that
