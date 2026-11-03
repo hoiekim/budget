@@ -6,6 +6,7 @@ export * from "./Placeholder";
 export * from "./AddButton";
 export * from "./DeleteButton";
 export * from "./DatePickerModal";
+export * from "./Modal";
 export * from "./TransferPairModal";
 export * from "./RecurringModal";
 export * from "./HoldingProperties";
