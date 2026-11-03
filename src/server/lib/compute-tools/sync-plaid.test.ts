@@ -1,11 +1,12 @@
 import { describe, it, expect } from "bun:test";
 import {
   buildTransactionLookupMaps,
+  detectAccountIdChurn,
   detectPendingPostedTransitions,
   findStoredTransaction,
   getPlaidRemovedInvestmentTransactions,
 } from "./sync-plaid";
-import type { JSONTransaction, JSONInvestmentTransaction } from "common";
+import type { JSONAccount, JSONTransaction, JSONInvestmentTransaction } from "common";
 
 // Minimal factory helpers
 const makeTx = (overrides: Partial<JSONTransaction>): JSONTransaction =>
@@ -28,6 +29,16 @@ const makeInvTx = (
     date: new Date().toISOString().split("T")[0], // today = within TWO_WEEKS
     ...overrides,
   } as unknown as JSONInvestmentTransaction);
+
+const makeAccount = (overrides: Partial<JSONAccount>): JSONAccount =>
+  ({
+    account_id: "acc-new",
+    item_id: "item-1",
+    name: "Everyday Checking",
+    mask: "1234",
+    subtype: "checking",
+    ...overrides,
+  } as unknown as JSONAccount);
 
 // ─── buildTransactionLookupMaps ───────────────────────────────────────────────
 
@@ -236,6 +247,68 @@ describe("detectPendingPostedTransitions", () => {
     ];
     const result = detectPendingPostedTransitions(incoming);
     expect(result).toEqual([{ pending: "PENDING-1", posted: "POSTED-1" }]);
+  });
+});
+
+// ─── detectAccountIdChurn ───────────────────────────────────────────────────
+describe("detectAccountIdChurn", () => {
+  const stored = [makeAccount({ account_id: "acc-old" })];
+
+  it("emits a churn pair for a new id matching name (case-insensitive) + mask + subtype on the same item", () => {
+    const incoming = [makeAccount({ account_id: "acc-new", name: "everyday checking" })];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([
+      {
+        item_id: "item-1",
+        old_account_id: "acc-old",
+        new_account_id: "acc-new",
+        name: "everyday checking",
+        mask: "1234",
+        subtype: "checking",
+      },
+    ]);
+  });
+
+  it("does NOT emit when the incoming id is already stored", () => {
+    const incoming = [makeAccount({ account_id: "acc-old" })];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([]);
+  });
+
+  it("does NOT emit when the mask differs — two cards from the same bank can share a name", () => {
+    const incoming = [makeAccount({ account_id: "acc-new", mask: "5678" })];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([]);
+  });
+
+  it("does NOT emit when the subtype differs", () => {
+    const incoming = [makeAccount({ account_id: "acc-new", subtype: "savings" })];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([]);
+  });
+
+  it("does NOT emit when the name differs beyond case", () => {
+    const incoming = [makeAccount({ account_id: "acc-new", name: "Everyday Savings" })];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([]);
+  });
+
+  it("does NOT emit when the matching stored account is on a different item", () => {
+    const incoming = [makeAccount({ account_id: "acc-new", item_id: "item-2" })];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([]);
+  });
+
+  it("handles a batch — emits only the genuine churn pair", () => {
+    const incoming = [
+      makeAccount({ account_id: "acc-new", name: "everyday checking" }),
+      makeAccount({ account_id: "acc-brand-new", name: "Travel Rewards", mask: "9999" }),
+      makeAccount({ account_id: "acc-old" }),
+    ];
+    expect(detectAccountIdChurn(incoming, stored)).toEqual([
+      {
+        item_id: "item-1",
+        old_account_id: "acc-old",
+        new_account_id: "acc-new",
+        name: "everyday checking",
+        mask: "1234",
+        subtype: "checking",
+      },
+    ]);
   });
 });
 

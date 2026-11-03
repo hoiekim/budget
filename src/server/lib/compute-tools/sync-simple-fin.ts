@@ -35,7 +35,7 @@ import {
   upsertAndDeleteHoldingsWithSnapshots,
 } from "./create-snapshots";
 import { inferCashHoldings } from "./cash-holding";
-import { buildTransactionLookupMaps, findStoredTransaction } from "./sync-plaid";
+import { buildTransactionLookupMaps, findStoredTransaction, reportAccountIdChurn } from "./sync-plaid";
 
 export const syncSimpleFinData = async (item_id: string) => {
   const userItem = await getUserItem(item_id);
@@ -116,6 +116,7 @@ export const syncSimpleFinData = async (item_id: string) => {
 
   // Phase 1: idempotent writes (accounts, holdings, institutions) — safe to run outside a
   // transaction because they can be retried on the next sync without data loss.
+  reportAccountIdChurn([...investmentAccounts, ...otherAccounts], storedAccounts ?? []);
   await upsertAccountsWithSnapshots(user, investmentAccounts, storedAccounts);
   await upsertAccounts(user, otherAccounts);
   await upsertAndDeleteHoldingsWithSnapshots(user, allMappedHoldings, storedHoldings);
