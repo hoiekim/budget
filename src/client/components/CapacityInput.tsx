@@ -52,6 +52,10 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
   } = props;
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // Display shown when the current edit started. An unparseable blur
+  // restores to it instead of coercing to 0: the keystroke filter lets
+  // ".", "-", "1.2.3" through, and a 0 would delete the row downstream.
+  const editStartDisplay = useRef(value);
 
   return (
     <input
@@ -74,11 +78,18 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
         if (onChange) onChange(e);
       }}
       onFocus={(e) => {
+        editStartDisplay.current = e.target.value;
         setValue((+stripPrefixAndSeparators(e.target.value, prefix)).toString());
         if (onFocus) onFocus(e);
       }}
       onBlur={(e) => {
-        const numberizedValue = +stripPrefixAndSeparators(e.target.value, prefix) || 0;
+        const numberizedValue = +stripPrefixAndSeparators(e.target.value, prefix);
+        if (isNaN(numberizedValue)) {
+          // Unparseable, not zero: restore the display from when the edit
+          // started and swallow the blur, so no delete/update fires.
+          setValue(editStartDisplay.current);
+          return;
+        }
         const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
         const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
         const normalized = normalize ? normalize(minCappedValue) : minCappedValue;
@@ -209,7 +220,13 @@ export const CapacityNumberInput = (props: CapacityNumberInputProps) => {
       }}
       onBlur={(e) => {
         isFocused.current = false;
-        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
+        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "");
+        if (isNaN(numberizedValue)) {
+          // Unparseable, not zero: restore the current value's display
+          // and swallow the blur, as the onChange guard does mid-typing.
+          _setValue(toDisplayString(value));
+          return;
+        }
         const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
         const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
         const normalized = normalize ? normalize(minCappedValue) : minCappedValue;

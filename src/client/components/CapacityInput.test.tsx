@@ -139,3 +139,125 @@ describe("DynamicCapacityInput with a non-USD prefix", () => {
     expect(input.value).toBe("1234.56");
   });
 });
+
+// The keystroke filter lets ".", "-", "1.2.3" through but they are not
+// numbers: a blur must restore the prior amount and report nothing, never
+// coerce to 0 — a 0 deletes the split downstream.
+describe("DynamicCapacityInput blur with an unparseable value", () => {
+  for (const typed of ["1.2.3", "-", "."]) {
+    it(`restores the prior amount and reports nothing for ${typed}`, () => {
+      const seen: string[] = [];
+      renderInput("100.00", "", (v) => seen.push(v));
+      const input = screen.getByDisplayValue("100.00") as HTMLInputElement;
+      act(() => {
+        fireEvent.focus(input);
+      });
+      act(() => {
+        fireEvent.change(input, { target: { value: typed } });
+      });
+      act(() => {
+        fireEvent.blur(input);
+      });
+      expect(input.value).toBe("100.00");
+      expect(seen).toEqual([]);
+    });
+  }
+
+  it("still reports a deliberate zero", () => {
+    const seen: string[] = [];
+    renderInput("100.00", "", (v) => seen.push(v));
+    const input = screen.getByDisplayValue("100.00") as HTMLInputElement;
+    act(() => {
+      fireEvent.focus(input);
+    });
+    act(() => {
+      fireEvent.change(input, { target: { value: "0" } });
+    });
+    act(() => {
+      fireEvent.blur(input);
+    });
+    expect(input.value).toBe("0.00");
+    expect(seen).toEqual(["0"]);
+  });
+
+  it("still reports zero for a cleared field", () => {
+    const seen: string[] = [];
+    renderInput("100.00", "", (v) => seen.push(v));
+    const input = screen.getByDisplayValue("100.00") as HTMLInputElement;
+    act(() => {
+      fireEvent.focus(input);
+    });
+    act(() => {
+      fireEvent.change(input, { target: { value: "" } });
+    });
+    act(() => {
+      fireEvent.blur(input);
+    });
+    expect(input.value).toBe("0.00");
+    expect(seen).toEqual(["0"]);
+  });
+});
+
+// Same blur shape as DynamicCapacityInput, for the numeric sibling: its
+// onChange already bails on NaN mid-typing, but its blur coerced to 0.
+describe("CapacityNumberInput blur with an unparseable value", () => {
+  const NumberWrapper = ({
+    initial,
+    onBlurValue,
+  }: {
+    initial: number;
+    onBlurValue?: (v: number) => void;
+  }) => {
+    const [value, setValue] = useState(initial);
+    return (
+      <CapacityNumberInput
+        value={value}
+        setValue={setValue}
+        fixed={2}
+        onBlur={(e) => onBlurValue?.(e.target.value)}
+      />
+    );
+  };
+
+  const renderNumberInput = (initial: number, onBlurValue?: (v: number) => void) =>
+    renderWithContext(
+      <NumberWrapper initial={initial} onBlurValue={onBlurValue} />,
+      buildContext(),
+    );
+
+  for (const typed of ["1.2.3", "-", "."]) {
+    it(`restores the prior amount and reports nothing for ${typed}`, () => {
+      const seen: number[] = [];
+      renderNumberInput(100, (v) => seen.push(v));
+      const input = screen.getByDisplayValue("100.00") as HTMLInputElement;
+      act(() => {
+        fireEvent.focus(input);
+      });
+      act(() => {
+        fireEvent.change(input, { target: { value: typed } });
+      });
+      act(() => {
+        fireEvent.blur(input);
+      });
+      expect(input.value).toBe("100.00");
+      expect(seen).toEqual([]);
+    });
+  }
+
+  it("still reports a deliberate zero", () => {
+    const seen: number[] = [];
+    renderNumberInput(100, (v) => seen.push(v));
+    const input = screen.getByDisplayValue("100.00") as HTMLInputElement;
+    act(() => {
+      fireEvent.focus(input);
+    });
+    act(() => {
+      fireEvent.change(input, { target: { value: "0" } });
+    });
+    act(() => {
+      fireEvent.blur(input);
+    });
+    expect(input.value).toBe("0.00");
+    expect(seen).toEqual([0]);
+  });
+});
