@@ -1,5 +1,7 @@
-# Preload runs once before any test file. Sets `globalThis.window = {}` for
-# client tests and captures real `pg` / `bcrypt` into globals so
+# Preload runs once before any test file. Registers happy-dom as the global
+# DOM (390x844 viewport) for client tests, restores the runtime's native
+# network globals, and captures the real SQL driver / password wrapper /
+# fetch / market-data env into globals so
 # `scripts/test-helpers.ts#restoreLeaves` can re-mock leaves back to their
 # real exports between test files.
 [test]
