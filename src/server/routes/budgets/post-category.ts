@@ -1,3 +1,4 @@
+import { CATEGORY_NAME_REQUIRED_MESSAGE } from "common";
 import {
   Route,
   updateCategory,
@@ -11,10 +12,13 @@ import { logger } from "server/lib/logger";
 
 /**
  * Typed fields `updateCategory` writes (`models/category.ts`).
+ * `name` is not nullable here even though the column is: the client's
+ * `BudgetFamily.name` is a plain `string`, so a null name renders as a
+ * blank selectable option wherever the name is shown.
  */
 const CATEGORY_BODY_SPEC: FieldSpec[] = [
   { path: "category_id", type: "uuid" },
-  { path: "name", type: "string", nullable: true },
+  { path: "name", type: "string" },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
   { path: "capacities", type: "array" },
@@ -40,6 +44,10 @@ export const postCategoryRoute = new Route("POST", "/category", async (req) => {
   if (!fieldsResult.success) return validationError(fieldsResult.error!);
 
   const { category_id, ...data } = body;
+
+  if (typeof data.name === "string" && data.name.trim() === "") {
+    return { status: "failed", message: CATEGORY_NAME_REQUIRED_MESSAGE };
+  }
 
   try {
     await updateCategory(user, category_id as string, data);

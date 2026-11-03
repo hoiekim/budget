@@ -76,6 +76,8 @@ export const RESTATED_FROM = "restated_from";
 export const REINVESTED_DISTRIBUTION = "reinvested_distribution";
 
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";
+export const SECTION_NAME_REQUIRED_MESSAGE = "Section name cannot be empty.";
+export const CATEGORY_NAME_REQUIRED_MESSAGE = "Category name cannot be empty.";
 
 /** The index fund the Investment Performance widget compares returns against. */
 export const BENCHMARK_TICKER = "VOO";
