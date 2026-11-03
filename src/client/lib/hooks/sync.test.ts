@@ -6,6 +6,7 @@ import {
   paintRecentWindow,
   applyDelta,
   cursorUpdateAfterSync,
+  isFailedResponse,
   sortById,
   type Stage1Fetched,
   type PartitionedFetched,
@@ -354,5 +355,29 @@ describe("stage helpers", () => {
       expect(oldData.accounts.has("acc-old")).toBe(true);
       expect(oldData.accountSnapshots.has("s-del")).toBe(true);
     });
+  });
+});
+
+describe("isFailedResponse", () => {
+  test("treats a failed envelope as a failed fetch, not an empty success", () => {
+    // The defect: a "failed" envelope (expired session, validation rejection)
+    // missed the old `status === "error"` guard, so the dispatcher overwrote
+    // the cached table with the empty dictionary the fetcher had built.
+    expect(isFailedResponse({ status: "failed" })).toBe(true);
+  });
+
+  test("treats an error envelope and a missing response as failed", () => {
+    expect(isFailedResponse({ status: "error" })).toBe(true);
+    expect(isFailedResponse(undefined)).toBe(true);
+  });
+
+  test("treats any other non-success envelope as failed", () => {
+    expect(isFailedResponse({ status: "loading" })).toBe(true);
+    expect(isFailedResponse({ status: "streaming" })).toBe(true);
+  });
+
+  test("treats only a success envelope as a fetch", () => {
+    expect(isFailedResponse({ status: "success" })).toBe(false);
+    expect(isFailedResponse({ status: "success", body: [] })).toBe(false);
   });
 });

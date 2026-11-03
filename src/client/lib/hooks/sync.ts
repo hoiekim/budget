@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { JSONSnapshotData, TableName } from "common";
 import {
+  ApiResponse,
   BudgetsGetResponse,
   TransactionsGetResponse,
   AccountsGetResponse,
@@ -161,6 +162,22 @@ interface FetchTransactionsResult {
   networkFailed: boolean;
 }
 
+/**
+ * Whether a sync fetch failed: no response (the `.catch(console.error)` path
+ * resolving to `undefined`), or any envelope that isn't `"success"`. The
+ * envelope has three states, not two — a `"failed"` one (expired session,
+ * validation rejection) must count as failed here, or the dispatcher reads
+ * the empty dictionary the fetcher built before the call as a successful
+ * fetch and overwrites the cached table with it.
+ *
+ * A type predicate, so after the guard the response is a success envelope
+ * with its body type intact.
+ */
+export const isFailedResponse = <T>(
+  response: ApiResponse<T> | void,
+): response is void | { status: "failed" | "error" | "loading" | "streaming" } =>
+  !response || response.status !== "success";
+
 const fetchTransactions = async (cursor: string | null): Promise<FetchTransactionsResult> => {
   const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
@@ -176,7 +193,7 @@ const fetchTransactions = async (cursor: string | null): Promise<FetchTransactio
   // as tombstones (is_deleted=true).
   const path = `/api/transactions${params.toString() ? "?" + params.toString() : ""}`;
   const response = await call.get<TransactionsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -221,7 +238,7 @@ const fetchSplitTransactions = async (
   const path = `/api/split-transactions${params.toString() ? "?" + params.toString() : ""}`;
 
   const response = await call.get<SplitTransactionsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -254,7 +271,7 @@ const fetchAccounts = async (): Promise<FetchAccountsResult> => {
   };
 
   const response = await call.get<AccountsGetResponse>("/api/accounts").catch(console.error);
-  if (response?.status === "error") return { ...result, networkFailed: true };
+  if (isFailedResponse(response)) return { ...result, networkFailed: true };
   if (!response?.body) return result;
 
   const { accounts, items, holdings } = response.body;
@@ -285,7 +302,7 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   };
 
   const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -352,7 +369,7 @@ const fetchTransfers = async (
   if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/transfers?${params.toString()}`;
   const response = await call.get<TransfersGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -407,7 +424,7 @@ const fetchRecurrings = async (
   if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/recurrings?${params.toString()}`;
   const response = await call.get<RecurringsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -456,7 +473,7 @@ const fetchSnapshots = async (
   if (cursor) params.append("start-date", cursor);
   const path = `/api/snapshots${params.toString() ? "?" + params.toString() : ""}`;
   const response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -498,7 +515,7 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
     networkFailed: false,
   };
   const response = await call.get<ChartsGetResponse>("/api/charts").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -533,10 +550,7 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   const response = await call
     .get<InstitutionsGetResponse>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
     .catch(console.error);
-  // Any non-success envelope, not just "error": a "failed" one — expired
-  // session, or an id list over the route's cap — would otherwise overwrite
-  // Data.institutions and the IndexedDB mirror with an empty dictionary.
-  if (!response || response.status !== "success") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -560,7 +574,7 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
     networkFailed: false,
   };
   const response = await call.get<SecuritiesGetResponse>("/api/securities").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
