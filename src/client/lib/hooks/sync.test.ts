@@ -6,6 +6,7 @@ import {
   paintRecentWindow,
   applyDelta,
   cursorUpdateAfterSync,
+  isFailedResponse,
   sortById,
   type Stage1Fetched,
   type PartitionedFetched,
@@ -183,6 +184,12 @@ describe("stage helpers", () => {
     tombstoneRecurringIds: new Set(),
     accountsFailed: false,
     fetchFailed: false,
+    budgetsFailed: false,
+    chartsFailed: false,
+    institutionsFailed: false,
+    securitiesFailed: false,
+    transfersFailed: false,
+    recurringsFailed: false,
   });
 
   const emptyPartitioned = (): PartitionedFetched => ({
@@ -217,7 +224,7 @@ describe("stage helpers", () => {
       const budget = new Budget({ name: "Budget" });
       stage1.budgets.set(budget.id, budget);
 
-      const painted = paintStage1(stage1);
+      const painted = paintStage1(new Data(), stage1);
       expect(painted.accounts).toBe(stage1.accounts);
       expect(painted.budgets).toBe(stage1.budgets);
       expect(painted.transactions.size).toBe(0);
@@ -225,6 +232,18 @@ describe("stage helpers", () => {
       expect(painted.status.isLoading).toBe(true);
       expect(painted.status.isError).toBe(false);
       expect(painted.status.isColdSync).toBe(true);
+    });
+
+    test("keeps the old table when its fetch failed instead of painting the empty dictionary", () => {
+      const oldData = new Data();
+      const kept = new Budget({ name: "Kept" });
+      oldData.budgets.set(kept.id, kept);
+      const stage1 = emptyStage1();
+      stage1.budgetsFailed = true;
+
+      const painted = paintStage1(oldData, stage1);
+      expect(painted.budgets).toBe(oldData.budgets);
+      expect(painted.budgets.has(kept.id)).toBe(true);
     });
   });
 
@@ -354,5 +373,38 @@ describe("stage helpers", () => {
       expect(oldData.accounts.has("acc-old")).toBe(true);
       expect(oldData.accountSnapshots.has("s-del")).toBe(true);
     });
+
+    test("keeps the old table when its fetch failed instead of assigning the empty dictionary", () => {
+      const oldData = new Data();
+      const oldBudget = new Budget({ name: "Old" });
+      oldData.budgets.set(oldBudget.id, oldBudget);
+      const stage1 = emptyStage1();
+      stage1.budgetsFailed = true;
+
+      const applied = applyDelta(oldData, stage1, emptyPartitioned());
+      expect(applied.budgets).toBe(oldData.budgets);
+      expect(applied.budgets.has(oldBudget.id)).toBe(true);
+    });
+  });
+});
+
+describe("isFailedResponse", () => {
+  test("treats a failed envelope as a failed fetch, not an empty success", () => {
+    expect(isFailedResponse({ status: "failed" })).toBe(true);
+  });
+
+  test("treats an error envelope and a missing response as failed", () => {
+    expect(isFailedResponse({ status: "error" })).toBe(true);
+    expect(isFailedResponse(undefined)).toBe(true);
+  });
+
+  test("treats any other non-success envelope as failed", () => {
+    expect(isFailedResponse({ status: "loading" })).toBe(true);
+    expect(isFailedResponse({ status: "streaming" })).toBe(true);
+  });
+
+  test("treats only a success envelope as a fetch", () => {
+    expect(isFailedResponse({ status: "success" })).toBe(false);
+    expect(isFailedResponse({ status: "success", body: [] })).toBe(false);
   });
 });

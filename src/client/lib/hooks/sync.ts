@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { JSONSnapshotData, TableName } from "common";
 import {
+  ApiResponse,
   BudgetsGetResponse,
   TransactionsGetResponse,
   AccountsGetResponse,
@@ -161,6 +162,22 @@ interface FetchTransactionsResult {
   networkFailed: boolean;
 }
 
+/**
+ * Whether a sync fetch failed: no response (the `.catch(console.error)` path
+ * resolving to `undefined`), or any envelope that isn't `"success"`. The
+ * envelope has three states, not two — a `"failed"` one (expired session,
+ * validation rejection) must count as failed here, or the dispatcher reads
+ * the empty dictionary the fetcher built before the call as a successful
+ * fetch and overwrites the cached table with it.
+ *
+ * A type predicate, so after the guard the response is a success envelope
+ * with its body type intact.
+ */
+export const isFailedResponse = <T>(
+  response: ApiResponse<T> | void,
+): response is void | { status: "failed" | "error" | "loading" | "streaming" } =>
+  !response || response.status !== "success";
+
 const fetchTransactions = async (cursor: string | null): Promise<FetchTransactionsResult> => {
   const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
@@ -176,7 +193,7 @@ const fetchTransactions = async (cursor: string | null): Promise<FetchTransactio
   // as tombstones (is_deleted=true).
   const path = `/api/transactions${params.toString() ? "?" + params.toString() : ""}`;
   const response = await call.get<TransactionsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -221,7 +238,7 @@ const fetchSplitTransactions = async (
   const path = `/api/split-transactions${params.toString() ? "?" + params.toString() : ""}`;
 
   const response = await call.get<SplitTransactionsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -254,7 +271,7 @@ const fetchAccounts = async (): Promise<FetchAccountsResult> => {
   };
 
   const response = await call.get<AccountsGetResponse>("/api/accounts").catch(console.error);
-  if (response?.status === "error") return { ...result, networkFailed: true };
+  if (isFailedResponse(response)) return { ...result, networkFailed: true };
   if (!response?.body) return result;
 
   const { accounts, items, holdings } = response.body;
@@ -285,7 +302,7 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   };
 
   const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -352,7 +369,7 @@ const fetchTransfers = async (
   if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/transfers?${params.toString()}`;
   const response = await call.get<TransfersGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -407,7 +424,7 @@ const fetchRecurrings = async (
   if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/recurrings?${params.toString()}`;
   const response = await call.get<RecurringsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -456,7 +473,7 @@ const fetchSnapshots = async (
   if (cursor) params.append("start-date", cursor);
   const path = `/api/snapshots${params.toString() ? "?" + params.toString() : ""}`;
   const response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -498,7 +515,7 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
     networkFailed: false,
   };
   const response = await call.get<ChartsGetResponse>("/api/charts").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -533,10 +550,7 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   const response = await call
     .get<InstitutionsGetResponse>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
     .catch(console.error);
-  // Any non-success envelope, not just "error": a "failed" one — expired
-  // session, or an id list over the route's cap — would otherwise overwrite
-  // Data.institutions and the IndexedDB mirror with an empty dictionary.
-  if (!response || response.status !== "success") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -560,7 +574,7 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
     networkFailed: false,
   };
   const response = await call.get<SecuritiesGetResponse>("/api/securities").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -596,6 +610,15 @@ export interface Stage1Fetched {
   accountsFailed: boolean;
   /** Any of the other Stage 1 fetches failed — the cursor stays put. */
   fetchFailed: boolean;
+  /** Per-table failures, so the paint/apply steps can keep the old table
+   *  when its own fetch failed instead of painting the empty dictionary
+   *  the fetcher built (#845). */
+  budgetsFailed: boolean;
+  chartsFailed: boolean;
+  institutionsFailed: boolean;
+  securitiesFailed: boolean;
+  transfersFailed: boolean;
+  recurringsFailed: boolean;
 }
 
 /** The time-partitioned triple Stage 2 fetches over a recent window and
@@ -664,6 +687,12 @@ export const fetchStage1 = async (
       securitiesResult.networkFailed ||
       transfersResult.networkFailed ||
       recurringsResult.networkFailed,
+    budgetsFailed: budgetsResult.networkFailed,
+    chartsFailed: chartsResult.networkFailed,
+    institutionsFailed: institutionsResult.networkFailed,
+    securitiesFailed: securitiesResult.networkFailed,
+    transfersFailed: transfersResult.networkFailed,
+    recurringsFailed: recurringsResult.networkFailed,
   };
 };
 
@@ -678,20 +707,23 @@ export const paintCachedWarm = (cached: Data): Data => {
 };
 
 /** Cold paint of Stage 1: a fresh `Data` from the fetched non-historical
- *  stores, still loading — the historical fetches haven't run yet. */
-export const paintStage1 = (fetched: Stage1Fetched): Data => {
+ *  stores, still loading — the historical fetches haven't run yet. A failed
+ *  fetch returns the empty dictionary the fetcher built, so the paint keeps
+ *  the old table for that store (#845) — on cold with a failed purge the
+ *  old table is the retained cache. */
+export const paintStage1 = (oldData: Data, fetched: Stage1Fetched): Data => {
   const stage1 = new Data({
     accounts: fetched.accounts,
     items: fetched.items,
     holdings: fetched.holdings,
-    budgets: fetched.budgets,
-    sections: fetched.sections,
-    categories: fetched.categories,
-    charts: fetched.charts,
-    institutions: fetched.institutions,
-    securities: fetched.securities,
-    transfers: fetched.transfers,
-    recurrings: fetched.recurrings,
+    budgets: fetched.budgetsFailed ? oldData.budgets : fetched.budgets,
+    sections: fetched.budgetsFailed ? oldData.sections : fetched.sections,
+    categories: fetched.budgetsFailed ? oldData.categories : fetched.categories,
+    charts: fetched.chartsFailed ? oldData.charts : fetched.charts,
+    institutions: fetched.institutionsFailed ? oldData.institutions : fetched.institutions,
+    securities: fetched.securitiesFailed ? oldData.securities : fetched.securities,
+    transfers: fetched.transfersFailed ? oldData.transfers : fetched.transfers,
+    recurrings: fetched.recurringsFailed ? oldData.recurrings : fetched.recurrings,
   });
   stage1.status.isInit = true;
   stage1.status.isLoading = true;
@@ -822,12 +854,19 @@ export const applyDelta = (
   next.accounts = stage1.accounts;
   next.holdings = stage1.holdings;
   next.items = stage1.items;
-  next.budgets = stage1.budgets;
-  next.sections = stage1.sections;
-  next.categories = stage1.categories;
-  next.charts = stage1.charts;
-  next.institutions = stage1.institutions;
-  next.securities = stage1.securities;
+  // A failed fetch returns the empty dictionary the fetcher built before
+  // the call — assigning it would wipe the cached table. Keep the old
+  // table when its fetch failed; the cursor stays put (Stage 5) so the
+  // next sync re-fetches it (#845). Accounts are already gated by the
+  // early return above.
+  if (!stage1.budgetsFailed) {
+    next.budgets = stage1.budgets;
+    next.sections = stage1.sections;
+    next.categories = stage1.categories;
+  }
+  if (!stage1.chartsFailed) next.charts = stage1.charts;
+  if (!stage1.institutionsFailed) next.institutions = stage1.institutions;
+  if (!stage1.securitiesFailed) next.securities = stage1.securities;
   mergeTransfersDelta(next, stage1);
   mergeRecurringsDelta(next, stage1);
   mergeTransactionsDelta(next, partitioned.transactions);
@@ -1086,7 +1125,7 @@ export const useSync = () => {
       // On warm load, the cached paint above already covered this; the
       // delta apply below replaces what changed.
       if (!isWarm) {
-        setData(paintStage1(stage1));
+        setData((oldData) => paintStage1(oldData, stage1));
       }
 
       // ===== Stage 2: cold-only recent-window paint. =====
