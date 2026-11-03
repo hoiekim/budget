@@ -17,11 +17,21 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// driver / `password` leaves, so spread the real module rather than replacing it —
+// and put it back in `afterAll` (the post-transaction-routes.test.ts pattern)
+// so sibling files sharing the process exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
+mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
+
 const { postHoldingSnapshotRoute } = await import("./post-holding-snapshot");
 const { clearPriceCache, polygonQueue } = await import("server/lib/polygon");
 const { clearYahooCache, yahooQueue } = await import("server/lib/yahoo");
 
 afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
   restoreLeaves();
 });
 
@@ -60,6 +70,7 @@ const queryRouter = async (sql: string) => {
 beforeEach(() => {
   resetSqlMocks();
   mockUnsafe.mockImplementation(queryRouter);
+  mockSendAlarm.mockClear();
   accountRow = null;
   clearPriceCache();
   clearYahooCache();
@@ -152,6 +163,33 @@ describe("post-holding-snapshot validation", () => {
     expect(result).toBeTruthy();
     expect(result!.status).toBe("failed");
     expect(result!.message).toMatch(/quantity/i);
+  });
+
+  test("rejects non-number numeric fields in create mode before any SQL or alarm", async () => {
+    // The #776 pattern: a client type error is a `failed` answer naming the
+    // field, with no SQL issued and no alarm sent. Without the
+    // validateFields guard the route reaches the ownership lookup (SQL) and
+    // then the DECIMAL write, so both assertions discriminate.
+    const cases: [string, unknown][] = [
+      ["quantity", "abc"],
+      ["quantity", true],
+      ["quantity", null],
+      ["cost_basis", "abc"],
+      ["institution_price", true],
+      ["institution_value", "abc"],
+    ];
+    for (const [field, value] of cases) {
+      mockUnsafe.mockClear();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "a-1", ticker_symbol: "VOO", quantity: 10, [field]: value }, "u-1"),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(`Field ${field} must be a number`);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
   });
 });
 
