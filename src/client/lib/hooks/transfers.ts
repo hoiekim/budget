@@ -37,59 +37,83 @@ export interface TransferActions {
  * POST to the server then update `data.transfers` in-place via
  * `setData` — no re-fetch, matching the rest of the app's mutation
  * pattern.
+ *
+ * The in-flight set is module-level on purpose: the hook is called once
+ * per component, so a per-instance ref cannot see the other leg's write —
+ * both legs of a pair render their own `TransferControls`, and two
+ * per-row guards let a confirm on one leg race a reject on the other.
+ * The set is keyed by `pair_id`, the thing the write is addressed to.
+ * The per-row guard in `TransferControls` stays: it drives that
+ * dialog's inert buttons. `pair` takes transaction ids, not a `pair_id`,
+ * so it cannot key on one — it needs no entry here either, because the
+ * Mark as Transfer picker only offers transactions in no pair at all.
  */
+const inFlightPairs = new Set<string>();
+
 export const useTransfers = (): TransferActions => {
   const { setData } = useAppContext();
 
   const confirm = useCallback(
     async (pair_id: string) => {
-      const response = await call.post("/api/transfers/pair", { pair_id });
-      if (response.status !== "success") {
-        // Server refuses the confirm — most common case is the collision
-        // guard catching a stale-suggestion confirm against a txn that
-        // already has another active confirmed pair. Surface the message
-        // so the user knows the click didn't silently succeed.
-        if (response.message) window.alert(response.message);
-        return false;
+      if (inFlightPairs.has(pair_id)) return false;
+      inFlightPairs.add(pair_id);
+      try {
+        const response = await call.post("/api/transfers/pair", { pair_id });
+        if (response.status !== "success") {
+          // Server refuses the confirm — most common case is the collision
+          // guard catching a stale-suggestion confirm against a txn that
+          // already has another active confirmed pair. Surface the message
+          // so the user knows the click didn't silently succeed.
+          if (response.message) window.alert(response.message);
+          return false;
+        }
+        setData((oldData) => {
+          const prev = oldData.transfers.get(pair_id);
+          if (!prev) return oldData;
+          const updatedPair: TransferPair = { ...prev, status: "confirmed" };
+          // IDB mirror: keep the cached pair in sync with React state so
+          // the next warm boot paints with status="confirmed" instead of
+          // the stale "suggested" from the prior cold sync. Fire-and-forget
+          // — never await an IDB write on the latency path.
+          indexedDb.saveTransfer(updatedPair).catch(console.error);
+          const newData = new Data(oldData);
+          newData.transfers = new TransferDictionary(oldData.transfers);
+          newData.transfers.set(pair_id, updatedPair);
+          return newData;
+        });
+        return true;
+      } finally {
+        inFlightPairs.delete(pair_id);
       }
-      setData((oldData) => {
-        const prev = oldData.transfers.get(pair_id);
-        if (!prev) return oldData;
-        const updatedPair: TransferPair = { ...prev, status: "confirmed" };
-        // IDB mirror: keep the cached pair in sync with React state so
-        // the next warm boot paints with status="confirmed" instead of
-        // the stale "suggested" from the prior cold sync. Fire-and-forget
-        // — never await an IDB write on the latency path.
-        indexedDb.saveTransfer(updatedPair).catch(console.error);
-        const newData = new Data(oldData);
-        newData.transfers = new TransferDictionary(oldData.transfers);
-        newData.transfers.set(pair_id, updatedPair);
-        return newData;
-      });
-      return true;
     },
     [setData],
   );
 
   const reject = useCallback(
     async (pair_id: string) => {
-      const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
-      if (response.status !== "success") {
-        // Reject is the destructive half, so a refusal has to be visible:
-        // an expired session answers `status:"failed"` here, and the
-        // caller's dismissal is the only other feedback this path gives.
-        if (response.message) window.alert(response.message);
-        return false;
+      if (inFlightPairs.has(pair_id)) return false;
+      inFlightPairs.add(pair_id);
+      try {
+        const response = await call.delete(`/api/transfers?id=${encodeURIComponent(pair_id)}`);
+        if (response.status !== "success") {
+          // Reject is the destructive half, so a refusal has to be visible:
+          // an expired session answers `status:"failed"` here, and the
+          // caller's dismissal is the only other feedback this path gives.
+          if (response.message) window.alert(response.message);
+          return false;
+        }
+        setData((oldData) => {
+          if (!oldData.transfers.has(pair_id)) return oldData;
+          const newData = new Data(oldData);
+          newData.transfers = new TransferDictionary(oldData.transfers);
+          newData.transfers.delete(pair_id);
+          indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
+          return newData;
+        });
+        return true;
+      } finally {
+        inFlightPairs.delete(pair_id);
       }
-      setData((oldData) => {
-        if (!oldData.transfers.has(pair_id)) return oldData;
-        const newData = new Data(oldData);
-        newData.transfers = new TransferDictionary(oldData.transfers);
-        newData.transfers.delete(pair_id);
-        indexedDb.remove(StoreName.transfers, pair_id).catch(console.error);
-        return newData;
-      });
-      return true;
     },
     [setData],
   );
