@@ -1,5 +1,5 @@
 import { getRandomId, assign, JSONHolding, JSONSecurity, JSONInstitution } from "common";
-import { CountryCode, InstitutionStatus, Products, OptionContract, FixedIncome } from "plaid";
+import { CountryCode, InstitutionStatus, Products, OptionContract, FixedIncome } from "common/lib/plaid-enums";
 
 export class Holding implements JSONHolding {
   get id() {

@@ -1,4 +1,4 @@
-import { AccountSubtype, AccountType } from "plaid";
+import { AccountSubtype, AccountType } from "common/lib/plaid-enums";
 import { currencyCodeToSymbol, numberToCommaString } from "common";
 import { Account, getDisplayBalance, useAppContext } from "client";
 

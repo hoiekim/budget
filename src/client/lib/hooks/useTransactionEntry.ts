@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 import type { NewTransactionGetResponse, NewInvestmentTransactionGetResponse } from "server";
 import { normalizeShareMovement } from "common";
 import {

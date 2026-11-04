@@ -1,7 +1,7 @@
 import { InvestmentTransaction, PATH, useAppContext } from "client";
 import { RightArrowIcon, TransactionRowInfo } from "client/components";
 import { movesShares } from "common";
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "common/lib/plaid-enums";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;

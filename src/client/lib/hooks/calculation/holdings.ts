@@ -1,5 +1,5 @@
 import { DERIVED_HOLDING_SNAPSHOT_PREFIX, getYearMonthString, LocalDate } from "common";
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "common/lib/plaid-enums";
 import { HoldingValueSummary, HoldingsValueData } from "../../models/Calculations";
 import {
   HoldingSnapshotDictionary,

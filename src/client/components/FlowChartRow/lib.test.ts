@@ -1,6 +1,6 @@
 // Run with: bun test --preload ./scripts/test-preload.ts lib.test.ts
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 
 import { LocalDate, ViewDate } from "common";
 import { getSankeyData, getVerticalLines, SankeyColumn } from "./lib";

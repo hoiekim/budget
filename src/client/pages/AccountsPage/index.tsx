@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { useEffect, useMemo, useState } from "react";
 import { cap, currencyCodeToSymbol, ViewDate } from "common";
 import {

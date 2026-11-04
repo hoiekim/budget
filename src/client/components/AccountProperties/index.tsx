@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { useMemo } from "react";
 import {
   currencyCodeToSymbol,

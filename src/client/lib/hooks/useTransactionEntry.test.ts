@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "common/lib/plaid-enums";
 import { mintInvestmentTransactionRequest } from "./useTransactionEntry";
 
 // The mint stores the row it is asked for, so the type has to travel with the

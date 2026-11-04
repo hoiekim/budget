@@ -1,5 +1,5 @@
 import { ChangeEventHandler, useEffect, useRef, useState } from "react";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 import {
   currencyCodeToSymbol,
   LocalDate,

@@ -3,7 +3,7 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
-} from "plaid";
+} from "../lib/plaid-enums";
 
 /**
  * Represents the shape of an account returned by the SimpleFin data layer.

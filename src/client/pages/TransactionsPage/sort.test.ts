@@ -1,6 +1,6 @@
 // Run with: bun test --preload ./scripts/test-preload.ts sort.test.ts
 import { describe, test, expect } from "bun:test";
-import { AccountType, InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { AccountType, InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 
 import {
   buildSortKey,

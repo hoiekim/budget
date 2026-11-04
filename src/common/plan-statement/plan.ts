@@ -1,4 +1,4 @@
-import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionSubtype, InvestmentTransactionType } from "../lib/plaid-enums";
 import type { JSONInvestmentTransaction } from "../models";
 import type { PositionGap } from "../holding-positions";
 import { hash128 } from "../utils/hash";

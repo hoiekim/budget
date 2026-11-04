@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "common/lib/plaid-enums";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,

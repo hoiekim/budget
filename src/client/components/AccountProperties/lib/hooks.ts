@@ -13,7 +13,7 @@ import {
   StoreName,
 } from "client";
 import { AccountGraphOptions, currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { ChangeEventHandler, MouseEventHandler, useEffect, useState } from "react";
 import { AccountPostResponse, SnapshotPostResponse } from "server";
 

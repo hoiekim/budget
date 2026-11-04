@@ -1,6 +1,9 @@
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "./lib/plaid-enums";
 
-export type ShareMovingType = InvestmentTransactionType.Buy | InvestmentTransactionType.Sell;
+// Indexed access into the local const: a const object's members are not
+// types, so the SDK-enum member-type spelling (`InvestmentTransactionType.Buy`)
+// has no local equivalent.
+export type ShareMovingType = (typeof InvestmentTransactionType)["Buy" | "Sell"];
 
 export interface ShareMovement {
   type: InvestmentTransactionType;

@@ -1,5 +1,5 @@
 import { Dispatch, KeyboardEvent, MouseEventHandler, SetStateAction } from "react";
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { numberToCommaString, toTitleCase } from "common";
 import { BalanceChart, getDisplayBalance, useAppContext } from "client";
 import { ChartRowShell, QuestionIcon } from "client/components";

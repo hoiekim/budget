@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionType } from "common/lib/plaid-enums";
 import { Account } from "../../models/Account";
 import {
   AccountDictionary,

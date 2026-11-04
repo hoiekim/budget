@@ -1,4 +1,6 @@
 import {
+  InvestmentTransactionSubtype,
+  InvestmentTransactionType,
   Location,
   PaymentMeta,
   Transaction as PlaidTransaction,
@@ -7,7 +9,7 @@ import {
   TransactionPaymentChannelEnum,
   TransactionTransactionTypeEnum,
   InvestmentTransaction as PlaidInvestmentTransaction,
-} from "plaid";
+} from "../lib/plaid-enums";
 
 export interface JSONTransactionLabel {
   budget_id?: string | null;
@@ -23,7 +25,13 @@ export interface JSONTransactionLabel {
   category_confidence?: number | null;
 }
 
-export interface JSONTransaction extends PlaidTransaction {
+// The three enum-typed fields are Omit-ted from the SDK interface and
+// redeclared below with the local unions (see plaid-enums.ts): a local
+// union is not assignable to the SDK enum, so inheriting them would make
+// the redeclarations below a type error.
+export interface JSONTransaction
+  extends Omit<PlaidTransaction, "transaction_type" | "payment_channel" | "transaction_code">
+{
   transaction_type?: TransactionTransactionTypeEnum;
   pending_transaction_id: string | null;
   category_id: string | null;
@@ -112,7 +120,15 @@ export interface JSONRecurring {
   updated?: string | null;
 }
 
-export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
+// `type` / `subtype` are Omit-ted from the SDK interface and redeclared
+// with the local unions (see plaid-enums.ts): a local union is not
+// assignable to the SDK enum, so inheriting them would make the
+// redeclarations below a type error.
+export interface JSONInvestmentTransaction
+  extends Omit<PlaidInvestmentTransaction, "type" | "subtype">
+{
+  type: InvestmentTransactionType;
+  subtype: InvestmentTransactionSubtype;
   /**
    * Represents relations by pair of budget_id and category_id
    */

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { cleanup } from "@testing-library/react";
-import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionSubtype, InvestmentTransactionType } from "common/lib/plaid-enums";
 import { Account, Data, InvestmentTransaction, PATH, Security, TransactionLabel } from "client";
 import { buildContext, buildRouter, renderWithContext, resetDom } from "test-render";
 import InvestmentTransactionRow from "./InvestmentTransactionRow";

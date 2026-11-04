@@ -1,4 +1,4 @@
-import { PlaidError, Products } from "plaid";
+import { PlaidError, Products } from "../lib/plaid-enums";
 
 export enum ItemStatus {
   OK = "ok",

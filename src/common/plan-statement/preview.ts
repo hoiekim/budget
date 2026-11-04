@@ -1,4 +1,4 @@
-import { InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionSubtype } from "../lib/plaid-enums";
 import type { JSONInvestmentTransaction, PlanFundMapping } from "../models";
 import { derivePositions, EnteredPosition, isDerivedPositionTransactionId, Movement } from "../holding-positions";
 import { parsePlanStatement, StatementRow } from "./parse";

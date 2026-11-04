@@ -1,6 +1,6 @@
 // Run with: bun test --preload ./scripts/test-preload.ts filter.test.ts
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 
 import {
   isAcceptableSuggestion,

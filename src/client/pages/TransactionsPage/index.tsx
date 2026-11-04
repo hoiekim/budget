@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { useMemo, useState } from "react";
 import { DeepPartial, isSubset, LocalDate } from "common";
 import {
