@@ -57,13 +57,6 @@ export const getInvestmentTransaction = async (
   return model?.toJSON() ?? null;
 };
 
-export const searchInvestmentTransactions = async (
-  user: MaskedUser,
-  options: SearchInvestmentTransactionsOptions = {},
-): Promise<JSONInvestmentTransaction[]> => {
-  return getInvestmentTransactions(user, options);
-};
-
 export const upsertInvestmentTransactions = async (
   user: MaskedUser,
   transactions: JSONInvestmentTransaction[],

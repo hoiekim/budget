@@ -185,7 +185,7 @@ const lockRecurrings = (client: QueryExecutor, userId: string) =>
  * another budget) is an exception and keeps its label. An empty default
  * relabels nothing.
  */
-export const applyRecurringLabel = async (
+const applyRecurringLabel = async (
   executor: QueryExecutor,
   userId: string,
   label: JSONRecurringLabel,

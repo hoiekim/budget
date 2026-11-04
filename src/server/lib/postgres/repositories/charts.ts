@@ -1,16 +1,6 @@
 import { JSONChart, ChartType } from "common";
 import { MaskedUser, chartsTable, ChartModel, CHART_ID, USER_ID } from "../models";
 
-export const getCharts = async (user: MaskedUser): Promise<JSONChart[]> => {
-  const models = await chartsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const getChart = async (user: MaskedUser, chart_id: string): Promise<JSONChart | null> => {
-  const model = await chartsTable.queryOne({ [USER_ID]: user.user_id, [CHART_ID]: chart_id });
-  return model?.toJSON() ?? null;
-};
-
 export const searchCharts = async (
   user: MaskedUser,
   options: { chart_id?: string; type?: string } = {},

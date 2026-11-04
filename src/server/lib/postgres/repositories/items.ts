@@ -33,11 +33,6 @@ import { logger } from "../../logger";
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
-export const getItems = async (user: MaskedUser): Promise<JSONItem[]> => {
-  const models = await itemsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
 export const getItem = async (user: MaskedUser, item_id: string): Promise<JSONItem | null> => {
   const model = await itemsTable.queryOne({ [USER_ID]: user.user_id, [ITEM_ID]: item_id });
   return model?.toJSON() ?? null;
@@ -61,11 +56,6 @@ export const searchItems = async (
   return models.map((m) => m.toJSON());
 };
 
-export const getItemByAccessToken = async (access_token: string): Promise<JSONItem | null> => {
-  const model = await itemsTable.queryOne({ access_token });
-  return model?.toJSON() ?? null;
-};
-
 /**
  * Project an item to the shape the browser may see. The server-side
  * credential (`access_token`) never crosses to the client.
@@ -73,17 +63,6 @@ export const getItemByAccessToken = async (access_token: string): Promise<JSONIt
 export const toClientItem = (item: JSONItem): JSONClientItem => {
   const { access_token: _access_token, ...rest } = item;
   return rest;
-};
-
-export const getItemsByInstitution = async (
-  user: MaskedUser,
-  institution_id: string,
-): Promise<JSONItem[]> => {
-  const models = await itemsTable.query({
-    [USER_ID]: user.user_id,
-    [INSTITUTION_ID]: institution_id,
-  });
-  return models.map((m) => m.toJSON());
 };
 
 export const getUserItem = async (
@@ -207,14 +186,3 @@ export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boo
   });
 };
 
-export const deleteItems = async (
-  user: MaskedUser,
-  item_ids: string[],
-): Promise<{ deleted: number }> => {
-  if (!item_ids.length) return { deleted: 0 };
-  let deleted = 0;
-  for (const id of item_ids) {
-    if (await deleteItem(user, id)) deleted++;
-  }
-  return { deleted };
-};
