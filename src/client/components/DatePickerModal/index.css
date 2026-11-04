@@ -1,17 +1,3 @@
-div.DatePickerModal {
-  position: fixed;
-  inset: 0;
-  /* Above everything: Header's fixed viewController is z-index 800,
-   * Router's page panels are 500–520. Modal needs to sit above them
-   * all so the SVG chart paths from the underlying Dashboard/Budgets
-   * page don't intercept clicks on the stepper buttons. */
-  z-index: 1000;
-  background-color: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: top;
-  justify-content: center;
-}
-
 div.DatePickerModal > div.panel {
   background-color: var(--surface);
   border: 1px solid var(--border);
@@ -24,21 +10,8 @@ div.DatePickerModal > div.panel {
   overflow: hidden;
   height: fit-content;
   margin-top: 50px;
-}
-
-div.DatePickerModal > div.panel > div.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border);
-  padding: 10px;
-}
-
-div.DatePickerModal > div.panel > div.header > button.closeButton {
-  background-color: transparent;
-  font-size: 18px;
-  padding: 4px 8px;
-  line-height: 1;
+  /* Top-anchored: the shell centers its panel by default. */
+  align-self: flex-start;
 }
 
 div.DatePickerModal > div.panel > div.dateInput {
