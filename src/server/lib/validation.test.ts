@@ -9,6 +9,7 @@ import {
   requireTickerSymbol,
   requireNumberField,
   optionalDateField,
+  isUuid,
   validateFields,
   validationError,
 } from "./validation";
@@ -251,6 +252,20 @@ describe("requireBodyObject edge cases", () => {
     const result = requireBodyObject(req);
     expect(result.success).toBe(false);
     expect(result.error).toContain("object");
+  });
+});
+
+describe("isUuid", () => {
+  it("accepts a well-formed UUID in either case", () => {
+    const id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+    expect(isUuid(id)).toBe(true);
+    expect(isUuid(id.toUpperCase())).toBe(true);
+  });
+
+  it("rejects malformed ids and non-strings", () => {
+    for (const value of ["nope", "c-1", "", 123, null, undefined, {}, []]) {
+      expect(isUuid(value)).toBe(false);
+    }
   });
 });
 

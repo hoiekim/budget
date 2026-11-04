@@ -2,6 +2,7 @@ import {
   Route,
   budgetsTable,
   categoriesTable,
+  isUuid,
   logger,
   pool,
   transactionsTable,
@@ -95,11 +96,25 @@ export const postSuggestCategoryRoute = new Route<SuggestCategoryResponse>(
     //  - transactions (must exist + belong to the user + confidence < 1.0)
     //  - candidate categories and budgets (must belong to the user)
     const txIds = Array.from(new Set(valid.map((s) => s.transaction_id)));
+    // Only well-formed UUIDs reach the pre-fetch: category_id / budget_id
+    // are UUID PRIMARY KEY columns, and Postgres raises 22P02 on a
+    // non-UUID bound against them — which would 500 the whole batch
+    // before the per-row "Unknown label_*" branch below can report it.
+    // A malformed id is filtered out here so it lands on that branch
+    // instead (#789).
     const categoryIds = Array.from(
-      new Set(valid.map((s) => s.label_category_id).filter((v): v is string => !!v)),
+      new Set(
+        valid
+          .map((s) => s.label_category_id)
+          .filter((v): v is string => isUuid(v)),
+      ),
     );
     const budgetIds = Array.from(
-      new Set(valid.map((s) => s.label_budget_id).filter((v): v is string => !!v)),
+      new Set(
+        valid
+          .map((s) => s.label_budget_id)
+          .filter((v): v is string => isUuid(v)),
+      ),
     );
 
     const [existingTxs, validCategoryIds, validBudgetIds] = await Promise.all([
