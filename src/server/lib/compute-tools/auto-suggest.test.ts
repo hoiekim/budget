@@ -519,7 +519,11 @@ describe("runAutoSuggestions", () => {
       expect(query).not.toBeNull();
       expect(query!.sql).toContain("WHERE transaction_id = $2");
       expect(query!.sql).toContain("AND user_id = $3");
-      expect(query!.sql).not.toContain("IS NULL");
+      // The single-object additionalWhere carries an equality, not a null
+      // guard — the only IS NULL in the statement is the live-row predicate
+      // buildUpdate now appends by default.
+      expect(query!.sql).not.toContain("label_category_confidence IS NULL");
+      expect(query!.sql).toContain("is_deleted");
     });
 
     test("CAS_NULL_CONFIDENCE pins the column + null value the engine must always pass", () => {
