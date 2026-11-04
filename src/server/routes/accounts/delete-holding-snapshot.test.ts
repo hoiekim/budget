@@ -109,9 +109,10 @@ describe("DELETE /api/snapshots/holding", () => {
   });
 
   test("refuses to delete a snapshot owned by another user", async () => {
-    // getHoldingSnapshots SELECT returns user u-1's snap-1 only — snap-other
-    // is not among them, so ownership check fails before softDelete.
-    mockUnsafe.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
+    // The by-id lookup finds nothing for snap-other — the SELECT is
+    // scoped to the requested id and the caller, so another user's row
+    // never reaches the route. Ownership fails before softDelete.
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await deleteHoldingSnapshotRoute.execute(
       makeReq({ id: "snap-other" }),
@@ -139,6 +140,14 @@ describe("DELETE /api/snapshots/holding", () => {
     // user_id into the WHERE clause.
     expect(upd!.values).toContain("snap-1");
     expect(upd!.values).toContain("u-1");
+    // The ownership check is a by-id lookup, not a full-list fetch: its
+    // SELECT carries the requested id and the caller, and answers one row.
+    const sel = findUpdateCall(/SELECT[\s\S]*FROM\s+snapshots/i);
+    expect(sel).not.toBeNull();
+    expect(sel!.values).toContain("snap-1");
+    expect(sel!.values).toContain("u-1");
+    expect(sel!.sql).toMatch(/LIMIT\s+\$\d+/i);
+    expect(sel!.values).toContain(1);
   });
 
   test("surfaces softDelete failure as a 500-style error response", async () => {
