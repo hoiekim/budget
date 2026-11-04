@@ -19,6 +19,7 @@ import {
 import { getNextRecurringDate, LocalDate, type JSONTransaction } from "common";
 import type { Recurring, TransferPair } from "server";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
+import type { FetchStubRoute } from "test-render";
 import { TransactionProperties } from ".";
 
 let fetchStub: ReturnType<typeof stubFetch> | undefined;
@@ -89,6 +90,8 @@ interface SetupOptions {
   /** Make tx-0 ($30 out of Checking) half of a suggested transfer pair with a
    *  Savings deposit the next day. */
   suggestedTransfer?: boolean;
+  /** Extra fetch stubs, appended after the recurring/transfers stubs. */
+  extraRoutes?: FetchStubRoute[];
 }
 
 // One budget with two categories, for the default-label selects.
@@ -106,6 +109,7 @@ const setup = ({
   others = [],
   responseBody,
   suggestedTransfer,
+  extraRoutes = [],
 }: SetupOptions = {}) => {
   const data = new Data();
   data.accounts.set(ACCOUNT_ID, new Account({ account_id: ACCOUNT_ID, name: "Checking" }));
@@ -151,6 +155,7 @@ const setup = ({
   fetchStub = stubFetch([
     { path: "/api/recurrings", response: { status: "success", body: responseBody } },
     { path: "/api/transfers", response: { status: "success" } },
+    ...extraRoutes,
   ]);
   const { router } = buildRouter(PATH.TRANSACTION_DETAIL);
   const calculations = new Calculations();
@@ -684,5 +689,43 @@ describe("TransactionProperties — suggested transfer", () => {
       release();
       await hold;
     });
+  });
+});
+
+describe("TransactionProperties — split amount input", () => {
+  /** The split row's editable amount input (the remainder row's is disabled). */
+  const splitAmountInput = () =>
+    Array.from(document.querySelectorAll(".SplitTransactionRow input")).find(
+      (i) => !(i as HTMLInputElement).disabled,
+    ) as HTMLInputElement;
+
+  it("an unparseable split amount deletes nothing and restores the prior amount", async () => {
+    const split = new SplitTransaction({
+      split_transaction_id: "split-1",
+      transaction_id: "tx-0",
+      account_id: ACCOUNT_ID,
+      date: "2026-03-02",
+      amount: 15,
+      label: new TransactionLabel(),
+    });
+    const { calls, rerender } = setup({
+      ownSplits: [split],
+      extraRoutes: [{ path: "/api/split-transaction", response: { status: "success" } }],
+    });
+
+    const input = splitAmountInput();
+    expect(input.value).toBe("15.00");
+    await act(async () => {
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: "1.2.3" } });
+      fireEvent.blur(input);
+    });
+
+    expect(input.value).toBe("15.00");
+    expect(document.querySelectorAll(".SplitTransactionRow")).toHaveLength(2);
+    expect(calls.requests.filter((r) => r.method === "DELETE")).toHaveLength(0);
+    rerender();
+    expect(document.querySelectorAll(".SplitTransactionRow")).toHaveLength(2);
+    expect(splitAmountInput().value).toBe("15.00");
   });
 });
