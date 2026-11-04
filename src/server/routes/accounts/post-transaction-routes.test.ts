@@ -323,6 +323,21 @@ describe("post-transaction route", () => {
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "label_budget_id")).toBeNull();
   });
+
+  test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: CATEGORY_UUID } }, "u-1"),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Against a real DB the predicate makes a tombstoned row match nothing,
+    // so the repo answers noChangeResult (304) instead of success — and the
+    // FakeSQL's zero-row UPDATE is that same no-match outcome. Without the
+    // predicate the tombstone still matches and the edit reports saved.
+    const upd = findUpdate("transactions");
+    expect(upd).not.toBeNull();
+    expect(upd!.sql).toMatch(/is_deleted/i);
+  });
 });
 
 describe("post-split-transaction route", () => {
@@ -505,6 +520,24 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "amount")).toBe(6.17);
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
+
+  test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
+    const result = await postSplitTransactionRoute.execute(
+      makeReq(
+        postSplitTransactionRoute,
+        { split_transaction_id: SPLIT_UUID, label: { category_id: CATEGORY_UUID } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Same shape as the transaction sibling: the predicate is what keeps a
+    // tombstoned row from matching, so the repo answers noChangeResult (304)
+    // instead of success.
+    const upd = findUpdate("split_transactions");
+    expect(upd).not.toBeNull();
+    expect(upd!.sql).toMatch(/is_deleted/i);
+  });
 });
 
 describe("post-investment-transaction route", () => {
@@ -637,5 +670,23 @@ describe("post-investment-transaction route", () => {
     expect(boundValue(upd!, "quantity")).toBe(2.5);
     expect(boundValue(upd!, "label_budget_id")).toBe(BUDGET_UUID);
     expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
+    const result = await postInvestmentTransactionRoute.execute(
+      makeReq(
+        postInvestmentTransactionRoute,
+        { investment_transaction_id: "i-1", label: { category_id: CATEGORY_UUID } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Same shape as the transaction sibling: the predicate is what keeps a
+    // tombstoned row from matching, so the repo answers noChangeResult (304)
+    // instead of success.
+    const upd = findUpdate("investment_transactions");
+    expect(upd).not.toBeNull();
+    expect(upd!.sql).toMatch(/is_deleted/i);
   });
 });

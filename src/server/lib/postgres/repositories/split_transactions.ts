@@ -93,11 +93,17 @@ export const updateSplitTransactions = async (
 
       // Scope the update to the caller's user_id — without this a caller
       // could patch another user's split transaction by id.
+      // Soft-deleted rows keep their primary key but are invisible to every
+      // read. Updating one would report a change no user can see; excluding
+      // them here keeps "update" and "reachable" in agreement.
       const updated = await splitTransactionsTable.update(
         tx.split_transaction_id,
         row,
         undefined,
         user.user_id,
+        undefined,
+        undefined,
+        true,
       );
       results.push(
         updated

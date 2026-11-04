@@ -217,8 +217,12 @@ export abstract class Table<
    * anything else → `column = $N`.
    *
    * `excludeDeleted` opts into the live-row predicate `query` applies by
-   * default. Opt-in rather than default here because an update is also how a
-   * soft-deleted row would be restored.
+   * default, and defaults to it: omitting the flag excludes soft-deleted
+   * rows (on tables that have `is_deleted`; tables without one are
+   * unaffected). Pass `false` explicitly to write to a soft-deleted row.
+   * No caller restores a row through `update` today — the one deliberate
+   * write to a tombstoned row, the recurring-revival upsert in
+   * `detect-recurrings.ts`, is raw SQL, not this path.
    */
   async update(
     primaryKeyValue: ParamValue,
@@ -236,7 +240,7 @@ export abstract class Table<
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
       returning: returning ?? [this.primaryKey],
       additionalWhere: additionalWhere.length > 0 ? additionalWhere : undefined,
-      excludeDeleted: excludeDeleted && this.supportsSoftDelete,
+      excludeDeleted: (excludeDeleted ?? true) && this.supportsSoftDelete,
     });
     if (!query) return null;
     const executor = client ?? pool;
