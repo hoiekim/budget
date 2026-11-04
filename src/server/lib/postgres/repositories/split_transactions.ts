@@ -5,7 +5,6 @@ import {
   MaskedUser,
   SplitTransactionModel,
   splitTransactionsTable,
-  SPLIT_TRANSACTION_ID,
   TRANSACTION_ID,
   ACCOUNT_ID,
   USER_ID,
@@ -32,23 +31,7 @@ export type PartialSplitTransaction = {
   split_transaction_id: string;
 } & Partial<JSONSplitTransaction>;
 
-export const getSplitTransactions = async (user: MaskedUser): Promise<JSONSplitTransaction[]> => {
-  const models = await splitTransactionsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const getSplitTransaction = async (
-  user: MaskedUser,
-  split_transaction_id: string,
-): Promise<JSONSplitTransaction | null> => {
-  const model = await splitTransactionsTable.queryOne({
-    [USER_ID]: user.user_id,
-    [SPLIT_TRANSACTION_ID]: split_transaction_id,
-  });
-  return model?.toJSON() ?? null;
-};
-
-export const getSplitTransactionsByTransaction = async (
+const getSplitTransactionsByTransaction = async (
   user: MaskedUser,
   transaction_id: string,
 ): Promise<JSONSplitTransaction[]> => {

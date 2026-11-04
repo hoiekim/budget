@@ -135,8 +135,6 @@ const SERVER_KEYED: Record<string, string> = {
     "session_id is server-issued: the cookie's sid is honoured only if the store already holds it, and otherwise a random UUID is minted",
   "lib/postgres/repositories/users.ts::writeUser::usersTable.upsert":
     "seeds the admin and demo users at boot; no route writes a user",
-  "lib/postgres/repositories/securities.ts::deleteSecurities::snapshotsTable.hardDeleteByColumn":
-    "removes a global security's price snapshots by security_id; those rows carry no user_id, and security_id is never client-supplied here",
 };
 
 const exemptionKey = (call: WriteCall): string => `${call.site}::${call.receiver}.${call.verb}`;

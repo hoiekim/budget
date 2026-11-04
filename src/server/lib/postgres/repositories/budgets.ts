@@ -14,19 +14,6 @@ import {
 } from "../models";
 import { withTransaction } from "../client";
 
-export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
-  const models = await budgetsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const getBudget = async (
-  user: MaskedUser,
-  budget_id: string,
-): Promise<JSONBudget | null> => {
-  const model = await budgetsTable.queryOne({ [USER_ID]: user.user_id, [BUDGET_ID]: budget_id });
-  return model?.toJSON() ?? null;
-};
-
 export const searchBudgets = async (
   user: MaskedUser,
   options: { budget_id?: string } = {},

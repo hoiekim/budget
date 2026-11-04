@@ -3,7 +3,6 @@ import {
   MaskedUser,
   HoldingModel,
   holdingsTable,
-  HOLDING_ID,
   USER_ID,
   ACCOUNT_ID,
   SECURITY_ID,
@@ -21,35 +20,6 @@ import { logger } from "../../logger";
 
 export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
   const models = await holdingsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const getHolding = async (
-  user: MaskedUser,
-  holding_id: string,
-): Promise<JSONHolding | null> => {
-  const model = await holdingsTable.queryOne({ [USER_ID]: user.user_id, [HOLDING_ID]: holding_id });
-  return model?.toJSON() ?? null;
-};
-
-export const getHoldingsByAccount = async (
-  user: MaskedUser,
-  account_id: string,
-): Promise<JSONHolding[]> => {
-  const models = await holdingsTable.query({ [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const searchHoldings = async (
-  user: MaskedUser,
-  options: { holding_id?: string; account_id?: string; security_id?: string } = {},
-): Promise<JSONHolding[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
-  if (options.holding_id) filters[HOLDING_ID] = options.holding_id;
-  if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
-  if (options.security_id) filters[SECURITY_ID] = options.security_id;
-
-  const models = await holdingsTable.query(filters);
   return models.map((m) => m.toJSON());
 };
 

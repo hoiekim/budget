@@ -27,6 +27,8 @@ jobs:
         run: bun run lint
       - name: Type check
         run: bun run typecheck
+      - name: Unused repository exports
+        run: bun scripts/check-unused-repository-exports.ts
       - name: Run tests with coverage
         run: bun run test:coverage
 

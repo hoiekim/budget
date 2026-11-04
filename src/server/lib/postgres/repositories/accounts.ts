@@ -43,7 +43,7 @@ export const getAccount = async (
   return model?.toJSON() ?? null;
 };
 
-export const getAccountsByItem = async (
+const getAccountsByItem = async (
   user: MaskedUser,
   item_id: string,
 ): Promise<JSONAccount[]> => {
