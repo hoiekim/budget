@@ -12,6 +12,7 @@ export * from "./object";
 export * from "./compute-tools";
 export * from "./plan-statement";
 export * from "./validation";
+export * from "./entity-routes";
 export * from "./alarm";
 export * from "./rate-limit";
 export * from "./infer-label-confidence";

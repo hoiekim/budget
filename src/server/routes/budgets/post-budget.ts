@@ -1,14 +1,6 @@
 import { BUDGET_NAME_REQUIRED_MESSAGE } from "common";
-import {
-  Route,
-  updateBudget,
-  requireBodyObject,
-  requireStringField,
-  validateFields,
-  validationError,
-} from "server";
+import { makeUpdateEntityRoute, updateBudget } from "server";
 import type { FieldSpec } from "server";
-import { logger } from "server/lib/logger";
 
 /**
  * Typed fields `BudgetModel.fromJSON` copies into a row (`models/budget.ts`).
@@ -26,36 +18,17 @@ const BUDGET_BODY_SPEC: FieldSpec[] = [
   { path: "capacities", type: "array" },
 ];
 
-export const postBudgetRoute = new Route("POST", "/budget", async (req) => {
-  const { user } = req.session;
-  if (!user) {
-    return {
-      status: "failed",
-      message: "Request user is not authenticated.",
-    };
-  }
-
-  const bodyResult = requireBodyObject(req);
-  if (!bodyResult.success) return validationError(bodyResult.error!);
-
-  const body = bodyResult.data as Record<string, unknown>;
-  const idResult = requireStringField(body, "budget_id");
-  if (!idResult.success) return validationError(idResult.error!);
-
-  const fieldsResult = validateFields(body, BUDGET_BODY_SPEC);
-  if (!fieldsResult.success) return validationError(fieldsResult.error!);
-
-  const { budget_id, ...data } = body;
-
-  if (typeof data.name === "string" && data.name.trim() === "") {
-    return { status: "failed", message: BUDGET_NAME_REQUIRED_MESSAGE };
-  }
-
-  try {
-    await updateBudget(user, budget_id as string, data);
-    return { status: "success" };
-  } catch (error: unknown) {
-    logger.error("Failed to update budget", { budgetId: budget_id }, error);
-    throw error instanceof Error ? error : new Error(String(error));
-  }
+export const postBudgetRoute = makeUpdateEntityRoute("/budget", updateBudget, {
+  idField: "budget_id",
+  fieldSpec: BUDGET_BODY_SPEC,
+  entityLabel: "budget",
+  idLogKey: "budgetId",
+  // The empty-name guard is per-entity — each entity answers with its own
+  // message — so it stays an extra rather than a shared rule.
+  extraChecks: (data) => {
+    if (typeof data.name === "string" && data.name.trim() === "") {
+      return { status: "failed", message: BUDGET_NAME_REQUIRED_MESSAGE };
+    }
+    return null;
+  },
 });
