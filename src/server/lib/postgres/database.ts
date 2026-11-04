@@ -58,7 +58,10 @@ export type AdditionalWhere = { column: string; value: ParamValue | typeof IS_NO
 export interface UpdateOptions {
   additionalWhere?: AdditionalWhere | AdditionalWhere[];
   returning?: string[];
-  /** Restrict the UPDATE to live rows, the way `prepareQuery` already does. */
+  /**
+   * Restrict the UPDATE to live rows, the way `prepareQuery` already does.
+   * Defaults to true; pass `false` explicitly to write to a soft-deleted row.
+   */
   excludeDeleted?: boolean;
 }
 
@@ -161,6 +164,11 @@ export function buildUpdate(
   data: QueryData,
   options: UpdateOptions = {},
 ): PreparedQuery | null {
+  // Updates exclude soft-deleted rows by default, the way reads already do
+  // (`buildFilterClauses` defaults `excludeDeleted` to true). Including
+  // tombstones is the thing a caller has to ask for, with an explicit
+  // `excludeDeleted: false`.
+  const { excludeDeleted = true } = options;
   const setClauses: string[] = ["updated = CURRENT_TIMESTAMP"];
   const values: ParamValue[] = [];
   let paramIndex = 1;
@@ -200,7 +208,7 @@ export function buildUpdate(
     }
   }
 
-  if (options.excludeDeleted) {
+  if (excludeDeleted) {
     sql += ` AND ${SOFT_DELETE_CONDITION}`;
   }
 
