@@ -235,6 +235,12 @@ export interface FieldSpec {
   required?: boolean;
   /** Explicit `null` is accepted — use where the column is nullable. Default false. */
   nullable?: boolean;
+  /** Maximum string length — use where the column has a VARCHAR(n) bound. */
+  maxLength?: number;
+  /** Inclusive numeric bounds — use where the column has a range (e.g. DECIMAL(p, s)). */
+  min?: number;
+  /** Inclusive numeric upper bound — see `min`. */
+  max?: number;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -357,6 +363,24 @@ export function validateFields(obj: object, specs: FieldSpec[]): ValidationResul
     }
     if (!matchesType(value, spec.type)) {
       return { success: false, error: typeError(spec) };
+    }
+    // Bounds only bite where the spec carries them, so every existing spec
+    // behaves exactly as before. A type-correct value outside the column's
+    // range is the same class of failure as a mistyped one: the write would
+    // 500, so it answers here instead.
+    if (spec.type === "string" && spec.maxLength !== undefined && (value as string).length > spec.maxLength) {
+      return {
+        success: false,
+        error: `Field ${spec.path} must be at most ${spec.maxLength} characters`,
+      };
+    }
+    if (spec.type === "number") {
+      if (spec.min !== undefined && (value as number) < spec.min) {
+        return { success: false, error: `Field ${spec.path} must be at least ${spec.min}` };
+      }
+      if (spec.max !== undefined && (value as number) > spec.max) {
+        return { success: false, error: `Field ${spec.path} must be at most ${spec.max}` };
+      }
     }
   }
 
