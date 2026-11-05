@@ -201,24 +201,44 @@ const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
 
   const updatedOriginal = original.clone(updated);
 
-  const updateCapacities = (budgetLike: BudgetFamily) => {
-    return updatedOriginal.capacities.map(({ active_from }) => {
-      const date = active_from && new LocalDate(active_from);
-      const activeCapacity = budgetLike.getActiveCapacity(new LocalDate(date || 0));
-      const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
-      delete clonedCapacity.capacity_id;
-      const newCapacity = new Capacity(clonedCapacity);
-      newCapacity.active_from = date;
-      return newCapacity;
-    });
-  };
-
   const budget =
     updatedOriginal?.type === "budget"
       ? (updatedOriginal as unknown as Budget)
       : updatedOriginal.type === "section"
         ? (updatedOriginal.getParent()! as Budget)
         : (updatedOriginal.getParent()?.getParent()! as Budget);
+
+  // The period list belongs to the family, not to the entity being edited.
+  // Editing the budget itself redefines the periods, so the edited list
+  // rules; saving a child re-derives against the family's existing
+  // boundaries instead. Deriving from the edited child collapsed the
+  // whole family to the child's periods — a newly added section or
+  // category always has exactly one capacity — deleting every other
+  // period on the budget and every sibling with it.
+  const periodDates =
+    updatedOriginal.type === "budget"
+      ? updatedOriginal.capacities.map((c) => c.active_from)
+      : budget.capacities.map((c) => c.active_from);
+
+  const updateCapacities = (budgetLike: BudgetFamily) => {
+    return periodDates.map((active_from) => {
+      const date = active_from && new LocalDate(active_from);
+      const activeCapacity = budgetLike.getActiveCapacity(new LocalDate(date || 0));
+      const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
+      // Keep the stored row's id when this period already has a row for
+      // this entity: a child save must not churn the family's capacity
+      // ids. A period the entity doesn't have yet mints a fresh id — the
+      // stored row only covers it by roll-forward, so the period's row is
+      // new.
+      const samePeriod =
+        new LocalDate(activeCapacity.active_from || 0).getTime() ===
+        new LocalDate(date || 0).getTime();
+      if (!samePeriod) delete clonedCapacity.capacity_id;
+      const newCapacity = new Capacity(clonedCapacity);
+      newCapacity.active_from = date;
+      return newCapacity;
+    });
+  };
 
   budget.capacities = updateCapacities(budget);
   budget.getChildren().forEach((c) => {
