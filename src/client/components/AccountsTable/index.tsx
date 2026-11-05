@@ -1,7 +1,7 @@
 import { CSSProperties, ReactNode, useState } from "react";
 import { AccountType } from "common/lib/plaid-enums";
-import { Account, DonutData, useAppContext } from "client";
-import { Placeholder } from "client/components";
+import { Account, DonutData, PATH, useAppContext } from "client";
+import { AddButton, Placeholder } from "client/components";
 import AccountRow from "./AccountRow";
 
 export type AccountHeaders = { [k in keyof Account]?: boolean } & {
@@ -23,7 +23,7 @@ interface Props {
 }
 
 export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
-  const { data } = useAppContext();
+  const { data, router } = useAppContext();
   const { accounts } = data;
 
   // Hidden + Archived both sit behind their own "Show … (N)" toggle.
@@ -99,9 +99,14 @@ export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
         </div>
       )}
       {!accounts.size && (
-        <Placeholder>
-          You don't have any connected accounts! Click this button to connect your accounts.
-        </Placeholder>
+        <>
+          <AddButton onClick={() => router.go(PATH.CONFIG)}>
+            Connect&nbsp;Accounts
+          </AddButton>
+          <Placeholder>
+            You don't have any connected accounts! Click this button to connect your accounts.
+          </Placeholder>
+        </>
       )}
     </div>
   );
