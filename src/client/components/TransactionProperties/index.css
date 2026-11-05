@@ -100,3 +100,11 @@ div.TransactionProperties .row.partnerCandidate .recurringCandidateAmount {
   flex-shrink: 0;
   white-space: nowrap;
 }
+
+/* Split-drop warning above the Confirm Transfer button: confirming a
+   suggested pair also removes the legs' split children from the budget
+   rollups, so the user must see what is at stake before the write. */
+div.TransactionProperties .splitWarning {
+  line-height: 1.4;
+  color: var(--yellow);
+}

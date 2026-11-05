@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import {
   Account,
+  Calculations,
   ContextType,
   Data,
   PATH,
   RecurringDictionary,
   SplitTransaction,
   Transaction,
+  TransactionFamilies,
   TransactionLabel,
   TransferDictionary,
 } from "client";
@@ -577,5 +579,105 @@ describe("TransactionRow — recurring", () => {
     const { container } = render(transaction, data);
     expect(container.querySelector(".transferChip")).not.toBeNull();
     expect(container.querySelector(".recurringChip")).toBeNull();
+  });
+});
+
+/**
+ * A suggested pair whose leg carries a split: the row must render the
+ * amount the pair was matched on, and confirming must warn that the
+ * split leaves the budget rollups (#787).
+ */
+const SPLIT_AMOUNT = 30;
+
+const buildSplitPair = (splitParentId: string) => {
+  const data = buildData();
+  const transaction = buildTransaction({ amount: 100 });
+  const sibling = buildTransaction({
+    transaction_id: SIBLING_ID,
+    amount: -100,
+    name: "TRANSFER TO SAVINGS",
+    merchant_name: null,
+  });
+  data.transactions.set(transaction.transaction_id, transaction);
+  data.transactions.set(sibling.transaction_id, sibling);
+  const pair: TransferPair = {
+    pair_id: PAIR_ID,
+    status: "suggested",
+    transactions: [transaction, sibling],
+  };
+  data.transfers = new TransferDictionary([[PAIR_ID, pair]]);
+  const split = new SplitTransaction({
+    split_transaction_id: "split-1",
+    transaction_id: splitParentId,
+    account_id: ACCOUNT_ID,
+    amount: SPLIT_AMOUNT,
+    label: new TransactionLabel({
+      budget_id: "budget-1",
+      category_id: "category-1",
+      category_confidence: 1,
+    }),
+  });
+  const calculations = new Calculations();
+  const families = new TransactionFamilies();
+  families.add(splitParentId, split);
+  calculations.transactionFamilies = families;
+  return { data, transaction, calculations };
+};
+
+const renderSplitPairRow = (splitParentId: string) => {
+  const { data, transaction, calculations } = buildSplitPair(splitParentId);
+  const stub = stubFetch([{ path: "/api/transfers", response: { status: "success" } }]);
+  restoreFetch = stub.restore;
+  const { router } = buildRouter(PATH.TRANSACTIONS);
+  const rendered = renderWithContext(
+    <TransactionRow transaction={transaction} />,
+    buildContext({ data, router, calculations }),
+  );
+  return { ...rendered, calls: stub.calls };
+};
+
+const rowAmount = (container: HTMLElement) =>
+  container.querySelector(".transactionInfo .amount")?.textContent?.replace(/\u00a0/g, " ") ?? "";
+
+const splitWarningText = () =>
+  document.querySelector(".splitWarning")?.textContent?.replace(/\u00a0/g, " ") ?? "";
+
+describe("TransactionRow — suggested transfer pair with splits", () => {
+  it("renders the matched amount on a leg with splits, not the remainder", () => {
+    const { container } = renderSplitPairRow("tx-1");
+
+    // The pair was matched on 100; the remainder after the 30 split is 70.
+    expect(rowAmount(container)).toBe("$ 100.00");
+  });
+
+  it("warns in the dialog that confirming removes the split from the totals", () => {
+    renderSplitPairRow("tx-1");
+    openDialog();
+
+    expect(dialog()).not.toBeNull();
+    expect(splitWarningText()).toBe(
+      "Confirming also removes 1 split transaction ($ 30.00 total) from your budget totals.",
+    );
+  });
+
+  it("warns about splits on the sibling leg too", () => {
+    renderSplitPairRow(SIBLING_ID);
+    openDialog();
+
+    expect(splitWarningText()).toBe(
+      "Confirming also removes 1 split transaction ($ 30.00 total) from your budget totals.",
+    );
+  });
+
+  it("routes the quick-confirm checkmark through the dialog when splits are at stake", async () => {
+    const { calls } = renderSplitPairRow("tx-1");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    });
+
+    expect(calls.requests).toEqual([]);
+    expect(dialog()).not.toBeNull();
+    expect(splitWarningText()).toContain("1 split transaction");
   });
 });
