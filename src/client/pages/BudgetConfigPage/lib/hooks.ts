@@ -97,42 +97,16 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   if (original.type !== "category") overrideCpacity.is_synced = true;
   const updatedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
   toUpdateList.add(updatedOriginal);
-  if (original.type !== "category") {
-    const { sections: children, categories: grandChildren } = getBudgetsToUpdatePeriod(
-      original,
-      updated,
-    );
-    // The previous skip-check `every(c => c.isInfinite && c.isIncome === isIncome)`
-    // read the `isInfinite`/`isIncome` getters which look at the stored
-    // `.month` — that's the stale advisory cache for is_synced rows.
-    // Replaced with an `is_synced`-aware skip: a section that's already
-    // flagged synced AND has every capacity stored as `±MAX_FLOAT` with
-    // the right sign is considered up-to-date. Categories (leaves) still
-    // use the simpler stored-month check since they never carry the flag.
-    children.forEach((c) => {
-      const isAlreadyInfiniteSynced = c.capacities.every(
-        (cap) => cap.is_synced && cap.isInfinite && cap.isIncome === isIncome,
-      );
-      if (!isAlreadyInfiniteSynced) {
-        const newCap = Capacity.fromInputs(new Capacity(), isIncome, true);
-        newCap.is_synced = true;
-        c.capacities = [newCap];
-        toUpdateList.add(c);
-      }
-    });
-    grandChildren.forEach((c) => {
-      // Categories are leaves — is_synced never applies. The skip check
-      // is the pre-flag semantic verbatim.
-      const isAlreadyInfinite = c.capacities.every(
-        (cap) => cap.isInfinite && cap.isIncome === isIncome,
-      );
-      if (!isAlreadyInfinite) {
-        c.capacities = [Capacity.fromInputs(new Capacity(), isIncome, true)];
-        toUpdateList.add(c);
-      }
-    });
-  }
 
+  // Mark ONLY the toggled entity. The infinite path used to cascade
+  // ±MAX_FLOAT capacities (and is_synced) onto every section and category
+  // in the family — the same cascade the limited path dropped for #784.
+  // A section the user never toggled keeps its stored amount, and an
+  // unsynced infinite section already reads ±MAX_FLOAT from its stored
+  // month, so the toggled budget still sums to unlimited when a child is
+  // infinite. Cascading turned a childless section's stored amount to
+  // zero — a synced entity with no children resolves to 0 — silently
+  // dropping it from every rollup.
   return toUpdateList;
 };
 
@@ -160,7 +134,7 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   // toggled keeps whatever mode it has, and the budget sums the sections'
   // effective amounts via getActiveAmount's recursion. Cascading turned a
   // childless section's stored amount to zero — a synced entity with no
-  // children resolves to 0 — silently dropping it from every rollup (#784).
+  // children resolves to 0 — silently dropping it from every rollup.
   if (original.type === "budget") {
     for (const capacity of budget.capacities) {
       capacity.is_synced = true;
