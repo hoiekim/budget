@@ -1,7 +1,7 @@
 // Run with: bun test --preload ./scripts/test-preload.ts index.test.tsx
 import { afterEach, describe, expect, it } from "bun:test";
 import { cleanup } from "@testing-library/react";
-import { Account, Chart, Data, ProjectionChart, ProjectionChartConfiguration } from "client";
+import { Account, AmountInTime, Calculations, Chart, Data, ProjectionChart, ProjectionChartConfiguration } from "client";
 import { ChartType } from "common";
 import { buildContext, renderWithContext, resetDom } from "test-render";
 import { ProjectionChartRow } from ".";
@@ -13,12 +13,15 @@ afterEach(() => {
 
 const ACC_ID = "acc-1";
 
-const buildChart = (account_ids: string[]) =>
+const buildChart = (
+  account_ids: string[],
+  configuration?: Partial<ProjectionChartConfiguration>,
+) =>
   new Chart({
     chart_id: "chart-1",
     name: "Retirement",
     type: ChartType.PROJECTION,
-    configuration: new ProjectionChartConfiguration({ account_ids }),
+    configuration: new ProjectionChartConfiguration({ account_ids, ...configuration }),
   }) as unknown as ProjectionChart;
 
 const buildData = ({ hidden = false, deleted = false }: { hidden?: boolean; deleted?: boolean }) => {
@@ -32,13 +35,48 @@ const buildData = ({ hidden = false, deleted = false }: { hidden?: boolean; dele
   return data;
 };
 
-const renderRow = (data: Data, account_ids: string[]) => {
+const renderRow = (
+  data: Data,
+  account_ids: string[],
+  options?: {
+    calculations?: Calculations;
+    configuration?: Partial<ProjectionChartConfiguration>;
+  },
+) => {
   const { container } = renderWithContext(
-    <ProjectionChartRow chart={buildChart(account_ids)} />,
-    buildContext({ data }),
+    <ProjectionChartRow chart={buildChart(account_ids, options?.configuration)} />,
+    buildContext({
+      data,
+      ...(options?.calculations ? { calculations: options.calculations } : {}),
+    }),
   );
   return container;
 };
+
+describe("ProjectionChartRow — scenario labels", () => {
+  it("labels each table row with its scenario instead of colour alone", () => {
+    // A nonzero balance makes both projection rows render: each row is
+    // gated on its retire amount, so a zero balance hides it.
+    const calculations = new Calculations();
+    calculations.balanceData.set(ACC_ID, new Date(), 100000);
+    const container = renderRow(buildData({}), [ACC_ID], {
+      calculations,
+      configuration: {
+        initial_saving: new AmountInTime({ amount: 100000, amountAsOf: new Date() }),
+      },
+    });
+
+    const table = container.querySelector(".ProjectionChartRow table");
+    expect(table).not.toBeNull();
+    expect(table!.querySelector("thead th.scenario")?.textContent).toBe("Scenario");
+    const labels = [...table!.querySelectorAll("td.scenario span.scenarioName")].map(
+      (el) => el.textContent,
+    );
+    expect(labels).toEqual(["Now", "Current\u00a0trajectory", "Plan"]);
+    // the swatch stays as a visual aid beside the text
+    expect(table!.querySelectorAll("td.scenario div.label").length).toBe(3);
+  });
+});
 
 describe("ProjectionChartRow — empty selection", () => {
   it("renders the empty state instead of throwing when every referenced account is hidden", () => {
