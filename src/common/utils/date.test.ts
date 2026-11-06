@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  formatDate,
   getDateString,
   getSquashedDateString,
   getDateTimeString,
@@ -74,6 +75,31 @@ describe("getLocaleDateString", () => {
     expect(result).toContain("Jun");
     expect(result).toContain("15");
     expect(result).toContain("2024");
+  });
+});
+
+describe("formatDate", () => {
+  it("should format a date-only string the way the detail panels do", () => {
+    // A bare YYYY-MM-DD reads as local midnight, so the day is exact in any timezone.
+    expect(formatDate("2026-01-19")).toBe("January 19, 2026");
+  });
+
+  it("should format a full timestamp", () => {
+    // The rendered day follows the runtime timezone for an offset timestamp,
+    // so pin the month and year, not the day.
+    const result = formatDate("2026-01-19T16:22:32.431-08:00");
+    expect(result).toContain("January");
+    expect(result).toContain("2026");
+  });
+
+  it("should fall back to Unknown for a missing value", () => {
+    expect(formatDate(null)).toBe("Unknown");
+    expect(formatDate(undefined)).toBe("Unknown");
+    expect(formatDate("")).toBe("Unknown");
+  });
+
+  it("should use a caller-supplied fallback", () => {
+    expect(formatDate(null, "Never")).toBe("Never");
   });
 });
 
