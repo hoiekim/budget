@@ -28,4 +28,4 @@ USER bun
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD bun ./healthcheck.js
 
-CMD ["bun", "./build/server/bundle.js"]
+CMD ["bun", "--no-install", "./build/server/bundle.js"]
