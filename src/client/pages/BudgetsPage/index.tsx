@@ -3,6 +3,7 @@ import { NewBudgetGetResponse } from "server";
 import {
   PATH,
   call,
+  compareByOrder,
   useAppContext,
   useLocalStorageState,
   useMultiSelectQueryFilter,
@@ -112,12 +113,7 @@ export const BudgetsPage = () => {
       }
       return true;
     })
-    .sort(([a], [b]) => {
-      const indexA = budgetsOrder.indexOf(a);
-      const indexB = budgetsOrder.indexOf(b);
-      if (indexA === undefined || indexB === undefined) return 0;
-      return indexA - indexB;
-    })
+    .sort(([a], [b]) => compareByOrder(budgetsOrder, a, b))
     .map(([budget_id, budget]) => {
       return (
         <BudgetBar

@@ -6,6 +6,7 @@ import {
   Chart,
   ProjectionChart,
   call,
+  compareByOrder,
   PATH,
   useAppContext,
   useLocalStorageState,
@@ -59,12 +60,7 @@ export const DashboardPage = () => {
 
   const chartRows = Array.from(charts)
     .filter(([, chart]) => selectedTypes.length === 0 || selectedTypes.includes(chart.type))
-    .sort(([a], [b]) => {
-      const indexA = chartsOrder.indexOf(a);
-      const indexB = chartsOrder.indexOf(b);
-      if (indexA === undefined || indexB === undefined) return 0;
-      return indexA - indexB;
-    })
+    .sort(([a], [b]) => compareByOrder(chartsOrder, a, b))
     .map(([chart_id, chart]) => {
       const onClick = () => {
         const params = new URLSearchParams();
