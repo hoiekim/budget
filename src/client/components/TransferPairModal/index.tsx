@@ -4,6 +4,12 @@ import "./index.css";
 interface Props {
   /** A write is open for this pair. Both actions are inert while set. */
   busy: boolean;
+  /**
+   * Warning naming the split transactions confirming would also remove
+   * from the budget rollups, rendered above the actions so it is seen
+   * before the write.
+   */
+  splitWarning?: string;
   onConfirm: () => void;
   onReject: () => void;
   onClose: () => void;
@@ -24,7 +30,13 @@ interface Props {
  * Presentational: `busy` and the decision to close on a landed write both
  * belong to the owner, which outlives this component's dismissal.
  */
-export const TransferPairModal = ({ busy, onConfirm, onReject, onClose }: Props) => {
+export const TransferPairModal = ({
+  busy,
+  splitWarning,
+  onConfirm,
+  onReject,
+  onClose,
+}: Props) => {
   return (
     <Modal
       label="Transfer suggestion"
@@ -34,6 +46,7 @@ export const TransferPairModal = ({ busy, onConfirm, onReject, onClose }: Props)
       className="TransferPairModal"
     >
       <div className="message">This transaction pair is auto-detected as a transfer</div>
+      {splitWarning && <div className="splitWarning">{splitWarning}</div>}
       {/* `aria-disabled`, not `disabled`: an element disabled while focused is
           blurred to the body, and this overlay is portalled last in `<body>`,
           so the next Tab would start above a dialog still declaring

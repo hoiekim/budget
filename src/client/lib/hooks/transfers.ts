@@ -1,6 +1,16 @@
 import { useCallback } from "react";
 import type { TransferPair } from "server";
-import { call, Data, TransferDictionary, indexedDb, StoreName, useAppContext } from "client";
+import { currencyCodeToSymbol, numberToCommaString } from "common";
+import {
+  call,
+  Data,
+  TransactionDictionary,
+  TransactionFamilies,
+  TransferDictionary,
+  indexedDb,
+  StoreName,
+  useAppContext,
+} from "client";
 
 /**
  * Every action answers whether the server write landed. `call` turns an
@@ -29,6 +39,47 @@ export interface TransferActions {
    *  suggestion. */
   pair: (transaction_id_a: string, transaction_id_b: string) => Promise<boolean>;
 }
+
+/**
+ * What confirming a transfer pair removes from the budget rollups, besides
+ * the two legs themselves: confirming a leg also drops every live split
+ * child of that leg (`getBudgetData` skips splits whose parent is a
+ * confirmed transfer). Both legs count — a split on either half leaves
+ * the rollups when the pair is confirmed.
+ */
+export interface PairSplitImpact {
+  /** Live split children across both legs. */
+  count: number;
+  /** Sum of those splits' amounts (signed, same convention as the legs). */
+  total: number;
+}
+
+export const getPairSplitImpact = (
+  pair: TransferPair,
+  transactions: TransactionDictionary,
+  transactionFamilies: TransactionFamilies,
+): PairSplitImpact | undefined => {
+  const legs = transactions.resolveTransferSides(pair);
+  let count = 0;
+  let total = 0;
+  for (const leg of legs) {
+    transactionFamilies.get(leg.transaction_id)?.forEach((split) => {
+      count += 1;
+      total += split.amount;
+    });
+  }
+  return count > 0 ? { count, total } : undefined;
+};
+
+/** One-line warning for a confirm surface, naming what is at stake. */
+export const formatSplitImpact = (impact: PairSplitImpact, isoCurrency: string): string => {
+  const noun = impact.count === 1 ? "split transaction" : "split transactions";
+  return (
+    `Confirming also removes ${impact.count} ${noun} ` +
+    `(${currencyCodeToSymbol(isoCurrency)} ${numberToCommaString(Math.abs(impact.total))} total) ` +
+    `from your budget totals.`
+  );
+};
 
 /**
  * Transfer-pair actions hook (Phase 3a). Stateless: the pair

@@ -4,6 +4,8 @@ import {
   useBudgetCategorySelect,
   useRecurrings,
   useTransfers,
+  getPairSplitImpact,
+  formatSplitImpact,
   call,
   PATH,
   Transaction,
@@ -72,6 +74,22 @@ const TransactionRow = ({ transaction }: Props) => {
     : transfers.byTransactionId.get(transaction_id);
   const suggestedPairId =
     pendingTransferPair?.status === "suggested" ? pendingTransferPair.pair_id : undefined;
+
+  // A suggested leg renders the amount the pair was matched on — the
+  // parent's full amount — not the post-split remainder, so the two legs
+  // visibly offset. The remainder is what a plain split parent shows;
+  // a pair leg matched on the full amount showing short by exactly its
+  // splits' total asks the user to confirm a pair that doesn't balance.
+  const displayedAmount = suggestedPairId ? amount : amountAfterSplit;
+
+  // Confirming the pair also drops every live split child of either leg
+  // from the budget rollups. The confirm surfaces (modal, quick-accept)
+  // must say so up front; the checkmark routes through the modal when
+  // anything is at stake instead of confirming silently.
+  const splitImpact =
+    suggestedPairId && pendingTransferPair
+      ? getPairSplitImpact(pendingTransferPair, data.transactions, transactionFamilies)
+      : undefined;
 
   // A split shares its parent's recurring, but a suggestion is answered on the
   // parent row, so the split keeps its own label controls.
@@ -261,7 +279,7 @@ const TransactionRow = ({ transaction }: Props) => {
     <div className="TransactionRow">
       <TransactionRowInfo
         date={authorized_date || date}
-        amount={amountAfterSplit}
+        amount={displayedAmount}
         isoCurrency={iso_currency_code || ""}
         onClickInfo={onClickInfo}
       >
@@ -275,6 +293,9 @@ const TransactionRow = ({ transaction }: Props) => {
       <div className="budgetCategoryActions">
         {suggestedPairId ? (
           <TransferControls
+            splitWarning={
+              splitImpact ? formatSplitImpact(splitImpact, iso_currency_code || "") : undefined
+            }
             onConfirm={() => transferActions.confirm(suggestedPairId)}
             onReject={() => transferActions.reject(suggestedPairId)}
           />
