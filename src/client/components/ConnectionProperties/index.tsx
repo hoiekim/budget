@@ -1,5 +1,5 @@
 import { MouseEventHandler } from "react";
-import { ItemProvider, toTitleCase, toUpperCamelCase } from "common";
+import { ItemProvider, formatDate, toTitleCase, toUpperCamelCase } from "common";
 import type { NewAccountGetResponse } from "server";
 import {
   Account,
@@ -133,7 +133,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           </KeyValue>
         )}
         <KeyValue name="Last&nbsp;Updated">
-          <span>{updated || "Unknown"}</span>
+          <span>{formatDate(updated)}</span>
         </KeyValue>
         <KeyValue name="Status">
           <span>{statusString}</span>
