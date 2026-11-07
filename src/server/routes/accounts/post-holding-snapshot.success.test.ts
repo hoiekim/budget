@@ -189,9 +189,9 @@ const accountRow = (overrides: Record<string, unknown> = {}) => ({
 
 describe("post-holding-snapshot update mode", () => {
   test("rejects a snapshot_id the user does not own (ownership gate)", async () => {
-    // getHoldingSnapshots returns the user's snapshots; the requested id is
-    // absent → cross-user access is denied without touching the write path.
-    snapshotRows = [holdingSnapshotRow({ snapshot_id: "owned-by-me" })];
+    // The by-id lookup finds nothing for this id → cross-user access is
+    // denied without touching the write path.
+    snapshotRows = [];
 
     const result = await postHoldingSnapshotRoute.execute(
       makeReq({ snapshot_id: "someone-elses", quantity: 5 }),
@@ -238,6 +238,22 @@ describe("post-holding-snapshot update mode", () => {
     expect(upd!.values).toContain(250);
     expect(upd!.values).toContain("snap-1");
     expect(upd!.values).toContain("u-1");
+
+    // Both snapshots reads are by-id lookups, not full-list fetches: the
+    // ownership check and the post-write re-read each carry the requested
+    // id and the caller, and each answers one row.
+    const selects = mockUnsafe.mock.calls.filter((call) =>
+      /select[\s\S]*from\s+snapshots/i.test(call[0] as string),
+    );
+    expect(selects).toHaveLength(2);
+    for (const call of selects) {
+      const values = (call[1] ?? []) as unknown[];
+      expect(values).toContain("snap-1");
+      expect(values).toContain("u-1");
+      // One row, not the whole list — the limit is a bound parameter.
+      expect(call[0] as string).toMatch(/LIMIT\s+\$\d+/i);
+      expect(values).toContain(1);
+    }
   });
 
   // The date axis the sibling route guards: an unparseable string reaches

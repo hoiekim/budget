@@ -12,7 +12,7 @@ import {
   upsertSecurities,
   getSecurity,
   getAccount,
-  getHoldingSnapshots,
+  getHoldingSnapshotById,
   polygon,
   marketData,
   polygonLookupRateLimiter,
@@ -149,8 +149,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
       const patchFieldsResult = validateFields(body, HOLDING_SNAPSHOT_PATCH_SPEC);
       if (!patchFieldsResult.success) return validationError(patchFieldsResult.error!);
 
-      const userSnapshots = await getHoldingSnapshots(user);
-      const existing = userSnapshots.find((s) => s.snapshot_id === provided_snapshot_id);
+      const existing = await getHoldingSnapshotById(user, provided_snapshot_id);
       if (!existing) {
         return { status: "failed", message: "Snapshot not found or access denied." };
       }
@@ -185,9 +184,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
         // Re-sync the current-holdings row from the latest snapshot state so
         // portfolio value calculations stay consistent with the edit.
-        const refreshed = (await getHoldingSnapshots(user)).find(
-          (s) => s.snapshot_id === provided_snapshot_id,
-        );
+        const refreshed = await getHoldingSnapshotById(user, provided_snapshot_id);
         if (refreshed) {
           const security_id = refreshed.holding_security_id;
           const holding: JSONHolding = {
