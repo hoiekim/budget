@@ -107,7 +107,13 @@ const BudgetDonut = ({
     { id: budgetLike.id, value: capacityAmount, color: "#666" },
   ];
 
-  const syncingAmount = budgetLike.type === "budget" ? grand_children_total : children_total;
+  // A synced capacity resolves one level down (Capacity.getActiveAmount),
+  // so the unallocated figure must measure against `children_total` — the
+  // sections for a budget, the categories for a section. `grand_children_total`
+  // (the flattened category sum) only matches when every section is already
+  // fully decomposed into categories, which is exactly the state this page
+  // exists to help the user reach (#783).
+  const syncingAmount = children_total;
   const parentDiff = capacityAmount - syncingAmount;
   if (!isSyncedInput) {
     const fillerData = { id: ID_DIFF, value: Math.abs(parentDiff), color: TRANSPARENT };
