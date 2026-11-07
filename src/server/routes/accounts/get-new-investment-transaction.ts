@@ -5,13 +5,35 @@ import {
   getAccount,
   getSecurity,
   requireQueryString,
+  validateFields,
   validationError,
 } from "server";
+import type { FieldSpec } from "server";
 
 export type NewInvestmentTransactionGetResponse = {
   investment_transaction_id: string;
   name: string;
 };
+
+/** Largest magnitude a DECIMAL(15, 6) column holds: 9 integer digits + 6 decimals. */
+const DECIMAL_15_6_MAX = 999999999.999999;
+
+/**
+ * The caller-supplied mint values, validated before any query. `date` is
+ * calendar-checked by `type: "date"` (`isDateString` rejects 2026-02-30,
+ * which the old digit-shape regex let through); `iso_currency_code` is
+ * capped at the VARCHAR(10) column; `price` / `quantity` are bounded to
+ * the DECIMAL(15, 6) range rather than merely finite — 1e300 is finite
+ * but overflows the column. Price has no direction (min 0); quantity may
+ * be negative (a reconciliation sale). All four are optional: absent
+ * values fall back to the mint defaults.
+ */
+const NEW_INVESTMENT_TRANSACTION_QUERY_SPEC: FieldSpec[] = [
+  { path: "date", type: "date" },
+  { path: "iso_currency_code", type: "string", maxLength: 10 },
+  { path: "price", type: "number", min: 0, max: DECIMAL_15_6_MAX },
+  { path: "quantity", type: "number", min: -DECIMAL_15_6_MAX, max: DECIMAL_15_6_MAX },
+];
 
 /**
  * Mint a shell manual `investment_transactions` row. Unlike
@@ -32,6 +54,24 @@ export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransacti
     const accountResult = requireQueryString(req, "account_id");
     if (!accountResult.success) return validationError(accountResult.error!);
     const account_id = accountResult.data!;
+
+    // Validate the mint values BEFORE any query: each of the four reaches a
+    // column that rejects it, and the write would 500 + alarm. Absent (or
+    // empty) values stay absent and fall back to the mint defaults; a
+    // present-but-wrong value answers validationError (400, no alarm), and
+    // no query reaches any table. Only present values are collected, so
+    // `validateFields` skips the rest the way it skips absent optionals.
+    const queryValues: Record<string, unknown> = {};
+    if (req.query?.date) queryValues.date = req.query.date;
+    if (req.query?.iso_currency_code) queryValues.iso_currency_code = req.query.iso_currency_code;
+    if (req.query?.price) queryValues.price = Number(req.query.price);
+    if (req.query?.quantity) queryValues.quantity = Number(req.query.quantity);
+    const fieldsResult = validateFields(queryValues, NEW_INVESTMENT_TRANSACTION_QUERY_SPEC);
+    if (!fieldsResult.success) return validationError(fieldsResult.error!);
+    const date = queryValues.date as string | undefined;
+    const iso_currency_code = queryValues.iso_currency_code as string | undefined;
+    const price = queryValues.price as number | undefined;
+    const quantity = queryValues.quantity as number | undefined;
 
     const account = await getAccount(user, account_id);
     if (!account) return { status: "failed", message: "Account not found." };
@@ -70,17 +110,10 @@ export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransacti
     // `iso_currency_code` with the holding's currency, so the
     // shell starts with values the user can confirm/correct rather
     // than a 0 that quietly zeroes the MWR calc if abandoned.
-    const priceRaw = req.query?.price ? Number(req.query.price) : NaN;
-    const price = Number.isFinite(priceRaw) && priceRaw >= 0 ? priceRaw : undefined;
-    const iso_currency_code = req.query?.iso_currency_code
-      ? String(req.query.iso_currency_code)
-      : undefined;
+    // (Validated above through `validateFields`; the values here are
+    // the checked ones.)
     // `quantity` is prefilled when the FE knows the exact missing units
     // (divergence-flag "Add transaction for N missing units" action).
-    // Any finite value is accepted (positive or negative — the delta
-    // might be a "sell N units" reconciliation).
-    const quantityRaw = req.query?.quantity ? Number(req.query.quantity) : NaN;
-    const quantity = Number.isFinite(quantityRaw) ? quantityRaw : undefined;
     // The caller reconciles the row it is asking for, so a negative quantity
     // arrives already named as a sale rather than being renamed here. Only
     // the two types that move shares are accepted: the mint creates a share
@@ -99,10 +132,8 @@ export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransacti
     // dated today closes the current-window divergence but leaves
     // every prior-month view still flagging the excess (the txn
     // walker only counts txns up to the window end). Format:
-    // YYYY-MM-DD. Anything else is ignored and falls back to today.
-    const dateRaw = req.query?.date ? String(req.query.date) : "";
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : undefined;
-
+    // YYYY-MM-DD. Anything else is a validation error, not a silent
+    // fall back to today — the caller asked for a specific date.
     const created = await createManualInvestmentTransaction(user, {
       account_id,
       security_id,
