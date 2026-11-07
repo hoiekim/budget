@@ -205,7 +205,11 @@ const getBalanceDataFromSnapshots = (
     const { date } = snapshot;
     if (!account.balances.current && account.balances.current !== 0) return;
     const snapshotDate = new LocalDate(date);
-    if (today < snapshotDate) return;
+    // BalanceHistory is keyed by year-month, so a snapshot dated later in
+    // the current month still belongs to it — the snapshot forms pre-fill
+    // the last day of the viewed period, which is in the future most of
+    // the month. Only snapshots in a future month are skipped.
+    if (getYearMonthString(snapshotDate) > getYearMonthString(today)) return;
     const key = getYearMonthString(snapshotDate);
     const existing = snapshotHistory[key];
     if (existing) {
@@ -230,8 +234,18 @@ const getBalanceDataFromSnapshots = (
     }
   });
 
-  // makes sure today's balance takes priority over snapshots.
-  accounts.forEach((a) => balanceData.set(a.id, today, getAccountBalance(a)));
+  // A live balance is fresher than a stale snapshot — but only when there
+  // is no user-recorded snapshot for the current month, and only when a
+  // live balance actually exists. Writing unconditionally clobbered the
+  // whole current-month bucket (BalanceHistory is keyed by year-month),
+  // and `getAccountBalance`'s `|| 0` turned "no balance known" into $0.00
+  // for manual accounts. A recorded snapshot wins its month; the live
+  // balance fills only months no snapshot covers.
+  accounts.forEach((a) => {
+    if (!a.balances.current && a.balances.current !== 0) return;
+    if (balanceData.get(a.id, today) !== undefined) return;
+    balanceData.set(a.id, today, getAccountBalance(a));
+  });
 
   return balanceData;
 };
@@ -263,7 +277,9 @@ const getBalanceDataFromHoldingSnapshots = (
     if (!accounts.has(account_id)) return;
 
     const snapshotDate = new LocalDate(date);
-    if (today < snapshotDate) return;
+    // Same month-granularity as the account-snapshot tier above: a holding
+    // snapshot dated later in the current month still belongs to it.
+    if (getYearMonthString(snapshotDate) > getYearMonthString(today)) return;
 
     const key = getYearMonthString(snapshotDate);
 
