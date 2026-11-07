@@ -369,6 +369,50 @@ describe("TransactionRow — suggested transfer pair", () => {
       await hold;
     });
   });
+  it("refuses a conflicting write for the same pair from the other leg", async () => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const { data, transaction } = buildSuggestedPair();
+    const sibling = data.transactions.get(SIBLING_ID)!;
+    const stub = stubFetch([{ path: "/api/transfers", response: { status: "success" }, hold }]);
+    restoreFetch = stub.restore;
+    const { router } = buildRouter(PATH.TRANSACTIONS);
+    renderWithContext(
+      <>
+        <TransactionRow transaction={transaction} />
+        <TransactionRow transaction={sibling} />
+      </>,
+      buildContext({ data, router }),
+    );
+    const chips = screen.getAllByRole("button", { name: "Transfer" });
+    expect(chips).toHaveLength(2);
+    try {
+      // Leg A confirms; the POST is held open.
+      act(() => void fireEvent.click(chips[0]));
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole("button", { name: "Confirm" })[0]);
+      });
+      expect(stub.calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+
+      // Leg B's dialog opens on the same pair while A's write is in flight.
+      act(() => void fireEvent.click(chips[1]));
+      expect(document.querySelectorAll("div.TransferPairModal")).toHaveLength(2);
+
+      // Leg B rejects: the pair-keyed guard refuses it, so no second
+      // request issues and B's dialog stays open — the refusal is not a
+      // landed write.
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole("button", { name: "Reject" })[1]);
+      });
+      expect(stub.calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+      expect(document.querySelectorAll("div.TransferPairModal")).toHaveLength(2);
+    } finally {
+      await act(async () => {
+        release();
+        await hold;
+      });
+    }
+  });
 });
 
 const RECURRING_ID = "recurring-1";
