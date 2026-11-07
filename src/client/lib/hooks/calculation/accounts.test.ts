@@ -10,6 +10,7 @@ import { getAccountBalance, getBalanceData, getDisplayBalance } from "./accounts
 import {
   Account,
   AccountDictionary,
+  AccountSnapshot,
   AccountSnapshotDictionary,
   BalanceData,
   HoldingSnapshotDictionary,
@@ -135,6 +136,101 @@ describe("getDisplayBalance cold-load past-balance flash", () => {
     const account = makeAccount();
     const balanceData = new BalanceData();
     expect(getDisplayBalance(balanceData, account, futureDate, today, false)).toBe(LIVE);
+  });
+});
+
+// #878: a snapshot dated in the current month was discarded — the
+// snapshot tier wrote the live balance over the whole current-month
+// bucket (BalanceHistory is keyed by year-month), and its day-granular
+// future-date guard dropped the snapshot forms' period-end default date
+// outright. A recorded snapshot wins its month; the live balance fills
+// only months no snapshot covers, and only when one actually exists.
+describe("account snapshots in the current month", () => {
+  const ACCOUNT_ID = "man1";
+  const thisMonth = getYearMonthString(new Date());
+  const now = new Date();
+  const priorMonth = getYearMonthString(new Date(now.getFullYear(), now.getMonth() - 1, 15));
+  const nextMonth = getYearMonthString(new Date(now.getFullYear(), now.getMonth() + 1, 15));
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const lastDayStr = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(
+    lastDay.getDate(),
+  ).padStart(2, "0")}`;
+
+  const balances = (current: number | null) => ({
+    current: current as number,
+    available: 0,
+    limit: null,
+    iso_currency_code: "USD",
+    unofficial_currency_code: null,
+  });
+
+  // The live account in the dictionary; `current` is the live balance
+  // (null for a manual account that never had one written).
+  const makeAccount = (live: number | null) =>
+    new Account({
+      account_id: ACCOUNT_ID,
+      type: AccountType.Depository,
+      balances: balances(live),
+    });
+
+  // A snapshot entry as the API delivers it: the snapshot's account
+  // carries the recorded balance, not the live one.
+  const snapshot = (date: string, recorded: number) =>
+    new AccountSnapshot({
+      snapshot: { snapshot_id: `s-${date}`, date },
+      account: { account_id: ACCOUNT_ID, type: AccountType.Depository, balances: balances(recorded) },
+    });
+
+  const balancesFor = (live: number | null, snapshots: AccountSnapshot[]) =>
+    getBalanceData(
+      new AccountDictionary([[ACCOUNT_ID, makeAccount(live)]]),
+      new AccountSnapshotDictionary(snapshots.map((s) => [s.id, s])),
+      new HoldingSnapshotDictionary(),
+      new TransactionDictionary(),
+      new InvestmentTransactionDictionary(),
+    );
+
+  const at = (balanceData: BalanceData, yearMonth: string) =>
+    balanceData.get(ACCOUNT_ID, new Date(`${yearMonth}-15`));
+
+  test("a current-month snapshot reads on the Accounts row instead of $0.00", () => {
+    const balanceData = balancesFor(null, [snapshot(`${thisMonth}-05`, 1000)]);
+    expect(at(balanceData, thisMonth)).toBe(1000);
+  });
+
+  test("a snapshot dated the last day of the month — the form's untouched default — counts", () => {
+    const balanceData = balancesFor(null, [snapshot(lastDayStr, 1000)]);
+    expect(at(balanceData, thisMonth)).toBe(1000);
+  });
+
+  test("a recorded snapshot wins the current month over the live balance", () => {
+    const balanceData = balancesFor(500, [snapshot(`${thisMonth}-05`, 1000)]);
+    expect(at(balanceData, thisMonth)).toBe(1000);
+  });
+
+  test("a recorded zero is honored, not overwritten by the live balance", () => {
+    const balanceData = balancesFor(500, [snapshot(`${thisMonth}-05`, 0)]);
+    expect(at(balanceData, thisMonth)).toBe(0);
+  });
+
+  test("a snapshot in a future month still claims no month", () => {
+    const balanceData = balancesFor(500, [snapshot(`${nextMonth}-15`, 1000)]);
+    expect(at(balanceData, nextMonth)).toBeUndefined();
+    expect(at(balanceData, thisMonth)).toBe(500);
+  });
+
+  test("a prior-month snapshot keeps rendering as it does today", () => {
+    const balanceData = balancesFor(null, [
+      snapshot(`${priorMonth}-15`, 800),
+      snapshot(`${thisMonth}-05`, 1000),
+    ]);
+    expect(at(balanceData, priorMonth)).toBe(800);
+    expect(at(balanceData, thisMonth)).toBe(1000);
+  });
+
+  test("with no snapshot and no live balance, the current month still reads 0", () => {
+    const balanceData = balancesFor(null, []);
+    expect(at(balanceData, thisMonth)).toBe(0);
   });
 });
 
