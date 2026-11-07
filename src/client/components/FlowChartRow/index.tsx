@@ -108,7 +108,7 @@ export const FlowChartRow = ({
             </tr>
             <tr>
               <td className="colored" style={{ color: "#f43" }}>
-                {diff > 0 ? undefined : `$ ${numberToCommaString(Math.abs(diff))}`}
+                {diff < 0 ? `$ ${numberToCommaString(Math.abs(diff))}` : undefined}
               </td>
               <td className="colored" style={{ color: "#097" }}>
                 {diff > 0 ? `$ ${numberToCommaString(Math.abs(diff))}` : undefined}
