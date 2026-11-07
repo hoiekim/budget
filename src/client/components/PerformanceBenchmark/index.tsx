@@ -21,6 +21,7 @@ import {
   computeEffectiveWindowStart,
 } from "client/lib/hooks/calculation/benchmark";
 import { BENCHMARK_TICKER } from "common/constants";
+import { getDateString } from "common";
 import "./index.css";
 
 interface Props {
@@ -29,8 +30,6 @@ interface Props {
 
 type WindowKey = "1Y" | "3Y" | "All";
 const WINDOW_OPTIONS: WindowKey[] = ["1Y", "3Y", "All"];
-
-const toDateString = (d: Date) => d.toISOString().slice(0, 10);
 
 const formatPct = (n: number | null): string => {
   if (n === null || !Number.isFinite(n)) return "—";
@@ -81,9 +80,9 @@ export const PerformanceBenchmark = ({ accounts }: Props) => {
     const today = new Date();
     const viewEnd = viewDate.getEndDate();
     const effectiveEnd = viewEnd > today ? today : viewEnd;
-    const windowEnd = toDateString(effectiveEnd);
+    const windowEnd = getDateString(effectiveEnd);
     const clampStart = (target: Date): { value: string; clamped: boolean } => {
-      const t = toDateString(target);
+      const t = getDateString(target);
       return t < earliest! ? { value: earliest!, clamped: true } : { value: t, clamped: false };
     };
 
