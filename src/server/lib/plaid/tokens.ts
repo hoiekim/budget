@@ -28,8 +28,25 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
   return response.data;
 };
 
-export const exchangePublicToken = async (user: MaskedUser, public_token: string) => {
-  const client = getClient(user);
+/**
+ * Test seam for {@link exchangePublicToken}: the Plaid client factory.
+ * Defaults are the production import, so callers pass nothing and behavior
+ * is unchanged. Tests pass a fake here instead of mocking the shared leaf:
+ * mock.module is process-global in Bun, and a module imported while a mock
+ * is registered keeps the mock — mocking the plaid util in this file leaked
+ * into sibling test files (see transactions.test.ts).
+ */
+export interface ExchangePublicTokenDeps {
+  getClient?: typeof getClient;
+}
+
+export const exchangePublicToken = async (
+  user: MaskedUser,
+  public_token: string,
+  deps: ExchangePublicTokenDeps = {},
+) => {
+  const { getClient: getClientFn = getClient } = deps;
+  const client = getClientFn(user);
 
   const response = await client.itemPublicTokenExchange({ public_token });
 
