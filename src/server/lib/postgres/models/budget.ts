@@ -4,16 +4,11 @@ import {
   isString,
   isNullableString,
   isNullableBoolean,
-  isNullableArray,
 } from "common";
 import {
   BUDGET_ID,
   USER_ID,
-  NAME,
   ISO_CURRENCY_CODE,
-  ROLL_OVER,
-  ROLL_OVER_START_DATE,
-  CAPACITIES,
   UPDATED,
   IS_DELETED,
 } from "./common";
@@ -23,15 +18,18 @@ import {
 } from "common/constants";
 
 import { Model, RowValueType, createTable } from "./base";
+import {
+  applyBudgetFamilyFields,
+  budgetFamilyJSON,
+  budgetFamilySchema,
+  budgetFamilyTypeChecker,
+} from "./budget-family";
 
 const budgetSchema = {
   [BUDGET_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
   [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
-  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
+  ...budgetFamilySchema,
   [ISO_CURRENCY_CODE]: "VARCHAR(10) DEFAULT 'USD'",
-  [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
-  [ROLL_OVER_START_DATE]: "DATE",
-  [CAPACITIES]: "JSONB",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
 };
@@ -53,11 +51,8 @@ export class BudgetModel extends Model<JSONBudget, BudgetSchema> implements Budg
   static typeChecker = {
     budget_id: isString,
     user_id: isString,
-    name: isNullableString,
+    ...budgetFamilyTypeChecker,
     iso_currency_code: isNullableString,
-    roll_over: isNullableBoolean,
-    roll_over_start_date: isNullableString,
-    capacities: isNullableArray,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
@@ -69,25 +64,16 @@ export class BudgetModel extends Model<JSONBudget, BudgetSchema> implements Budg
   toJSON(): JSONBudget {
     return {
       budget_id: this.budget_id,
-      name: this.name,
       iso_currency_code: this.iso_currency_code,
-      roll_over: this.roll_over,
-      roll_over_start_date: this.roll_over_start_date || undefined,
-      capacities: this.capacities,
+      ...budgetFamilyJSON(this),
     };
   }
 
   static fromJSON(b: Partial<JSONBudget>, user_id: string): Partial<BudgetRow> {
     const r: Partial<BudgetRow> = { user_id };
     if (b.budget_id !== undefined) r.budget_id = b.budget_id;
-    if (b.name !== undefined) r.name = b.name;
     if (b.iso_currency_code !== undefined) r.iso_currency_code = b.iso_currency_code;
-    if (b.roll_over !== undefined) r.roll_over = b.roll_over;
-    if (b.roll_over_start_date !== undefined) r.roll_over_start_date = b.roll_over_start_date;
-    // Pass the array through, not a string: Bun.sql stores a string bound
-    // for a JSONB column as a JSON string value, not the object (pg had the
-    // server parse the string into JSON). The driver encodes objects as JSON.
-    if (b.capacities !== undefined) r.capacities = b.capacities;
+    applyBudgetFamilyFields(b, r);
     return r;
   }
 }

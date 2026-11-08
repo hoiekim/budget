@@ -4,16 +4,11 @@ import {
   isString,
   isNullableString,
   isNullableBoolean,
-  isNullableArray,
 } from "common";
 import {
   SECTION_ID,
   BUDGET_ID,
   USER_ID,
-  NAME,
-  ROLL_OVER,
-  ROLL_OVER_START_DATE,
-  CAPACITIES,
   UPDATED,
   IS_DELETED,
 } from "./common";
@@ -24,15 +19,18 @@ import {
 } from "common/constants";
 
 import { Model, RowValueType, createTable } from "./base";
+import {
+  applyBudgetFamilyFields,
+  budgetFamilyJSON,
+  budgetFamilySchema,
+  budgetFamilyTypeChecker,
+} from "./budget-family";
 
 const sectionSchema = {
   [SECTION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
   [USER_ID]: `UUID REFERENCES ${USERS}(${USER_ID}) ON DELETE RESTRICT NOT NULL`,
   [BUDGET_ID]: `UUID REFERENCES ${BUDGETS}(${BUDGET_ID}) ON DELETE RESTRICT NOT NULL`,
-  [NAME]: "VARCHAR(255) DEFAULT 'Unnamed'",
-  [ROLL_OVER]: "BOOLEAN DEFAULT FALSE",
-  [ROLL_OVER_START_DATE]: "DATE",
-  [CAPACITIES]: "JSONB",
+  ...budgetFamilySchema,
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
 };
@@ -55,10 +53,7 @@ export class SectionModel extends Model<JSONSection, SectionSchema> implements S
     section_id: isString,
     user_id: isString,
     budget_id: isString,
-    name: isNullableString,
-    roll_over: isNullableBoolean,
-    roll_over_start_date: isNullableString,
-    capacities: isNullableArray,
+    ...budgetFamilyTypeChecker,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
@@ -71,10 +66,7 @@ export class SectionModel extends Model<JSONSection, SectionSchema> implements S
     return {
       section_id: this.section_id,
       budget_id: this.budget_id,
-      name: this.name,
-      roll_over: this.roll_over,
-      roll_over_start_date: this.roll_over_start_date || undefined,
-      capacities: this.capacities,
+      ...budgetFamilyJSON(this),
     };
   }
 
@@ -82,13 +74,7 @@ export class SectionModel extends Model<JSONSection, SectionSchema> implements S
     const r: Partial<SectionRow> = { user_id };
     if (s.section_id !== undefined) r.section_id = s.section_id;
     if (s.budget_id !== undefined) r.budget_id = s.budget_id;
-    if (s.name !== undefined) r.name = s.name;
-    if (s.roll_over !== undefined) r.roll_over = s.roll_over;
-    if (s.roll_over_start_date !== undefined) r.roll_over_start_date = s.roll_over_start_date;
-    // Pass the array through, not a string: Bun.sql stores a string bound
-    // for a JSONB column as a JSON string value, not the object (pg had the
-    // server parse the string into JSON). The driver encodes objects as JSON.
-    if (s.capacities !== undefined) r.capacities = s.capacities;
+    applyBudgetFamilyFields(s, r);
     return r;
   }
 }
