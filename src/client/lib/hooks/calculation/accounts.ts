@@ -16,7 +16,7 @@ import {
   TransactionDictionary,
   useAppContext,
 } from "client";
-import { CostBasisPosition, foldCostBasis } from "./holdings";
+import { CostBasisPosition, foldCostBasis, getShareMovementDirection } from "./holdings";
 
 export const getAccountBalance = (account: Account) => {
   // Use `current` for all account types. For investment accounts, Plaid's
@@ -144,24 +144,23 @@ const addInvestmentCostBasis = (
         // right without having to recognise one — the sweep buy spends
         // exactly the cash its own deposit row brought in.
         //
-        // Direction comes from the type, because the sign of `amount` does
-        // not carry it: one provider signs a movement positive when the money
-        // arrives, and a manually entered row stores `quantity * price` with
-        // both entered positive, so its sale is indistinguishable from its
-        // purchase by sign alone. A sale therefore returns the size of its
-        // amount whatever the sign — proceeds are booked nowhere else.
+        // Direction comes from {@link getShareMovementDirection} — the same
+        // derivation the fold above uses, so the two legs cannot disagree:
+        // a reconciliation buy with a negative quantity is a sale to both,
+        // and a hand-entered sell with a positive quantity is a sale to
+        // both. A sale returns the size of its amount whatever the sign —
+        // proceeds are booked nowhere else — because the sign of `amount`
+        // does not carry direction: one provider signs a movement positive
+        // when the money arrives, and a manually entered row stores
+        // `quantity * price` with both entered positive, so its sale is
+        // indistinguishable from its purchase by sign alone.
         //
-        // A purchase spends only what it positively cost: the fold above has
-        // already taken a negative cost out of the basis, so spending it here
-        // as well would remove it twice. That is the lesser of two wrong
-        // answers rather than a right one — a row whose type, quantity, price
-        // and amount disagree has to be reconciled where it is written.
-        //
-        // Floored because the cash a purchase spent may have arrived before
-        // the fetched window, and an account that bought with money this
-        // never saw does not thereby hold a negative balance.
+        // A purchase spends only what it positively cost. Floored because
+        // the cash a purchase spent may have arrived before the fetched
+        // window, and an account that bought with money this never saw does
+        // not thereby hold a negative balance.
         cash =
-          type === InvestmentTransactionType.Buy
+          getShareMovementDirection(t) === "buy"
             ? Math.max(0, cash - Math.max(0, amount))
             : cash + Math.abs(amount);
       } else {
