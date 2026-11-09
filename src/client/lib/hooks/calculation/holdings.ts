@@ -195,6 +195,36 @@ export interface CostBasisPosition {
   totalQuantity: number;
 }
 
+export type ShareMovementDirection = "buy" | "sell";
+
+/**
+ * The direction of a share movement — whether shares arrive or leave.
+ *
+ * Neither field alone is reliable. `type` says purchase while `quantity`
+ * says the shares are leaving on exactly one minted shape: the
+ * reconciliation buy from `get-new-investment-transaction`, which hardcodes
+ * `type: Buy` while accepting a negative quantity (a "sell N units"
+ * reconciliation). And `quantity` alone misreads a hand-entered sell, which
+ * stores `quantity * price` with both entered positive while `type` says
+ * sell. A row moves shares out when EITHER signal says so; it moves them
+ * in only when both agree it does. A zero quantity falls back to `type`,
+ * which is the only signal left.
+ *
+ * One derivation, used by both `foldCostBasis` and the cash leg in
+ * `addInvestmentCostBasis`, so the basis and the cash leg cannot disagree.
+ * Rows whose type moves no shares (dividend, fee, cash, ...) return null.
+ */
+export const getShareMovementDirection = (
+  t: InvestmentTransaction,
+): ShareMovementDirection | null => {
+  const { type, quantity } = t;
+  if (type !== InvestmentTransactionType.Buy && type !== InvestmentTransactionType.Sell) {
+    return null;
+  }
+  if (type === InvestmentTransactionType.Sell || (quantity ?? 0) < 0) return "sell";
+  return "buy";
+};
+
 /**
  * Folds one investment transaction into a running average-cost position.
  *
@@ -203,6 +233,11 @@ export interface CostBasisPosition {
  * the basis, not all of it. Subtracting proceeds instead would drive a
  * profitable position's basis to zero while the shares are still held.
  *
+ * Direction comes from {@link getShareMovementDirection}, not from `type`
+ * alone: a reconciliation buy with a negative quantity is a sale, so it
+ * removes basis for the shares leaving instead of adding a negative cost
+ * the clamp then floors at zero.
+ *
  * Types other than buy and sell leave the position alone: a dividend or a
  * transfer moves no shares, so there is no basis to attribute to it.
  */
@@ -210,13 +245,14 @@ export const foldCostBasis = (
   position: CostBasisPosition,
   t: InvestmentTransaction,
 ): CostBasisPosition => {
-  const { type, price, quantity, fees } = t;
+  const { price, quantity, fees } = t;
+  const direction = getShareMovementDirection(t);
   let { totalCost, totalQuantity } = position;
 
-  if (type === InvestmentTransactionType.Buy) {
+  if (direction === "buy") {
     totalCost += price * quantity + (fees || 0);
     totalQuantity += quantity;
-  } else if (type === InvestmentTransactionType.Sell && totalQuantity > 0) {
+  } else if (direction === "sell" && totalQuantity > 0) {
     // Plaid encodes sell quantities as NEGATIVE, so take the magnitude —
     // otherwise `-=` would ADD shares and basis back instead of removing them
     // (cf. benchmark.ts, which already uses -Math.abs for sells).
