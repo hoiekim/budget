@@ -474,12 +474,14 @@ describe("get-new-investment-transaction route", () => {
     expect(insert!.values).toContain("buy");
   });
 
-  // A unit price has no direction, and nothing downstream re-clamps it: this
-  // gate is the only thing standing between a query string and a stored row
-  // whose amount contradicts its own quantity.
-  test("a negative price is refused rather than stored", async () => {
+  // A unit price has no direction, and nothing downstream re-clamps it: the
+  // 400 keeps a query string from becoming a stored row whose amount
+  // contradicts its own quantity. (Was a silent drop to the 0 default; the
+  // route now answers validationError before any query, like the other
+  // three mint values.)
+  test("a negative price is refused with a validation error and no INSERT", async () => {
     accountRow = plaidInvestAccount();
-    await getNewInvestmentTransactionRoute.execute(
+    const result = await getNewInvestmentTransactionRoute.execute(
       makeReq(
         getNewInvestmentTransactionRoute,
         { account_id: "acc-plaid-invest", quantity: "2", price: "-30" },
@@ -487,9 +489,78 @@ describe("get-new-investment-transaction route", () => {
       ),
       fakeRes(),
     );
-    const insert = findInsert("investment_transactions");
-    const numbers = insert!.values.filter((v): v is number => typeof v === "number");
-    expect(numbers.some((n) => n < 0)).toBe(false);
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/price/i);
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  // One per row of the issue's table: each value passes the old hand-rolled
+  // check but the destination column rejects it, so the mint used to 500 +
+  // alarm. Validation runs before the account lookup, so a bad value answers
+  // validationError and no query reaches any table.
+  test("a calendar-invalid date is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", date: "2026-02-30" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field date must be a date");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  test("an 11-char currency is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", iso_currency_code: "USDOLLARSXX" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field iso_currency_code must be at most 10 characters");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  test("a 1e300 price is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", price: "1e300" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field price must be at most 999999999.999999");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  test("a 1e300 quantity is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "1e300" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field quantity must be at most 999999999.999999");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
   });
 
   test("happy path with security_id: INSERT sets security_id + source='manual' on a Plaid brokerage", async () => {
