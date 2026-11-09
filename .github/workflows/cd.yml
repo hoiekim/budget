@@ -42,13 +42,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # The deploy hook answers when the deploy ends. It runs one deploy at a
+      # time and answers 409 while another is in flight, and while it or the
+      # proxy in front of it restarts, the connection can be refused or cut
+      # (000) or answered 502 or 504. Those are retried a minute apart, up to
+      # 10 tries; any other answer fails the job. A curl timeout isn't retried:
+      # by 660 seconds the hook has already stopped the deploy.
       - name: Trigger deploy
         env:
           DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
           DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
         run: |
-          curl --fail-with-body -sS -X POST "$DEPLOY_URL" \
-            -H "Authorization: Bearer $DEPLOY_SECRET" \
-            -H "Content-Type: application/json" \
-            -w '\n---\nstatus: %{http_code}, duration: %{time_total}s\n' \
-            --data "{\"sha\":\"${GITHUB_SHA}\",\"repo\":\"${GITHUB_REPOSITORY}\"}"
+          # Only the status is printed: the URL and the response stay out of public logs.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            rc=0
+            out=$(curl -s -o /dev/null --max-time 660 -w '%{http_code} %{time_total}' -X POST "$DEPLOY_URL" \
+              -H "Authorization: Bearer $DEPLOY_SECRET" \
+              -H "Content-Type: application/json" \
+              --data "{\"sha\":\"${GITHUB_SHA}\",\"repo\":\"${GITHUB_REPOSITORY}\"}") || rc=$?
+            status=${out%% *}
+            case $rc in
+              0) ;;
+              7|18|52|56|92) status=000 ;;
+              *) echo "attempt $attempt: curl exited $rc after ${out#* }s"; exit 1 ;;
+            esac
+            echo "attempt $attempt: deploy hook answered $status after ${out#* }s"
+            case "$status" in
+              2??) exit 0 ;;
+              000|409|502|504) [ "$attempt" = 10 ] || sleep 60 ;;
+              *) exit 1 ;;
+            esac
+          done
+          exit 1
