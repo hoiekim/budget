@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { Budget, Calculations, Capacity, ContextType, Data, PATH } from "client";
+import { useMemo, useState } from "react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { Budget, Calculations, Capacity, Context, ContextType, Data, PATH } from "client";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { BudgetConfigPage } from ".";
 
@@ -39,6 +40,36 @@ const nameField = () => screen.getByPlaceholderText("name") as HTMLInputElement;
 const rollOverToggle = () => {
   const row = screen.getByText("Rolls over to the next period").closest(".row");
   return row?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+};
+
+/**
+ * The default test context stubs `calculate.cache.capacityData` as a no-op,
+ * so a render-phase AppContext update would never fire under it. This
+ * harness wires the real cache updater — a setState on the context provider —
+ * so clicking Add New Period on the old code reproduces React's "Cannot
+ * update a component" warning instead of passing silently.
+ */
+const RealCacheHarness = ({ data }: { data: Data }) => {
+  const [calculations, setCalculations] = useState(new Calculations());
+  const calculate = useMemo(() => {
+    const fn = (() => {}) as unknown as ContextType["calculate"];
+    fn.cache = {
+      capacityData: (updater) => {
+        setCalculations((old) => {
+          const next = new Calculations(old);
+          next.update({ capacityData: updater(old.capacityData) });
+          return next;
+        });
+      },
+    };
+    return fn;
+  }, []);
+  const { router } = buildRouter(PATH.BUDGET_CONFIG, new URLSearchParams({ budget_id: BUDGET_ID }));
+  return (
+    <Context.Provider value={buildContext({ data, calculations, calculate, router })}>
+      <BudgetConfigPage />
+    </Context.Provider>
+  );
 };
 
 describe("BudgetConfigPage", () => {
@@ -141,5 +172,33 @@ describe("BudgetConfigPage", () => {
     expect(calls.back).toBe(0);
     expect(calls.go).toHaveLength(1);
     expect(calls.go[0].path).toBe(PATH.BUDGETS);
+  });
+
+  it("Add New Period adds a period without updating AppContext during render (#798)", () => {
+    const data = buildData();
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      render(<RealCacheHarness data={data} />);
+
+      // The single default capacity covers all past time, so no dated row yet.
+      expect(screen.queryAllByLabelText("Capacity active from date")).toHaveLength(0);
+
+      const addButton = screen.getByText(/Add\s+New\s+Period/).closest("button") as HTMLButtonElement;
+      act(() => {
+        fireEvent.click(addButton);
+      });
+
+      // The new period appears as a dated row — and the click must not have
+      // updated AppContext from inside a state updater (React logs "Cannot
+      // update a component" when it does).
+      expect(screen.getAllByLabelText("Capacity active from date")).toHaveLength(1);
+      expect(errors.filter((e) => e.includes("Cannot update a component"))).toEqual([]);
+    } finally {
+      console.error = originalError;
+    }
   });
 });
