@@ -90,6 +90,9 @@ interface SetupOptions {
   /** Make tx-0 ($30 out of Checking) half of a suggested transfer pair with a
    *  Savings deposit the next day. */
   suggestedTransfer?: boolean;
+  /** Add the same Savings deposit as an unpaired transaction, so it shows
+   *  as a candidate in the Mark as Transfer picker. */
+  partnerCandidate?: boolean;
   /** Extra fetch stubs, appended after the recurring/transfers stubs. */
   extraRoutes?: FetchStubRoute[];
 }
@@ -109,6 +112,7 @@ const setup = ({
   others = [],
   responseBody,
   suggestedTransfer,
+  partnerCandidate,
   extraRoutes = [],
 }: SetupOptions = {}) => {
   const data = new Data();
@@ -129,7 +133,7 @@ const setup = ({
     ]);
   }
   data.recurrings = new RecurringDictionary(recurrings);
-  if (suggestedTransfer) {
+  if (suggestedTransfer || partnerCandidate) {
     data.accounts.set(SAVINGS_ID, new Account({ account_id: SAVINGS_ID, name: "Savings" }));
     const partner = buildTransaction("tx-partner", "2026-03-03", {
       account_id: SAVINGS_ID,
@@ -138,10 +142,12 @@ const setup = ({
       name: "Transfer from Checking",
     });
     data.transactions.set(partner.transaction_id, partner);
+  }
+  if (suggestedTransfer) {
     const pair: TransferPair = {
       pair_id: PAIR_ID,
       status: "suggested",
-      transactions: [members[0], partner] as unknown as JSONTransaction[],
+      transactions: [members[0], data.transactions.get("tx-partner")!] as unknown as JSONTransaction[],
     };
     data.transfers = new TransferDictionary([[PAIR_ID, pair]]);
   }
@@ -689,6 +695,63 @@ describe("TransactionProperties — suggested transfer", () => {
       release();
       await hold;
     });
+  });
+});
+
+describe("TransactionProperties — Mark as Transfer picker", () => {
+  /** Open the picker; the unpaired Savings deposit shows as the one candidate. */
+  const openPicker = async () => {
+    await act(async () => {
+      fireEvent.click(button(/Mark.as.Transfer$/));
+    });
+    expect(document.querySelectorAll(".partnerCandidate")).toHaveLength(1);
+  };
+
+  /** The pair POST answers with `body`, the transfers stub covers the rest. */
+  const stubPair = (pairResponse: { status: string; message?: string; body?: unknown }) => {
+    fetchStub!.restore();
+    fetchStub = stubFetch([
+      { path: "/api/transfers/pair", response: pairResponse },
+      { path: "/api/transfers", response: { status: "success" } },
+      { path: "/api/recurrings", response: { status: "success" } },
+    ]);
+  };
+
+  it("closes the picker when the pair lands", async () => {
+    const { store } = setup({ partnerCandidate: true });
+    stubPair({ status: "success", body: { pair_id: PAIR_ID } });
+
+    await openPicker();
+    await act(async () => {
+      fireEvent.click(document.querySelector(".partnerCandidate")!);
+    });
+
+    expect(fetchStub!.calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+    expect(store.data.transfers.get(PAIR_ID)?.status).toBe("confirmed");
+    // The picker closed — no candidate rows remain. (The Mark as Transfer
+    // button returns: this component never renders a confirmed pair; the
+    // detail page shows TransferProperties for those.)
+    expect(document.querySelectorAll(".partnerCandidate")).toHaveLength(0);
+  });
+
+  it("keeps the picker open when the server refuses the pair", async () => {
+    const { store } = setup({ partnerCandidate: true });
+    stubPair({ status: "failed", message: "collision" });
+    const original = window.alert;
+    window.alert = () => {};
+    try {
+      await openPicker();
+      await act(async () => {
+        fireEvent.click(document.querySelector(".partnerCandidate")!);
+      });
+    } finally {
+      window.alert = original;
+    }
+
+    expect(fetchStub!.calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+    expect(store.data.transfers.size).toBe(0);
+    expect(document.querySelectorAll(".partnerCandidate")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /Mark.as.Transfer$/ })).toBeNull();
   });
 });
 

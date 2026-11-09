@@ -516,8 +516,10 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const onClickPartnerCandidate = async (partnerId: string) => {
     setPendingPartnerId(partnerId);
     try {
-      await transferActions.pair(transaction_id, partnerId);
-      setShowPartnerPicker(false);
+      // Only close on a landed write — a refused pair stays open for retry.
+      if (await transferActions.pair(transaction_id, partnerId)) {
+        setShowPartnerPicker(false);
+      }
     } finally {
       setPendingPartnerId(null);
     }
