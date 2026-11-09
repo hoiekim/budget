@@ -2,6 +2,7 @@ import { JSONSecurity, JSONSnapshotData } from "common";
 import {
   MaskedUser,
   snapshotsTable,
+  SnapshotModel,
   isAccountSnapshot,
   isSecuritySnapshot,
   isHoldingSnapshot,
@@ -208,6 +209,20 @@ export const getSecuritySnapshots = async (
   }));
 };
 
+/** Row → `HoldingSnapshot`, the seven field conversions `getHoldingSnapshots`
+ *  applies per row. Shared by the list accessor and the by-id accessor so
+ *  the two cannot drift apart. */
+const toHoldingSnapshot = (s: SnapshotModel): HoldingSnapshot => ({
+  snapshot_id: s.snapshot_id,
+  snapshot_date: String(s.snapshot_date),
+  holding_account_id: s.holding_account_id as string,
+  holding_security_id: s.holding_security_id as string,
+  institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
+  institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
+  cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
+  quantity: s.quantity != null ? Number(s.quantity) : undefined,
+});
+
 export const getHoldingSnapshots = async (
   user: MaskedUser,
   options: { account_id?: string; security_id?: string; startDate?: string; endDate?: string } = {},
@@ -225,16 +240,27 @@ export const getHoldingSnapshots = async (
     orderBy: SNAPSHOT_DATE,
   });
 
-  return snapshots.map((s) => ({
-    snapshot_id: s.snapshot_id,
-    snapshot_date: String(s.snapshot_date),
-    holding_account_id: s.holding_account_id as string,
-    holding_security_id: s.holding_security_id as string,
-    institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
-    institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
-    cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
-    quantity: s.quantity != null ? Number(s.quantity) : undefined,
-  }));
+  return snapshots.map(toHoldingSnapshot);
+};
+
+/**
+ * One holding snapshot by primary key, user-scoped. The ownership checks
+ * in the holding-snapshot routes used to fetch every snapshot the user owns
+ * and scan the array in JS — `O(total snapshot rows)` per edit, twice per
+ * update. `queryOne` filters on the key server-side (and, like `query`,
+ * excludes soft-deleted rows), so a lookup that finds nothing answers
+ * `undefined` — the caller's "not found or access denied".
+ */
+export const getHoldingSnapshotById = async (
+  user: MaskedUser,
+  snapshot_id: string,
+): Promise<HoldingSnapshot | undefined> => {
+  const row = await snapshotsTable.queryOne({
+    [SNAPSHOT_ID]: snapshot_id,
+    [SNAPSHOT_TYPE]: "holding",
+    [USER_ID]: user.user_id,
+  });
+  return row ? toHoldingSnapshot(row) : undefined;
 };
 
 /** Columns a holding-snapshot conflict may rewrite. `snapshot_id` is minted

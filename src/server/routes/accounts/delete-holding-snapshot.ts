@@ -1,4 +1,4 @@
-import { Route, requireQueryString, validationError, getHoldingSnapshots, deleteSnapshotById } from "server";
+import { Route, requireQueryString, validationError, getHoldingSnapshotById, deleteSnapshotById } from "server";
 import { logger } from "server/lib/logger";
 
 export const deleteHoldingSnapshotRoute = new Route(
@@ -14,12 +14,9 @@ export const deleteHoldingSnapshotRoute = new Route(
     if (!idResult.success) return validationError(idResult.error!);
     const snapshot_id = idResult.data!;
 
-    // Verify ownership against the flat HoldingSnapshot shape — the previous
-    // searchSnapshots call returned nested JSONHoldingSnapshot objects whose
-    // snapshot_id lived under `.snapshot.snapshot_id`, so the lookup always
-    // missed and every delete returned "not found".
-    const snapshots = await getHoldingSnapshots(user);
-    const owned = snapshots.some((s) => s.snapshot_id === snapshot_id);
+    // The by-id lookup is the ownership check: it is user-scoped, so a
+    // miss is "not found or access denied" without fetching the whole list.
+    const owned = (await getHoldingSnapshotById(user, snapshot_id)) !== undefined;
     if (!owned) {
       return { status: "failed", message: "Snapshot not found or access denied." };
     }
