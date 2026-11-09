@@ -1,5 +1,5 @@
 import { MouseEventHandler } from "react";
-import { ItemProvider, toTitleCase, toUpperCamelCase } from "common";
+import { ItemProvider, LocalDate, getLocaleDateString, toTitleCase, toUpperCamelCase } from "common";
 import type { NewAccountGetResponse } from "server";
 import {
   Account,
@@ -36,6 +36,19 @@ export const ConnectionProperties = ({ item }: Props) => {
   const statusString = status
     ? toTitleCase(status) + (status_reason ? ` — ${toTitleCase(status_reason)}` : "")
     : "Unknown";
+
+  // `updated` is a bare YYYY-MM-DD date on the Plaid path (the sync writes
+  // `end_date`) and a full ISO timestamp with offset on others. Parse it as
+  // a *local* date: `new Date` on a bare YYYY-MM-DD reads it as UTC midnight,
+  // which renders as the previous day in US timezones (#1031, #1035).
+  // `LocalDate` keeps a bare date on the local day and passes a full
+  // timestamp through; an unparseable value degrades to "Unknown", never
+  // to "Invalid Date".
+  const updatedDate = updated ? new LocalDate(updated) : undefined;
+  const updatedString =
+    updatedDate && !Number.isNaN(updatedDate.getTime())
+      ? getLocaleDateString(updatedDate)
+      : "Unknown";
 
   const accountRows = accounts
     .filter(({ item_id }) => item_id === item.id)
@@ -133,7 +146,7 @@ export const ConnectionProperties = ({ item }: Props) => {
           </KeyValue>
         )}
         <KeyValue name="Last&nbsp;Updated">
-          <span>{updated || "Unknown"}</span>
+          <span>{updatedString}</span>
         </KeyValue>
         <KeyValue name="Status">
           <span>{statusString}</span>
