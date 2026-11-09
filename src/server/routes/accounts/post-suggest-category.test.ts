@@ -58,6 +58,72 @@ const findUpdateCall = (): { sql: string; values: unknown[] } | null => {
   return null;
 };
 
+const countCalls = (pattern: RegExp): number =>
+  mockUnsafe.mock.calls.filter((call) => pattern.test(call[0] as string)).length;
+
+const findSelectCall = (table: string): { sql: string; values: unknown[] } | null => {
+  const call = mockUnsafe.mock.calls.find((c) =>
+    new RegExp(`FROM ${table}`, "i").test(c[0] as string),
+  );
+  return call ? { sql: call[0] as string, values: call[1] as unknown[] } : null;
+};
+
+// The route reads through `queryByIds`, which constructs model instances
+// from the returned rows — mocked rows must satisfy the models' full
+// type-checkers (required string fields plus explicit nulls), not just the
+// columns the route reads.
+const txRow = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  transaction_id: "t-1",
+  user_id: "u-1",
+  account_id: "a-1",
+  name: null,
+  merchant_name: null,
+  amount: null,
+  iso_currency_code: null,
+  date: "2026-01-01",
+  pending: null,
+  pending_transaction_id: null,
+  payment_channel: null,
+  location_country: null,
+  location_region: null,
+  location_city: null,
+  label_budget_id: null,
+  label_category_id: null,
+  label_memo: null,
+  label_category_confidence: null,
+  raw: null,
+  updated: null,
+  is_deleted: null,
+  source: null,
+  ...overrides,
+});
+
+const categoryRow = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  category_id: "11111111-1111-4111-8111-111111111111",
+  user_id: "u-1",
+  section_id: "s-1",
+  name: null,
+  roll_over: null,
+  roll_over_start_date: null,
+  capacities: null,
+  updated: null,
+  is_deleted: null,
+  ...overrides,
+});
+
+const budgetRow = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  budget_id: "33333333-3333-4333-8333-333333333333",
+  user_id: "u-1",
+  name: null,
+  iso_currency_code: null,
+  roll_over: null,
+  roll_over_start_date: null,
+  capacities: null,
+  updated: null,
+  is_deleted: null,
+  ...overrides,
+});
+
 describe("post-suggest-category", () => {
   // category_id / budget_id are UUID PRIMARY KEY columns: fixtures must be
   // well-formed UUIDs, or the pre-fetch filter drops them before the query
@@ -65,6 +131,8 @@ describe("post-suggest-category", () => {
   // branch instead of reaching the UPDATE (#789).
   const GOOD_CATEGORY_ID = "11111111-1111-4111-8111-111111111111";
   const UNKNOWN_CATEGORY_ID = "22222222-2222-4222-8222-222222222222";
+  const GOOD_BUDGET_ID = "33333333-3333-4333-8333-333333333333";
+  const UNKNOWN_BUDGET_ID = "44444444-4444-4444-8444-444444444444";
 
   test("declares requiredScope = transactions:suggest", () => {
     expect(postSuggestCategoryRoute.requiredScope).toBe("transactions:suggest");
@@ -124,7 +192,7 @@ describe("post-suggest-category", () => {
 
   test("skips transactions not owned by the user", async () => {
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    mockUnsafe.mockResolvedValueOnce({ rows: [{ category_id: GOOD_CATEGORY_ID }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [categoryRow()], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
@@ -138,10 +206,10 @@ describe("post-suggest-category", () => {
 
   test("refuses to overwrite a confidence=1.0 row", async () => {
     mockUnsafe.mockResolvedValueOnce({
-      rows: [{ transaction_id: "t-1", label_category_confidence: 1 }],
+      rows: [txRow({ label_category_confidence: 1 })],
       rowCount: 1,
     });
-    mockUnsafe.mockResolvedValueOnce({ rows: [{ category_id: GOOD_CATEGORY_ID }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [categoryRow()], rowCount: 1 });
 
     const result = await postSuggestCategoryRoute.execute(
       makeReq({
@@ -157,7 +225,7 @@ describe("post-suggest-category", () => {
 
   test("rejects unknown category for the user", async () => {
     mockUnsafe.mockResolvedValueOnce({
-      rows: [{ transaction_id: "t-1", label_category_confidence: null }],
+      rows: [txRow({ label_category_confidence: null })],
       rowCount: 1,
     });
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -171,12 +239,36 @@ describe("post-suggest-category", () => {
     expect(result?.body?.errored).toBe(1);
   });
 
-  test("updates a valid suggestion and writes the confidence", async () => {
+  test("rejects unknown budget for the user", async () => {
     mockUnsafe.mockResolvedValueOnce({
-      rows: [{ transaction_id: "t-1", label_category_confidence: 0.5 }],
+      rows: [txRow({ label_category_confidence: null })],
       rowCount: 1,
     });
-    mockUnsafe.mockResolvedValueOnce({ rows: [{ category_id: GOOD_CATEGORY_ID }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await postSuggestCategoryRoute.execute(
+      makeReq({
+        suggestions: [{ transaction_id: "t-1", confidence: 0.99, label_budget_id: UNKNOWN_BUDGET_ID }],
+      }),
+      fakeRes(),
+    );
+    expect(result?.body?.errored).toBe(1);
+    expect(result?.body?.outcomes[0].status).toBe("error");
+    expect((result?.body?.outcomes[0] as { reason?: string }).reason).toContain(
+      `Unknown label_budget_id: ${UNKNOWN_BUDGET_ID}`,
+    );
+    // The budget branch must be probed separately from the category
+    // branch: a regression that drops the budget pre-fetch stays green
+    // on the category test alone.
+    expect(findUpdateCall()).toBeNull();
+  });
+
+  test("updates a valid suggestion and writes the confidence", async () => {
+    mockUnsafe.mockResolvedValueOnce({
+      rows: [txRow({ label_category_confidence: 0.5 })],
+      rowCount: 1,
+    });
+    mockUnsafe.mockResolvedValueOnce({ rows: [categoryRow()], rowCount: 1 });
     // The UPDATE call returns the updated row; the post-update SELECT (if
     // any) returns whatever the route reads back.
     mockUnsafe.mockResolvedValueOnce({ rows: [{ transaction_id: "t-1" }], rowCount: 1 });
@@ -204,7 +296,7 @@ describe("post-suggest-category", () => {
 
   test("requires at least one of category_id / budget_id", async () => {
     mockUnsafe.mockResolvedValueOnce({
-      rows: [{ transaction_id: "t-1", label_category_confidence: null }],
+      rows: [txRow()],
       rowCount: 1,
     });
 
@@ -236,13 +328,13 @@ describe("post-suggest-category", () => {
     // branch instead.
     mockUnsafe.mockResolvedValueOnce({
       rows: [
-        { transaction_id: "t-1", label_category_confidence: 0.5 },
-        { transaction_id: "t-2", label_category_confidence: 0.5 },
+        txRow({ label_category_confidence: 0.5 }),
+        txRow({ transaction_id: "t-2", label_category_confidence: 0.5 }),
       ],
       rowCount: 2,
     });
     mockUnsafe.mockResolvedValueOnce({
-      rows: [{ category_id: GOOD_CATEGORY_ID }],
+      rows: [categoryRow()],
       rowCount: 1,
     });
     // The UPDATE call returns the updated row.
@@ -275,5 +367,75 @@ describe("post-suggest-category", () => {
     expect(upd).not.toBeNull();
     expect(upd!.values).toContain(GOOD_CATEGORY_ID);
     expect(upd!.values).not.toContain("nope");
+  });
+
+  test("applies a mixed batch with one pre-fetch per table and keeps input order", async () => {
+    mockUnsafe.mockResolvedValueOnce({
+      rows: [
+        txRow({ label_category_confidence: 0.5 }),
+        txRow({ transaction_id: "t-2", label_category_confidence: 0.5 }),
+        txRow({ transaction_id: "t-3", label_category_confidence: 1 }),
+      ],
+      rowCount: 3,
+    });
+    mockUnsafe.mockResolvedValueOnce({ rows: [categoryRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [budgetRow()], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ transaction_id: "t-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ transaction_id: "t-2" }], rowCount: 1 });
+
+    const result = await postSuggestCategoryRoute.execute(
+      makeReq({
+        suggestions: [
+          { transaction_id: "t-1", confidence: 0.99, label_category_id: GOOD_CATEGORY_ID },
+          { transaction_id: "t-2", confidence: 0.99, label_budget_id: GOOD_BUDGET_ID },
+          { transaction_id: "t-3", confidence: 0.99, label_category_id: GOOD_CATEGORY_ID },
+        ],
+      }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    expect(result?.body?.updated).toBe(2);
+    expect(result?.body?.skipped).toBe(1);
+    expect(result?.body?.outcomes.map((o) => o.status)).toEqual([
+      "updated",
+      "updated",
+      "skipped",
+    ]);
+    // One batched read per table for the whole request, not one per row.
+    expect(countCalls(/SELECT \* FROM transactions/i)).toBe(1);
+    expect(countCalls(/SELECT \* FROM categories/i)).toBe(1);
+    expect(countCalls(/SELECT \* FROM budgets/i)).toBe(1);
+    const txSelect = findSelectCall("transactions");
+    expect(txSelect!.values).toEqual(
+      expect.arrayContaining(["t-1", "t-2", "t-3", "u-1"]),
+    );
+    // One UPDATE per applied suggestion, no UPDATE for the skipped row.
+    expect(countCalls(/UPDATE\s+transactions/i)).toBe(2);
+  });
+
+  test("applies a batch larger than one chunk", async () => {
+    const ids = Array.from({ length: 12 }, (_, i) => `t-${i}`);
+    mockUnsafe.mockResolvedValueOnce({
+      rows: ids.map((id) => txRow({ transaction_id: id, label_category_confidence: 0.5 })),
+      rowCount: 12,
+    });
+    mockUnsafe.mockResolvedValueOnce({ rows: [categoryRow()], rowCount: 1 });
+    // After the three pre-fetch mocks are consumed, every UPDATE resolves
+    // to an updated row.
+    mockUnsafe.mockImplementation(async () => ({ rows: [{ transaction_id: "t-0" }], rowCount: 1 }));
+
+    const result = await postSuggestCategoryRoute.execute(
+      makeReq({
+        suggestions: ids.map((id) => ({
+          transaction_id: id,
+          confidence: 0.99,
+          label_category_id: GOOD_CATEGORY_ID,
+        })),
+      }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    expect(result?.body?.updated).toBe(12);
+    expect(countCalls(/UPDATE\s+transactions/i)).toBe(12);
   });
 });
