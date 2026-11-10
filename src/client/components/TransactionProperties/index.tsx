@@ -15,6 +15,8 @@ import {
   Transaction,
   TransactionDictionary,
   TransactionLabel,
+  formatSplitImpact,
+  getPairSplitImpact,
   useAppContext,
   useBudgetCategorySelect,
   useMutate,
@@ -537,6 +539,12 @@ export const TransactionProperties = ({ transaction }: Props) => {
     : undefined;
   const suggestedPartnerAccount = suggestedPartner && accounts.get(suggestedPartner.account_id);
 
+  // Confirming the pair also drops every live split child of either leg
+  // from the budget rollups — say so above the Confirm button.
+  const splitImpact = suggestedTransfer
+    ? getPairSplitImpact(suggestedTransfer, data.transactions, transactionFamilies)
+    : undefined;
+
   const [transferAction, setTransferAction] = useState<"confirm" | "reject" | null>(null);
   const onClickTransferAction = async (action: "confirm" | "reject") => {
     if (!suggestedTransfer || transferAction) return;
@@ -721,6 +729,11 @@ export const TransactionProperties = ({ transaction }: Props) => {
                   </span>
                 </KeyValue>
               </>
+            )}
+            {splitImpact && (
+              <div className="splitWarning">
+                {formatSplitImpact(splitImpact, iso_currency_code || "")}
+              </div>
             )}
             <ButtonRow
               disabled={!!transferAction}

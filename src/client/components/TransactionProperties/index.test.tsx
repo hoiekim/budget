@@ -648,6 +648,32 @@ describe("TransactionProperties — suggested transfer", () => {
     expect(screen.queryByRole("button", { name: /Mark.as.Transfer$/ })).toBeNull();
   });
 
+  it("shows no warning when neither leg has splits", () => {
+    setup({ suggestedTransfer: true });
+
+    expect(document.querySelector(".splitWarning")).toBeNull();
+  });
+
+  it("warns above Confirm that the leg's splits leave the budget totals", () => {
+    const split = new SplitTransaction({
+      split_transaction_id: "split-10",
+      transaction_id: "tx-0",
+      account_id: ACCOUNT_ID,
+      amount: 10,
+      label: new TransactionLabel({
+        budget_id: budget.id,
+        category_id: streaming.id,
+        category_confidence: 1,
+      }),
+    });
+    setup({ suggestedTransfer: true, ownSplits: [split] });
+
+    expect(document.querySelector(".splitWarning")?.textContent).toBe(
+      "Confirming also removes 1 split transaction ($ 10.00 total) from your budget totals.",
+    );
+    expect(button(/^Confirm.Transfer$/)).not.toBeNull();
+  });
+
   it("Confirm posts the pair and the suggestion actions go away", async () => {
     const { store, calls, rerender } = setup({ suggestedTransfer: true });
 

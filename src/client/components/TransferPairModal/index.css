@@ -18,6 +18,13 @@ div.TransferPairModal > div.panel > div.message {
   line-height: 1.4;
 }
 
+div.TransferPairModal > div.panel > div.splitWarning {
+  padding: 0 15px;
+  text-align: center;
+  line-height: 1.4;
+  color: var(--yellow);
+}
+
 div.TransferPairModal > div.panel > div.actions {
   display: flex;
   justify-content: center;

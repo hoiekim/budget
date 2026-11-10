@@ -2,6 +2,13 @@ import { useRef, useState } from "react";
 import { CheckIcon, TransferPairModal } from "client/components";
 
 interface Props {
+  /**
+   * Warning naming the split transactions confirming would also remove
+   * from the budget rollups. When present, the quick-accept checkmark
+   * opens the dialog instead of confirming outright, so the warning is
+   * always seen before the write.
+   */
+  splitWarning?: string;
   onConfirm: () => Promise<boolean>;
   onReject: () => Promise<boolean>;
 }
@@ -14,14 +21,15 @@ interface Props {
  * The chip carries no outcome of its own — it opens `TransferPairModal`,
  * where confirm and reject are named, symmetric buttons. The checkmark
  * confirms immediately, like the quick-accept on suggested category
- * labels.
+ * labels — unless `splitWarning` is set, in which case it opens the
+ * dialog instead, so the warning is seen before the write.
  *
  * Renders as direct children of `.budgetCategoryActions` so the chip takes
  * the same box as `.labelControls` and the checkmark sits in the same
  * fixed-width `.confirmButtonBox` slot — the chip's width never depends on
  * whether a checkmark is beside it.
  */
-const TransferControls = ({ onConfirm, onReject }: Props) => {
+const TransferControls = ({ splitWarning, onConfirm, onReject }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   // The in-flight guard lives here, not in the dialog: every dismissal path
   // unmounts the dialog, and a guard that dies with it lets the reopened
@@ -54,6 +62,7 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
       {isModalOpen && (
         <TransferPairModal
           busy={busy}
+          splitWarning={splitWarning}
           onConfirm={run(onConfirm)}
           onReject={run(onReject)}
           onClose={() => setIsModalOpen(false)}
@@ -63,7 +72,7 @@ const TransferControls = ({ onConfirm, onReject }: Props) => {
         <button
           className="confirmButton"
           aria-label="Confirm transfer"
-          onClick={run(onConfirm)}
+          onClick={splitWarning ? () => setIsModalOpen(true) : run(onConfirm)}
         >
           <CheckIcon size={20} />
         </button>
