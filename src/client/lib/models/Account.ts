@@ -76,3 +76,18 @@ export class Account implements JSONAccount {
     assign(this, init);
   }
 }
+
+/**
+ * Whether the account answers to one of the selected account types. The
+ * `type` column decides — except modern Plaid reports a brokerage as
+ * `type: investment, subtype: brokerage`, so an account also answers to a
+ * selected type its `subtype` names (issue 768). Without the subtype leg
+ * the Brokerage option in the Accounts type filter matches nothing, even
+ * though the detail page used to steer the user toward it.
+ */
+export const accountMatchesTypes = (
+  { type, subtype }: Pick<Account, "type" | "subtype">,
+  selectedTypes: AccountType[],
+): boolean =>
+  selectedTypes.includes(type) ||
+  (subtype !== null && (selectedTypes as string[]).includes(subtype));
