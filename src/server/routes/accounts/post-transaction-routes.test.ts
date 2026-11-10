@@ -255,7 +255,7 @@ describe("post-transaction route", () => {
       await rejects(
         postTransactionRoute,
         { transaction_id: "t-1", amount },
-        "Field amount must be at most 9999999999999.99 in magnitude",
+        "Field amount must be at most 9999999999999.99",
       );
     }
   });
@@ -521,7 +521,7 @@ describe("post-split-transaction route", () => {
     await rejects(
       postSplitTransactionRoute,
       { split_transaction_id: SPLIT_UUID, amount: 1e13 },
-      "Field amount must be at most 9999999999999.99 in magnitude",
+      "Field amount must be at most 9999999999999.99",
     );
   });
 
@@ -708,9 +708,9 @@ describe("post-investment-transaction route", () => {
 
   test("a number past its DECIMAL column is refused before it reaches SQL", async () => {
     for (const [body, error] of [
-      [{ amount: 1e13 }, "Field amount must be at most 9999999999999.99 in magnitude"],
-      [{ quantity: 1e9 }, "Field quantity must be at most 999999999.999999 in magnitude"],
-      [{ price: -1e9 }, "Field price must be at most 999999999.999999 in magnitude"],
+      [{ amount: 1e13 }, "Field amount must be at most 9999999999999.99"],
+      [{ quantity: 1e9 }, "Field quantity must be at most 999999999.999999"],
+      [{ price: -1e9 }, "Field price must be at most 999999999.999999"],
     ] as const) {
       clearSqlMocks();
       mockSendAlarm.mockClear();

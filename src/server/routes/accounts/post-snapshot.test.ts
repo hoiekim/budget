@@ -239,9 +239,9 @@ describe("post-snapshot body validation", () => {
     // assertions discriminate.
     ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
     for (const [field, value, message] of [
-      ["current", 1e13, "Field account.balances.current must be at most 9999999999999.99 in magnitude"],
-      ["available", -1e13, "Field account.balances.available must be at most 9999999999999.99 in magnitude"],
-      ["limit", 1e13, "Field account.balances.limit must be at most 9999999999999.99 in magnitude"],
+      ["current", 1e13, "Field account.balances.current must be at most 9999999999999.99"],
+      ["available", -1e13, "Field account.balances.available must be at most 9999999999999.99"],
+      ["limit", 1e13, "Field account.balances.limit must be at most 9999999999999.99"],
       ["iso_currency_code", "US Dollars!", "Field account.balances.iso_currency_code must be at most 10 characters"],
     ] as [string, unknown, string][]) {
       issued.length = 0;

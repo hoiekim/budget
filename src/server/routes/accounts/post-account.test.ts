@@ -304,7 +304,7 @@ describe("post-account typed body fields", () => {
       mockSendAlarm.mockClear();
       await rejects(
         { account_id: "acc-1", balances },
-        `Field balances.${Object.keys(balances)[0]} must be at most 9999999999999.99 in magnitude`,
+        `Field balances.${Object.keys(balances)[0]} must be at most 9999999999999.99`,
       );
     }
   });

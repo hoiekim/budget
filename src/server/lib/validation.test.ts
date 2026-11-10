@@ -554,11 +554,11 @@ describe("validateFields", () => {
     for (const value of [1e13, -1e13]) {
       const result = validateFields({ balances: { current: value } }, BOUNDED_SPEC);
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Field balances.current must be at most 9999999999999.99 in magnitude");
+      expect(result.error).toBe("Field balances.current must be at most 9999999999999.99");
     }
     const result = validateFields({ quantity: 1e9 }, BOUNDED_SPEC);
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Field quantity must be at most 999999999.999999 in magnitude");
+    expect(result.error).toBe("Field quantity must be at most 999999999.999999");
   });
 
   it("still answers the type error when the value has the wrong type", () => {

@@ -59,6 +59,32 @@ const HOLDING_SNAPSHOT_CREATE_SPEC: FieldSpec[] = [
 ];
 
 /**
+ * The holdings row derives `institution_value` from `quantity *
+ * institution_price` when the caller leaves it unset — and the product of
+ * two DECIMAL(15, 6) values is not bounded by either spec: quantity 1e8 and
+ * institution_price 1e8 both pass, yet their product 1e16 overflows the
+ * holdings DECIMAL(15, 2) column. `upsertHoldings` swallows the 22003 per
+ * row, so without this guard the route would answer success with a missing
+ * or stale holdings row — the same overflow class the specs exist to
+ * remove, one layer down from them. Returns the refusal message (naming
+ * the limit the way the spec refusal does) when the derived value would
+ * overflow, or null when the combination is safe — including when the
+ * caller sets `institution_value` explicitly, since then no derivation
+ * happens. Magnitude, not value: the column overflows on either sign.
+ */
+const derivedInstitutionValueOverflow = (
+  quantity: number | null | undefined,
+  institution_price: number | null | undefined,
+  institution_value: number | null | undefined,
+): string | null => {
+  if (institution_value !== undefined && institution_value !== null) return null;
+  if (Math.abs((quantity ?? 0) * (institution_price ?? 0)) > DECIMAL_15_2_MAX) {
+    return `Field institution_value must be at most ${DECIMAL_15_2_MAX}`;
+  }
+  return null;
+};
+
+/**
  * Resolve an already-validated ticker symbol to a security_id, creating the
  * security via Polygon's ticker-detail API if it does not yet exist locally.
  * Price is intentionally not required so future-dated snapshots do not
@@ -178,6 +204,29 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         return validationError("no fields to update");
       }
 
+      // The re-sync below derives the holdings row's institution_value from
+      // the patched quantity * institution_price when the snapshot carries
+      // no explicit value — the same overflow the create path refuses. Check
+      // the effective post-patch values (body over the stored row) before
+      // the snapshot write, so a refused combination leaves no written
+      // snapshot behind a stale holdings row.
+      const effectiveQuantity =
+        body.quantity !== undefined ? (body.quantity as number | null) : existing.quantity;
+      const effectivePrice =
+        body.institution_price !== undefined
+          ? (body.institution_price as number | null)
+          : existing.institution_price;
+      const effectiveValue =
+        body.institution_value !== undefined
+          ? (body.institution_value as number | null)
+          : existing.institution_value;
+      const patchDerivedOverflow = derivedInstitutionValueOverflow(
+        effectiveQuantity,
+        effectivePrice,
+        effectiveValue,
+      );
+      if (patchDerivedOverflow) return validationError(patchDerivedOverflow);
+
       try {
         await snapshotsTable.update(provided_snapshot_id, patch, undefined, user.user_id);
 
@@ -243,6 +292,21 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     // The spec just proved `quantity` is a finite number — the cast below
     // is the same narrowing the old presence check used to give.
     const quantity = body.quantity as number;
+    const cost_basis = body.cost_basis as number | null | undefined;
+    const institution_price = body.institution_price as number | null | undefined;
+    const institution_value = body.institution_value as number | null | undefined;
+
+    // The holdings row derives institution_value from quantity *
+    // institution_price when the caller leaves it unset. Refuse the
+    // combination here — before the ownership lookup, so the refusal issues
+    // no SQL and no alarm — when the derived value would overflow the
+    // holdings DECIMAL(15, 2) column.
+    const createDerivedOverflow = derivedInstitutionValueOverflow(
+      quantity,
+      institution_price,
+      institution_value,
+    );
+    if (createDerivedOverflow) return validationError(createDerivedOverflow);
 
     const parsedDate = optionalDateField(body, "snapshot_date");
     if (!parsedDate.success) return validationError(parsedDate.error!);
@@ -250,10 +314,6 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     if (!(await getAccount(user, account_id))) {
       return { status: "failed", message: "Account not found or access denied." };
     }
-
-    const cost_basis = body.cost_basis as number | undefined;
-    const institution_price = body.institution_price as number | undefined;
-    const institution_value = body.institution_value as number | undefined;
 
     const date: Date = parsedDate.data ?? new Date();
     const dateString = getSquashedDateString(date);

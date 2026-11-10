@@ -357,7 +357,7 @@ const boundError = (spec: FieldSpec): string => {
     return `Field ${spec.path} must be at most ${spec.maxLength} characters`;
   }
   if (spec.type === "number" && spec.max !== undefined) {
-    return `Field ${spec.path} must be at most ${spec.max} in magnitude`;
+    return `Field ${spec.path} must be at most ${spec.max}`;
   }
   return typeError(spec);
 };
