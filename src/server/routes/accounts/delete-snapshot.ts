@@ -15,7 +15,10 @@ export const deleteSnapshotRoute = new Route("DELETE", "/snapshot", async (req) 
   }
   const snapshot_id = idResult.data!;
 
-  await deleteSnapshotById(user, snapshot_id);
+  const deleted = await deleteSnapshotById(user, snapshot_id);
+  if (!deleted) {
+    return { status: "failed", message: "Snapshot not found." };
+  }
 
   return { status: "success" };
 });

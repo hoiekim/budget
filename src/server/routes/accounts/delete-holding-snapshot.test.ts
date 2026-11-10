@@ -150,6 +150,20 @@ describe("DELETE /api/snapshots/holding", () => {
     expect(sel!.values).toContain(1);
   });
 
+  test("answers failed when the row vanishes between the lookup and the delete", async () => {
+    // 1: ownership SELECT returns the snapshot
+    mockUnsafe.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
+    // 2: the soft-delete's UPDATE matches zero rows — another tab deleted
+    // it first. The route answers from the delete's row count, not the
+    // lookup's, so the client's guard sees the truth.
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const result = await deleteHoldingSnapshotRoute.execute(makeReq({ id: "snap-1" }), fakeRes());
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/not found or access denied/i);
+  });
+
   test("surfaces softDelete failure as a 500-style error response", async () => {
     mockUnsafe.mockResolvedValueOnce({ rows: [snapshotRow()], rowCount: 1 });
     mockUnsafe.mockRejectedValueOnce(new Error("connection lost"));
