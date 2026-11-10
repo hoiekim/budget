@@ -5,6 +5,7 @@ import {
   requireStringField,
   validateFields,
   validationError,
+  DECIMAL_15_2_MAX,
 } from "server";
 import type { FieldSpec, PartialAccount } from "server";
 import { logger } from "server/lib/logger";
@@ -22,17 +23,17 @@ export interface AccountPostResponse {
  * because they are nullable — both columns are `NOT NULL`.
  */
 const ACCOUNT_BODY_SPEC: FieldSpec[] = [
-  { path: "name", type: "string", nullable: true },
-  { path: "type", type: "string", nullable: true },
-  { path: "subtype", type: "string", nullable: true },
+  { path: "name", type: "string", nullable: true, maxLength: 255 },
+  { path: "type", type: "string", nullable: true, maxLength: 50 },
+  { path: "subtype", type: "string", nullable: true, maxLength: 100 },
   { path: "custom_name", type: "string", nullable: true },
   { path: "hide", type: "boolean", nullable: true },
   { path: "archived", type: "boolean", nullable: true },
   { path: "label.budget_id", type: "uuid", nullable: true },
-  { path: "balances.available", type: "number", nullable: true },
-  { path: "balances.current", type: "number", nullable: true },
-  { path: "balances.limit", type: "number", nullable: true },
-  { path: "balances.iso_currency_code", type: "string", nullable: true },
+  { path: "balances.available", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "balances.current", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "balances.limit", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "balances.iso_currency_code", type: "string", nullable: true, maxLength: 10 },
   { path: "graphOptions.useSnapshots", type: "boolean", nullable: true },
   { path: "graphOptions.useHoldingSnapshots", type: "boolean", nullable: true },
   { path: "graphOptions.useTransactions", type: "boolean", nullable: true },

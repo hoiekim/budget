@@ -8,6 +8,7 @@ import {
   inferLabelConfidence,
   recordCategoryRejection,
   getPrevLabel,
+  DECIMAL_15_2_MAX,
 } from "server";
 import type { FieldSpec, PartialTransaction, PrevLabel } from "server";
 import { logger } from "server/lib/logger";
@@ -20,7 +21,7 @@ import { logger } from "server/lib/logger";
  * fields accept explicit null — that is how the client clears a label.
  */
 const TRANSACTION_BODY_SPEC: FieldSpec[] = [
-  { path: "amount", type: "number" },
+  { path: "amount", type: "number", max: DECIMAL_15_2_MAX },
   { path: "date", type: "date" },
   { path: "pending", type: "boolean", nullable: true },
   { path: "label.budget_id", type: "uuid", nullable: true },

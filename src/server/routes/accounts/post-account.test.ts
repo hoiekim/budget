@@ -272,6 +272,43 @@ describe("post-account typed body fields", () => {
     await rejects({ account_id: "acc-1", hide: "true" }, "Field hide must be a boolean");
   });
 
+  test("a name past the VARCHAR(255) column is refused before SQL", async () => {
+    await rejects(
+      { account_id: "acc-1", name: "n".repeat(256) },
+      "Field name must be at most 255 characters",
+    );
+  });
+
+  test("a type, subtype or currency code past its VARCHAR column is refused before SQL", async () => {
+    for (const [body, error] of [
+      [{ type: "t".repeat(51) }, "Field type must be at most 50 characters"],
+      [{ subtype: "s".repeat(101) }, "Field subtype must be at most 100 characters"],
+      [
+        { balances: { iso_currency_code: "US Dollars!" } },
+        "Field balances.iso_currency_code must be at most 10 characters",
+      ],
+    ] as const) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      await rejects({ account_id: "acc-1", ...body }, error);
+    }
+  });
+
+  test("a balance past the DECIMAL(15, 2) column is refused before SQL", async () => {
+    for (const balances of [
+      { available: 1e13 },
+      { current: 1e13 },
+      { limit: -1e13 },
+    ]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      await rejects(
+        { account_id: "acc-1", balances },
+        `Field balances.${Object.keys(balances)[0]} must be at most 9999999999999.99 in magnitude`,
+      );
+    }
+  });
+
   test("a non-object balances is refused before SQL", async () => {
     await rejects({ account_id: "acc-1", balances: "broke" }, "Field balances must be an object");
   });
@@ -285,6 +322,31 @@ describe("post-account typed body fields", () => {
           hide: true,
           label: { budget_id: UUID },
           balances: { current: -12.5 },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    expect(findStatement(UPDATE_ACCOUNTS)).not.toBeNull();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("values exactly at their column bounds pass validation and reach the repo", async () => {
+    db.updateReturns = [{ account_id: "acc-1" }];
+    const result = await postAccountRoute.execute(
+      makeReq(
+        {
+          account_id: "acc-1",
+          name: "n".repeat(255),
+          type: "t".repeat(50),
+          subtype: "s".repeat(100),
+          balances: {
+            available: 9999999999999.99,
+            current: -9999999999999.99,
+            limit: 9999999999999.99,
+            iso_currency_code: "US Dollars", // exactly 10 characters
+          },
         },
         "u-1",
       ),

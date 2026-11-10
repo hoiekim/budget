@@ -10,7 +10,7 @@ import type { FieldSpec } from "server";
  */
 const SECTION_BODY_SPEC: FieldSpec[] = [
   { path: "section_id", type: "uuid" },
-  { path: "name", type: "string" },
+  { path: "name", type: "string", maxLength: 255 },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
   { path: "capacities", type: "array" },

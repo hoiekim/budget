@@ -5,6 +5,8 @@ import {
   requireStringField,
   validateFields,
   validationError,
+  DECIMAL_15_2_MAX,
+  DECIMAL_15_6_MAX,
 } from "server";
 import type { FieldSpec, PartialInvestmentTransaction } from "server";
 import { logger } from "server/lib/logger";
@@ -17,9 +19,9 @@ import { logger } from "server/lib/logger";
  * the client clears a label.
  */
 const INVESTMENT_TRANSACTION_BODY_SPEC: FieldSpec[] = [
-  { path: "amount", type: "number" },
-  { path: "quantity", type: "number" },
-  { path: "price", type: "number" },
+  { path: "amount", type: "number", max: DECIMAL_15_2_MAX },
+  { path: "quantity", type: "number", max: DECIMAL_15_6_MAX },
+  { path: "price", type: "number", max: DECIMAL_15_6_MAX },
   { path: "date", type: "date" },
   { path: "label.budget_id", type: "uuid", nullable: true },
   { path: "label.category_id", type: "uuid", nullable: true },

@@ -186,6 +186,37 @@ for (const entity of ENTITIES) {
       }
     });
 
+    test("a 256-character name is refused before it reaches the VARCHAR(255) column", async () => {
+      await rejects(
+        { [entity.idField]: UUID, name: "n".repeat(256) },
+        "Field name must be at most 255 characters",
+      );
+    });
+
+    if (entity.noun === "budget") {
+      test("an 11-character currency code is refused before it reaches the VARCHAR(10) column", async () => {
+        await rejects(
+          { [entity.idField]: UUID, iso_currency_code: "US Dollars!" },
+          "Field iso_currency_code must be at most 10 characters",
+        );
+      });
+    }
+
+    test("a name exactly at the VARCHAR(255) bound passes validation and reaches the repo", async () => {
+      db.updateReturns = [{ [entity.idField]: UUID }];
+      const result = await entity.route.execute(
+        makeReq(entity.noun, {
+          [entity.idField]: UUID,
+          name: "n".repeat(255),
+          capacities: [],
+        }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("success");
+      expect(mockUnsafe).toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    });
+
     test("a well-formed body passes validation and reaches the repo", async () => {
       db.updateReturns = [{ [entity.idField]: UUID }];
       const result = await entity.route.execute(

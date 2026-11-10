@@ -248,6 +248,18 @@ describe("post-transaction route", () => {
     );
   });
 
+  test("an amount past the DECIMAL(15, 2) column is refused before it reaches SQL", async () => {
+    for (const amount of [1e13, -1e13]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      await rejects(
+        postTransactionRoute,
+        { transaction_id: "t-1", amount },
+        "Field amount must be at most 9999999999999.99 in magnitude",
+      );
+    }
+  });
+
   test("a non-date date is refused before it reaches the DATE column", async () => {
     for (const value of ["hello", "", "2026-13-45"]) {
       clearSqlMocks();
@@ -305,6 +317,28 @@ describe("post-transaction route", () => {
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "amount")).toBe(12.34);
     expect(boundValue(upd!, "label_budget_id")).toBe(BUDGET_UUID);
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("an amount exactly at the DECIMAL(15, 2) bound passes validation and reaches the repo", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(
+        postTransactionRoute,
+        {
+          transaction_id: "t-1",
+          amount: 9999999999999.99,
+          date: "2026-08-24",
+          label: { budget_id: BUDGET_UUID },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "amount")).toBe(9999999999999.99);
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 
@@ -475,6 +509,22 @@ describe("post-split-transaction route", () => {
     );
   });
 
+  test("a transaction_id past the VARCHAR(255) column is refused before it reaches SQL", async () => {
+    await rejects(
+      postSplitTransactionRoute,
+      { split_transaction_id: SPLIT_UUID, transaction_id: "t".repeat(256) },
+      "Field transaction_id must be at most 255 characters",
+    );
+  });
+
+  test("an amount past the DECIMAL(15, 2) column is refused before it reaches SQL", async () => {
+    await rejects(
+      postSplitTransactionRoute,
+      { split_transaction_id: SPLIT_UUID, amount: 1e13 },
+      "Field amount must be at most 9999999999999.99 in magnitude",
+    );
+  });
+
   test("a non-date date is refused before it reaches the DATE column", async () => {
     for (const value of ["bad", "2026-02-30"]) {
       clearSqlMocks();
@@ -518,6 +568,31 @@ describe("post-split-transaction route", () => {
     const upd = findUpdate("split_transactions");
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "amount")).toBe(6.17);
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("values exactly at their column bounds pass validation and reach the repo", async () => {
+    const result = await postSplitTransactionRoute.execute(
+      makeReq(
+        postSplitTransactionRoute,
+        {
+          split_transaction_id: SPLIT_UUID,
+          transaction_id: "t".repeat(255),
+          account_id: "a-1",
+          amount: -9999999999999.99,
+          date: "2026-08-24T00:00:00",
+          custom_name: "Unknown",
+          label: { budget_id: null, category_id: null, memo: null, category_confidence: null },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("split_transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "amount")).toBe(-9999999999999.99);
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 
@@ -631,6 +706,22 @@ describe("post-investment-transaction route", () => {
     );
   });
 
+  test("a number past its DECIMAL column is refused before it reaches SQL", async () => {
+    for (const [body, error] of [
+      [{ amount: 1e13 }, "Field amount must be at most 9999999999999.99 in magnitude"],
+      [{ quantity: 1e9 }, "Field quantity must be at most 999999999.999999 in magnitude"],
+      [{ price: -1e9 }, "Field price must be at most 999999999.999999 in magnitude"],
+    ] as const) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      await rejects(
+        postInvestmentTransactionRoute,
+        { investment_transaction_id: "i-1", ...body },
+        error,
+      );
+    }
+  });
+
   test("a non-date date is refused before it reaches the DATE column", async () => {
     await rejects(
       postInvestmentTransactionRoute,
@@ -669,6 +760,32 @@ describe("post-investment-transaction route", () => {
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "quantity")).toBe(2.5);
     expect(boundValue(upd!, "label_budget_id")).toBe(BUDGET_UUID);
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("numbers exactly at their DECIMAL bounds pass validation and reach the repo", async () => {
+    const result = await postInvestmentTransactionRoute.execute(
+      makeReq(
+        postInvestmentTransactionRoute,
+        {
+          investment_transaction_id: "i-1",
+          amount: -9999999999999.99,
+          quantity: 999999999.999999,
+          price: 999999999.999999,
+          date: "2026-08-24",
+          label: { budget_id: BUDGET_UUID, category_id: null },
+        },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("investment_transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "amount")).toBe(-9999999999999.99);
+    expect(boundValue(upd!, "quantity")).toBe(999999999.999999);
+    expect(boundValue(upd!, "price")).toBe(999999999.999999);
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 
