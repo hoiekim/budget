@@ -1,6 +1,6 @@
 import { CSSProperties, ReactNode, useState } from "react";
 import { AccountType } from "common/lib/plaid-enums";
-import { Account, DonutData, PATH, useAppContext } from "client";
+import { Account, accountMatchesTypes, DonutData, PATH, useAppContext } from "client";
 import { AddButton, Placeholder } from "client/components";
 import AccountRow from "./AccountRow";
 
@@ -14,10 +14,12 @@ interface Props {
   donutData: DonutData[];
   /** Types the user picked via `<PageFilterTitle>` on `AccountsPage`.
    * Empty = no filter (default view). Non-empty = show only accounts
-   * whose `type` is in the array, across ALL sections (donut, credit,
-   * archived, hidden). Without this the Credit / Archived / Hidden
-   * sub-lists render every account regardless of the filter, so picking
-   * "Depository" still leaves credit accounts on screen. */
+   * answering to one of them — through `type`, or a `subtype` naming a
+   * type (a brokerage is `type: investment, subtype: brokerage`) — across
+   * ALL sections (donut, credit, archived, hidden). Without this the
+   * Credit / Archived / Hidden sub-lists render every account regardless
+   * of the filter, so picking "Depository" still leaves credit accounts
+   * on screen. */
   selectedTypes?: AccountType[];
   style?: CSSProperties;
 }
@@ -50,7 +52,8 @@ export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
   let hiddenCount = 0;
 
   const hasTypeFilter = !!selectedTypes && selectedTypes.length > 0;
-  const typeMatches = (t: AccountType) => !hasTypeFilter || selectedTypes.includes(t);
+  const typeMatches = (a: Account) =>
+    !hasTypeFilter || accountMatchesTypes(a, selectedTypes);
   // Credits already appear in the donut (main) list when the filter
   // explicitly includes Credit — pushing them into the credit block too
   // would double-render. Only surface the credit-only block when Credit
@@ -62,7 +65,7 @@ export const AccountsTable = ({ donutData, selectedTypes, style }: Props) => {
     // Every sub-list (hidden, archived, credit) respects the user's
     // type filter — otherwise "Depository" leaves credit accounts on
     // screen (via the credit-only row block below).
-    if (!typeMatches(a.type)) return;
+    if (!typeMatches(a)) return;
     if (a.hide) {
       hiddenCount++;
       hiddenAccounts.push(<AccountRow key={a.account_id} account={a} />);
