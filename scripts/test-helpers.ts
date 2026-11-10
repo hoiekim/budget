@@ -57,7 +57,7 @@ export const restoreFetch = (): void => {
 };
 
 /**
- * Put the market-data env back to the preload's snapshot.
+ * Put the test env back to the preload's snapshot.
  *
  * Deletes a name that was unset rather than assigning `undefined` to it:
  * `process.env.X = undefined` stores the STRING "undefined", which is truthy,
@@ -68,6 +68,12 @@ export const restoreEnv = (): void => {
   const snapshot = realLeaves().__REAL_ENV;
   // Written out one name at a time for the same reason the snapshot is: a
   // computed key is an env access the `.env.example` scan cannot follow.
+  if (snapshot.DISCORD_ALARM_WEBHOOK === undefined) delete process.env.DISCORD_ALARM_WEBHOOK;
+  else process.env.DISCORD_ALARM_WEBHOOK = snapshot.DISCORD_ALARM_WEBHOOK;
+  if (snapshot.LOG_LEVEL === undefined) delete process.env.LOG_LEVEL;
+  else process.env.LOG_LEVEL = snapshot.LOG_LEVEL;
+  if (snapshot.NODE_ENV === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = snapshot.NODE_ENV;
   if (snapshot.POLYGON_API_KEY === undefined) delete process.env.POLYGON_API_KEY;
   else process.env.POLYGON_API_KEY = snapshot.POLYGON_API_KEY;
   if (snapshot.POLYGON_RATE_LIMIT_PER_MIN === undefined)
