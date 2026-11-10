@@ -157,7 +157,7 @@ export const ProjectionChartRow = ({
         <table width="100%">
           <thead>
             <tr>
-              <th></th>
+              <th className="scenario">Scenario</th>
               <th>Date</th>
               <th>Saved</th>
               <th>Payout Max</th>
@@ -166,8 +166,9 @@ export const ProjectionChartRow = ({
           </thead>
           <tbody>
             <tr>
-              <td>
+              <td className="scenario">
                 <div className="label colored" style={{ backgroundColor: "#097" }} />
+                <span className="scenarioName">Now</span>
               </td>
               <td>{getYearMonthString(currentViewDate.getStartDate())}</td>
               <td>$ {numberToCommaString(lastValue, 0)}</td>
@@ -175,8 +176,9 @@ export const ProjectionChartRow = ({
             </tr>
             {!!currentRetireDate && !!currentRetireAmount && (
               <tr>
-                <td>
+                <td className="scenario">
                   <div className="label colored" style={{ backgroundColor: "#f43" }} />
+                  <span className="scenarioName">Current&nbsp;trajectory</span>
                 </td>
                 <td>{getYearMonthString(currentRetireDate)}</td>
                 <td>$ {numberToCommaString(currentRetireAmount, 0)}</td>
@@ -185,8 +187,9 @@ export const ProjectionChartRow = ({
             )}
             {!!planRetireDate && !!planRetireAmount && (
               <tr>
-                <td>
+                <td className="scenario">
                   <div className="label" style={{ backgroundColor: "#aaa" }} />
+                  <span className="scenarioName">Plan</span>
                 </td>
                 <td>{getYearMonthString(planRetireDate)}</td>
                 <td>$ {numberToCommaString(planRetireAmount, 0)}</td>
