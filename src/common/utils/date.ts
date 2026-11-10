@@ -268,6 +268,21 @@ export const getLocaleDateString = (date: Date) => {
 };
 
 /**
+ * Format an ISO timestamp the way the detail panels do ("Jan 19, 2026").
+ * One shared call so the panels can't drift apart again; `fallback` covers a
+ * missing or unparseable value. Takes the stored string (not a Date) because
+ * that is what the detail panels hold — the parse goes through LocalDate, as
+ * the sibling panels' inline calls do, so a bare YYYY-MM-DD stays on the
+ * local day instead of rendering as the previous day in US timezones
+ * (#1031, #1035).
+ */
+export const formatDate = (iso?: string | null, fallback = "Unknown") => {
+  if (!iso) return fallback;
+  const date = new LocalDate(iso);
+  return Number.isNaN(date.getTime()) ? fallback : getLocaleDateString(date);
+};
+
+/**
  * @param yearMonthString YYYY-MM
  * @returns Date
  */
