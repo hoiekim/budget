@@ -18,6 +18,8 @@ import {
   polygonLookupRateLimiter,
   POLYGON_LOOKUP_SHED_MESSAGE,
   backfillMonthlySecuritySnapshotsForward,
+  DECIMAL_15_2_MAX,
+  DECIMAL_15_6_MAX,
 } from "server";
 import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
@@ -38,25 +40,22 @@ export interface HoldingSnapshotPostResponse {
  *
  * Both specs run BEFORE the ownership lookup, matching #776: a client type
  * error is a `failed` answer with the field named, never a 22P02 at the
- * write that `Route.execute` turns into a 500 plus an alarm.
- *
- * Overflow stays out of scope here: `validateFields`'s `number` pins
- * finiteness only, so a 1e300 still reaches the column — that range bound
- * belongs to #880, which adds it to `FieldSpec` for all eight swept routes
- * at once.
+ * write that `Route.execute` turns into a 500 plus an alarm. The bounds
+ * mirror the columns, so an overflowing value is refused here with the
+ * limit named instead of raising 22003 at the write.
  */
 const HOLDING_SNAPSHOT_PATCH_SPEC: FieldSpec[] = [
-  { path: "quantity", type: "number", nullable: true },
-  { path: "cost_basis", type: "number", nullable: true },
-  { path: "institution_price", type: "number", nullable: true },
-  { path: "institution_value", type: "number", nullable: true },
+  { path: "quantity", type: "number", nullable: true, max: DECIMAL_15_6_MAX },
+  { path: "cost_basis", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "institution_price", type: "number", nullable: true, max: DECIMAL_15_6_MAX },
+  { path: "institution_value", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
 ];
 
 const HOLDING_SNAPSHOT_CREATE_SPEC: FieldSpec[] = [
-  { path: "quantity", type: "number", required: true },
-  { path: "cost_basis", type: "number", nullable: true },
-  { path: "institution_price", type: "number", nullable: true },
-  { path: "institution_value", type: "number", nullable: true },
+  { path: "quantity", type: "number", required: true, max: DECIMAL_15_6_MAX },
+  { path: "cost_basis", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "institution_price", type: "number", nullable: true, max: DECIMAL_15_6_MAX },
+  { path: "institution_value", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
 ];
 
 /**

@@ -191,6 +191,31 @@ describe("post-holding-snapshot validation", () => {
       expect(mockSendAlarm).not.toHaveBeenCalled();
     }
   });
+  test("rejects an over-limit numeric field in create mode before any SQL or alarm", async () => {
+    // The #880 follow-up: the DECIMAL(15, 6) / DECIMAL(15, 2) bounds now
+    // live on both specs, so an overflowing value is a `failed` answer
+    // naming the limit, not a 22003 at the write. Without the bound the
+    // route reaches the ownership lookup (SQL), so the no-SQL assertion
+    // discriminates.
+    const cases: [string, number, string][] = [
+      ["quantity", 1e9, "Field quantity must be at most 999999999.999999 in magnitude"],
+      ["cost_basis", 1e13, "Field cost_basis must be at most 9999999999999.99 in magnitude"],
+      ["institution_price", 1e9, "Field institution_price must be at most 999999999.999999 in magnitude"],
+      ["institution_value", 1e13, "Field institution_value must be at most 9999999999999.99 in magnitude"],
+    ];
+    for (const [field, value, message] of cases) {
+      mockUnsafe.mockClear();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "a-1", ticker_symbol: "TEST", quantity: 10, [field]: value }, "u-1"),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(message);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
 });
 
 describe("post-holding-snapshot — per-user cap on the shared Polygon gate", () => {

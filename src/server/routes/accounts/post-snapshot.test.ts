@@ -231,6 +231,56 @@ describe("post-snapshot body validation", () => {
     }
   });
 
+  test("refuses an over-limit balance before any SQL or alarm", async () => {
+    // The #880 follow-up: the DECIMAL(15, 2) / VARCHAR(10) bounds now live
+    // on this spec too, so an overflowing balance is a `failed` answer
+    // naming the limit, not a 22003 at the write. Without the bound the
+    // route reaches the accounts SELECT and then the write, so both
+    // assertions discriminate.
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    for (const [field, value, message] of [
+      ["current", 1e13, "Field account.balances.current must be at most 9999999999999.99 in magnitude"],
+      ["available", -1e13, "Field account.balances.available must be at most 9999999999999.99 in magnitude"],
+      ["limit", 1e13, "Field account.balances.limit must be at most 9999999999999.99 in magnitude"],
+      ["iso_currency_code", "US Dollars!", "Field account.balances.iso_currency_code must be at most 10 characters"],
+    ] as [string, unknown, string][]) {
+      issued.length = 0;
+      mockSendAlarm.mockClear();
+      const result = await postSnapshotRoute.execute(
+        makeReq(
+          { account: { account_id: "acct-A", balances: { [field]: value } }, snapshot: {} },
+          "owner",
+        ),
+        fakeRes(),
+      );
+      expect(result!.status).toBe("failed");
+      expect(result!.message).toBe(message);
+      expect(issued).toHaveLength(0);
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("accepts a balance exactly at the column bound and writes", async () => {
+    // The bound is the column's exact one, not a rounded-down guard: the
+    // at-limit value must reach the write.
+    ownedAccountRows = [{ ...ACCOUNT_ROW, user_id: "owner" }];
+    const result = await postSnapshotRoute.execute(
+      makeReq(
+        {
+          account: {
+            account_id: "acct-A",
+            balances: { current: 9999999999999.99, iso_currency_code: "0123456789" },
+          },
+          snapshot: { date: "2026-07-01" },
+        },
+        "owner",
+      ),
+      fakeRes(),
+    );
+    expect(result!.status).toBe("success");
+    expect(issued.some((q) => /INSERT INTO snapshots/i.test(q.sql))).toBe(true);
+  });
+
   test("an explicit null balance clears the column instead of failing", async () => {
     // The three balance columns are nullable, so null is a legitimate
     // "clear this field" value — the spec says so, the write must agree.

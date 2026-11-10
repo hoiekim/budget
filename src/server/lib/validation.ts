@@ -254,7 +254,7 @@ export interface FieldSpec {
 
 /**
  * Largest magnitude a `DECIMAL(15, 2)` column takes — 13 integer digits.
- * Shared so the eight route specs state the column's exact bound instead of
+ * Shared so the route specs state the column's exact bound instead of
  * restating the literal (and drifting from it).
  */
 export const DECIMAL_15_2_MAX = 9999999999999.99;
