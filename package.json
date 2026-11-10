@@ -21,8 +21,8 @@
     "dev-server": "bun --watch ./src/server/start.ts",
     "test": "bun test --preload ./scripts/test-preload.ts src",
     "test:coverage": "bun test --preload ./scripts/test-preload.ts --coverage --coverage-reporter=lcov src && bun scripts/check-coverage.ts",
-    "lint": "bun --bun eslint src",
-    "lint:fix": "bun --bun eslint src --fix",
+    "lint": "bun --bun eslint src scripts vite.config.ts healthcheck.js",
+    "lint:fix": "bun --bun eslint src scripts vite.config.ts healthcheck.js --fix",
     "typecheck": "bun run --bun tsc --noEmit",
     "preview": "vite preview"
   },
