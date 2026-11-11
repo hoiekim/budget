@@ -6,8 +6,8 @@ import {
   BudgetDictionary,
   Calculations,
   Capacity,
+  Category,
   CategoryDictionary,
-  Context,
   ContextType,
   Data,
   PATH,
@@ -307,6 +307,106 @@ describe("BudgetConfigPage", () => {
       expect(storedB?.capacities[1].capacity_id).toBe("cap-b-new");
       expect(storedB?.capacities[0].capacity_id).not.toBe("cap-b-new");
       expect(storedB?.capacities[0].capacity_id).toBeTruthy();
+    } finally {
+      globalData.budgets = new BudgetDictionary();
+      globalData.sections = new SectionDictionary();
+      globalData.categories = new CategoryDictionary();
+    }
+  });
+
+  it("toggling sync on a budget marks only the budget, not its sections (#784)", async () => {
+    const SECTION_A_ID = "section-a";
+    const SECTION_B_ID = "section-b";
+    const CATEGORY_ID = "category-a1";
+    const data = new Data();
+    const budget = new Budget({
+      budget_id: BUDGET_ID,
+      name: "QA",
+      capacities: [new Capacity({ month: 1200 })],
+    });
+    const sectionA = new Section({
+      section_id: SECTION_A_ID,
+      budget_id: BUDGET_ID,
+      name: "A",
+      capacities: [new Capacity({ month: 500 })],
+    });
+    const sectionB = new Section({
+      section_id: SECTION_B_ID,
+      budget_id: BUDGET_ID,
+      name: "B",
+      capacities: [new Capacity({ month: 500 })],
+    });
+    const category = new Category({
+      category_id: CATEGORY_ID,
+      section_id: SECTION_A_ID,
+      name: "A1",
+      capacities: [new Capacity({ month: 300 })],
+    });
+    data.budgets.set(BUDGET_ID, budget);
+    data.sections.set(SECTION_A_ID, sectionA);
+    data.sections.set(SECTION_B_ID, sectionB);
+    data.categories.set(CATEGORY_ID, category);
+    // `getChildren`/`getParent` traverse the `globalData` singleton, not
+    // the context data, so the family has to live in both for the save.
+    globalData.budgets.set(BUDGET_ID, budget);
+    globalData.sections.set(SECTION_A_ID, sectionA);
+    globalData.sections.set(SECTION_B_ID, sectionB);
+    globalData.categories.set(CATEGORY_ID, category);
+
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ budget_id: BUDGET_ID }),
+    );
+    fetchStub = stubFetch([
+      { path: "/api/budget", response: { status: "success" } },
+      { path: "/api/section", response: { status: "success" } },
+      { path: "/api/category", response: { status: "success" } },
+    ]);
+
+    try {
+      renderWithContext(
+        <BudgetConfigPage />,
+        buildContext({ data: store.data, setData, router }),
+      );
+
+      const syncToggle = () => {
+        const row = screen.getByText("Sync with children").closest(".row");
+        return row?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+      };
+      expect(syncToggle().checked).toBe(false);
+      act(() => {
+        fireEvent.click(syncToggle());
+      });
+      expect(syncToggle().checked).toBe(true);
+
+      const saveButton = screen.getByRole("button", { name: /Save/ });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+        "POST /api/budget",
+        "POST /api/section",
+        "POST /api/section",
+        "POST /api/category",
+      ]);
+
+      // The toggled budget derives its amount from its sections…
+      expect(store.data.budgets.get(BUDGET_ID)?.capacities[0].is_synced).toBe(true);
+      // …but neither section was cascaded onto: each keeps its own mode,
+      // so the childless section keeps its stored amount instead of
+      // collapsing to zero (a synced entity with no children resolves
+      // to 0 via Capacity.getActiveAmount).
+      const storedA = store.data.sections.get(SECTION_A_ID);
+      expect(storedA?.capacities[0].is_synced).toBe(false);
+      const storedB = store.data.sections.get(SECTION_B_ID);
+      expect(storedB?.capacities[0].is_synced).toBe(false);
+      expect(storedB?.capacities[0].month).toBe(500);
+      expect(storedB?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(500);
     } finally {
       globalData.budgets = new BudgetDictionary();
       globalData.sections = new SectionDictionary();
