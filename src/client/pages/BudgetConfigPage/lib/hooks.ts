@@ -98,15 +98,13 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   const updatedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
   toUpdateList.add(updatedOriginal);
 
-  // Mark ONLY the toggled entity. The infinite path used to cascade
-  // ±MAX_FLOAT capacities (and is_synced) onto every section and category
-  // in the family — the same cascade the limited path dropped for #784.
-  // A section the user never toggled keeps its stored amount, and an
-  // unsynced infinite section already reads ±MAX_FLOAT from its stored
+  // Mark ONLY the toggled entity. The infinite path does not cascade:
+  // an unsynced infinite section already reads ±MAX_FLOAT from its stored
   // month, so the toggled budget still sums to unlimited when a child is
-  // infinite. Cascading turned a childless section's stored amount to
-  // zero — a synced entity with no children resolves to 0 — silently
-  // dropping it from every rollup.
+  // infinite, and a section the user never toggled keeps its stored
+  // amount. (The limited sync path does cascade onto sections — see
+  // getLimitedBudgetsToSync — because a synced budget must sum its
+  // sections' derived amounts, not their stored ones.)
   return toUpdateList;
 };
 
@@ -122,22 +120,30 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   sections.forEach((c) => toUpdateList.add(c));
   categories.forEach((c) => toUpdateList.add(c));
 
-  // Mark ONLY the toggled entity's capacities as "synced with children". The
-  // stored `month` is left as-is (advisory cache); readers must derive the
-  // displayed amount via Capacity.getActiveAmount, which sums the same
-  // period's amounts from the entity's children. This replaces the
-  // previous design where the FE summed children via `capacityData` and
-  // persisted the result into `month` — a frontend math bug could then
-  // corrupt the saved sum. Mark-only-and-derive eliminates that class.
+  // Mark the toggled entity — and, for a budget, its sections — as "synced
+  // with children". The stored `month` is left as-is (advisory cache);
+  // readers must derive the displayed amount via Capacity.getActiveAmount,
+  // which sums the same period's amounts from the entity's children. This
+  // replaces the previous design where the FE summed children via
+  // `capacityData` and persisted the result into `month` — a frontend math
+  // bug could then corrupt the saved sum. Mark-only-and-derive eliminates
+  // that class.
   //
-  // The flag must not cascade onto the children: a section the user never
-  // toggled keeps whatever mode it has, and the budget sums the sections'
-  // effective amounts via getActiveAmount's recursion. Cascading turned a
-  // childless section's stored amount to zero — a synced entity with no
-  // children resolves to 0 — silently dropping it from every rollup.
+  // A budget toggle cascades: the budget derives from its sections, so the
+  // sections must derive from their categories too, or the budget would
+  // sum the sections' stored amounts instead of their live ones. A section
+  // toggle marks only that section — its children are categories, which
+  // never carry the flag. A synced section with no categories falls back
+  // to its stored amount in getActiveAmount, so the cascade can no longer
+  // zero out a childless section.
   if (original.type === "budget") {
     for (const capacity of budget.capacities) {
       capacity.is_synced = true;
+    }
+    for (const section of sections) {
+      for (const capacity of section.capacities) {
+        capacity.is_synced = true;
+      }
     }
   } else if (original.type === "section") {
     const section = sections.find((s) => s.id === original.id);

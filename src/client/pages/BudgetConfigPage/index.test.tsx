@@ -9,6 +9,7 @@ import {
   Capacity,
   Category,
   CategoryDictionary,
+  Context,
   ContextType,
   Data,
   PATH,
@@ -52,7 +53,7 @@ const buildConfigContext = (data: Data, overrides: Partial<ContextType> = {}) =>
 const nameField = () => screen.getByPlaceholderText("name") as HTMLInputElement;
 
 // Budget 1200 with section A (500, one category at 300) and childless
-// section B (500) — the #784 repro family, shared by the sync-toggle tests.
+// section B (500) — the sync-toggle repro family, shared by the sync-toggle tests.
 // `getChildren`/`getParent` traverse the `globalData` singleton, not the
 // context data, so the family has to live in both for the save. Callers
 // must reset globalData in a finally block (see the budget-toggle test).
@@ -382,7 +383,7 @@ describe("BudgetConfigPage", () => {
     }
   });
 
-  it("toggling sync on a budget marks only the budget, not its sections (#784)", async () => {
+  it("toggling sync on a budget cascades is_synced onto its sections", async () => {
     const SECTION_A_ID = "section-a";
     const SECTION_B_ID = "section-b";
     const CATEGORY_ID = "category-a1";
@@ -463,18 +464,28 @@ describe("BudgetConfigPage", () => {
         "POST /api/category",
       ]);
 
-      // The toggled budget derives its amount from its sections…
+      // The toggled budget derives its amount from its sections, and the
+      // toggle cascades: each section now derives from its categories…
       expect(store.data.budgets.get(BUDGET_ID)?.capacities[0].is_synced).toBe(true);
-      // …but neither section was cascaded onto: each keeps its own mode,
-      // so the childless section keeps its stored amount instead of
-      // collapsing to zero (a synced entity with no children resolves
-      // to 0 via Capacity.getActiveAmount).
       const storedA = store.data.sections.get(SECTION_A_ID);
-      expect(storedA?.capacities[0].is_synced).toBe(false);
+      expect(storedA?.capacities[0].is_synced).toBe(true);
+      expect(storedA?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(300);
+      // …while the childless section keeps its stored amount instead of
+      // collapsing to zero: a synced entity with no children falls back
+      // to its stored amount in Capacity.getActiveAmount.
       const storedB = store.data.sections.get(SECTION_B_ID);
-      expect(storedB?.capacities[0].is_synced).toBe(false);
+      expect(storedB?.capacities[0].is_synced).toBe(true);
       expect(storedB?.capacities[0].month).toBe(500);
       expect(storedB?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(500);
+      // …and the budget sums the sections' effective amounts: 300 + 500.
+      // getChildren/getParent traverse globalData, which still holds the
+      // pre-save originals, so point it at the saved dictionaries first —
+      // the same state a reload would see — or the budget would sum the
+      // originals' stored amounts instead of the cascaded flags.
+      globalData.budgets = store.data.budgets;
+      globalData.sections = store.data.sections;
+      globalData.categories = store.data.categories;
+      expect(store.data.budgets.get(BUDGET_ID)?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(800);
     } finally {
       globalData.budgets = new BudgetDictionary();
       globalData.sections = new SectionDictionary();
@@ -580,9 +591,7 @@ describe("BudgetConfigPage", () => {
       expect(storedBudget?.capacities[0].is_synced).toBe(true);
       expect(storedBudget?.capacities[0].month).toBe(MAX_FLOAT);
       // …but neither section was cascaded onto: each keeps its own mode and
-      // stored amount, so the childless section keeps resolving to 500
-      // instead of collapsing to 0 (a synced entity with no children
-      // resolves to 0 via Capacity.getActiveAmount).
+      // stored amount, so the childless section keeps resolving to 500.
       const storedA = store.data.sections.get(SECTION_A_ID);
       expect(storedA?.capacities[0].is_synced).toBe(false);
       expect(storedA?.capacities[0].month).toBe(500);
