@@ -217,7 +217,7 @@ describe("translateTransaction", () => {
 });
 
 describe("translateInvestmentTransaction", () => {
-  test("translates investment transaction correctly", () => {
+  test("translates a cash-in row as a cash deposit with the flipped sign", () => {
     const sfTransaction = createMockSimpleFinTransaction({
       id: "inv-txn-001",
       amount: "500.00",
@@ -228,13 +228,74 @@ describe("translateInvestmentTransaction", () => {
     const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
 
     expect(invTransaction.investment_transaction_id).toBe("inv-txn-001");
-    expect(invTransaction.amount).toBe(500);
-    expect(invTransaction.quantity).toBe(1);
-    expect(invTransaction.price).toBe(500);
+    // SimpleFin signs positive when money arrives; the app signs
+    // investment amounts positive when money leaves.
+    expect(invTransaction.amount).toBe(-500);
+    expect(invTransaction.quantity).toBe(0);
+    expect(invTransaction.price).toBe(0);
     expect(invTransaction.name).toBe("Stock Purchase");
     expect(invTransaction.account_id).toBe("acc-001");
-    expect(invTransaction.type).toBe(InvestmentTransactionType.Buy);
-    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Buy);
+    expect(invTransaction.type).toBe(InvestmentTransactionType.Cash);
+    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Deposit);
+  });
+
+  test("translates a cash-out row as a cash withdrawal", () => {
+    const sfTransaction = createMockSimpleFinTransaction({
+      amount: "-250.00",
+      description: "Wire transfer out",
+    });
+    const sfAccount = createMockSimpleFinAccount();
+
+    const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
+
+    expect(invTransaction.amount).toBe(250);
+    expect(invTransaction.quantity).toBe(0);
+    expect(invTransaction.price).toBe(0);
+    expect(invTransaction.type).toBe(InvestmentTransactionType.Cash);
+    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Withdrawal);
+  });
+
+  test("prefers the dividend subtype when the description says so", () => {
+    const sfTransaction = createMockSimpleFinTransaction({
+      amount: "12.34",
+      description: "Quarterly dividend",
+    });
+    const sfAccount = createMockSimpleFinAccount();
+
+    const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
+
+    expect(invTransaction.amount).toBe(-12.34);
+    expect(invTransaction.type).toBe(InvestmentTransactionType.Cash);
+    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Dividend);
+  });
+
+  test("prefers the interest subtype when the description says so", () => {
+    const sfTransaction = createMockSimpleFinTransaction({
+      amount: "3.21",
+      description: "Interest paid",
+    });
+    const sfAccount = createMockSimpleFinAccount();
+
+    const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
+
+    expect(invTransaction.amount).toBe(-3.21);
+    expect(invTransaction.type).toBe(InvestmentTransactionType.Cash);
+    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Interest);
+  });
+
+  test("a zero amount stays zero, not negative zero", () => {
+    const sfTransaction = createMockSimpleFinTransaction({
+      amount: "0.00",
+      description: "No-op adjustment",
+    });
+    const sfAccount = createMockSimpleFinAccount();
+
+    const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
+
+    expect(invTransaction.amount).toBe(0);
+    expect(Object.is(invTransaction.amount, -0)).toBe(false);
+    expect(invTransaction.type).toBe(InvestmentTransactionType.Cash);
+    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Deposit);
   });
 
   test("defaults security_id to null", () => {
