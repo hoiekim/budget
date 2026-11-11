@@ -163,24 +163,59 @@ export const translateTransaction = (
   };
 };
 
+/**
+ * What a SimpleFin description says about a cash movement, when it says
+ * anything more specific than the direction of the money. Whole-word
+ * matches only, so a payee name can't trip it. Anything else falls back
+ * to the direction inference in `inferCashSubtype` below.
+ */
+const CASH_SUBTYPE_BY_KEYWORD: [RegExp, InvestmentTransactionSubtype][] = [
+  [/\bdividend\b/i, InvestmentTransactionSubtype.Dividend],
+  [/\binterest\b/i, InvestmentTransactionSubtype.Interest],
+];
+
+const inferCashSubtype = (
+  description: string,
+  rawAmount: number,
+): InvestmentTransactionSubtype => {
+  for (const [pattern, subtype] of CASH_SUBTYPE_BY_KEYWORD) {
+    if (pattern.test(description)) return subtype;
+  }
+  // SimpleFin signs amounts positive when money arrives; the app signs
+  // investment amounts positive when money leaves, so a positive raw
+  // amount is a deposit and a negative one a withdrawal. Zero carries no
+  // direction and defaults to deposit.
+  return rawAmount >= 0 ? InvestmentTransactionSubtype.Deposit : InvestmentTransactionSubtype.Withdrawal;
+};
+
 export const translateInvestmentTransaction = (
   simpleFinTransaction: SimpleFinTransaction,
   simpleFinAccount: SimpleFinAccount,
 ): JSONInvestmentTransaction => {
   const { id: transactionId, posted, amount: amountString, description } = simpleFinTransaction;
 
+  // A SimpleFin investment-account row carries no security and no share
+  // movement, so it is a cash row, not a buy: quantity 0, no per-share
+  // price, and the amount flipped to the app's sign convention (positive
+  // when money leaves — Plaid's convention; see the cash fold in
+  // client/lib/hooks/calculation/accounts.ts). SimpleFin signs the other
+  // way round, positive when money arrives. As a cash row it renders with
+  // a sign, lands in the Deposits/Expenses filters, and folds into the
+  // balance tier's cash instead of its cost basis.
+  const rawAmount = +amountString;
+  const amount = rawAmount === 0 ? 0 : -rawAmount;
   return {
     investment_transaction_id: transactionId,
     date: getDateTimeString(new Date(posted * 1000)),
-    amount: +amountString,
-    quantity: 1,
-    price: +amountString,
+    amount,
+    quantity: 0,
+    price: 0,
     name: description,
     account_id: simpleFinAccount.id,
     security_id: null,
     cancel_transaction_id: null,
-    type: InvestmentTransactionType.Buy,
-    subtype: InvestmentTransactionSubtype.Buy,
+    type: InvestmentTransactionType.Cash,
+    subtype: inferCashSubtype(description, rawAmount),
     fees: null,
     iso_currency_code: null,
     unofficial_currency_code: null,
