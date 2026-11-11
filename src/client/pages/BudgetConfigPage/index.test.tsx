@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { useMemo, useState } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MAX_FLOAT } from "common";
 import {
   Budget,
   BudgetDictionary,
@@ -49,6 +50,73 @@ const buildConfigContext = (data: Data, overrides: Partial<ContextType> = {}) =>
 };
 
 const nameField = () => screen.getByPlaceholderText("name") as HTMLInputElement;
+
+// Budget 1200 with section A (500, one category at 300) and childless
+// section B (500) — the #784 repro family, shared by the sync-toggle tests.
+// `getChildren`/`getParent` traverse the `globalData` singleton, not the
+// context data, so the family has to live in both for the save. Callers
+// must reset globalData in a finally block (see the budget-toggle test).
+const buildSyncFamily = () => {
+  const SECTION_A_ID = "section-a";
+  const SECTION_B_ID = "section-b";
+  const CATEGORY_ID = "category-a1";
+  const data = new Data();
+  const budget = new Budget({
+    budget_id: BUDGET_ID,
+    name: "QA",
+    capacities: [new Capacity({ month: 1200 })],
+  });
+  const sectionA = new Section({
+    section_id: SECTION_A_ID,
+    budget_id: BUDGET_ID,
+    name: "A",
+    capacities: [new Capacity({ month: 500 })],
+  });
+  const sectionB = new Section({
+    section_id: SECTION_B_ID,
+    budget_id: BUDGET_ID,
+    name: "B",
+    capacities: [new Capacity({ month: 500 })],
+  });
+  const category = new Category({
+    category_id: CATEGORY_ID,
+    section_id: SECTION_A_ID,
+    name: "A1",
+    capacities: [new Capacity({ month: 300 })],
+  });
+  data.budgets.set(BUDGET_ID, budget);
+  data.sections.set(SECTION_A_ID, sectionA);
+  data.sections.set(SECTION_B_ID, sectionB);
+  data.categories.set(CATEGORY_ID, category);
+  globalData.budgets.set(BUDGET_ID, budget);
+  globalData.sections.set(SECTION_A_ID, sectionA);
+  globalData.sections.set(SECTION_B_ID, sectionB);
+  globalData.categories.set(CATEGORY_ID, category);
+  return { data, SECTION_A_ID, SECTION_B_ID, CATEGORY_ID };
+};
+
+const resetGlobalData = () => {
+  globalData.budgets = new BudgetDictionary();
+  globalData.sections = new SectionDictionary();
+  globalData.categories = new CategoryDictionary();
+};
+
+const syncToggle = () => {
+  const row = screen.getByText("Sync with children").closest(".row");
+  return row?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+};
+
+const limitedToggle = () => {
+  const row = screen.getByText("Limited budget").closest(".row");
+  return row?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+};
+
+const stubSaveEndpoints = () =>
+  stubFetch([
+    { path: "/api/budget", response: { status: "success" } },
+    { path: "/api/section", response: { status: "success" } },
+    { path: "/api/category", response: { status: "success" } },
+  ]);
 
 const rollOverToggle = () => {
   const row = screen.getByText("Rolls over to the next period").closest(".row");
@@ -411,6 +479,176 @@ describe("BudgetConfigPage", () => {
       globalData.budgets = new BudgetDictionary();
       globalData.sections = new SectionDictionary();
       globalData.categories = new CategoryDictionary();
+    }
+  });
+
+  it("toggling sync on a section marks only that section, not its siblings or budget", async () => {
+    const { data, SECTION_A_ID, SECTION_B_ID } = buildSyncFamily();
+
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ section_id: SECTION_A_ID }),
+    );
+    fetchStub = stubSaveEndpoints();
+
+    try {
+      renderWithContext(
+        <BudgetConfigPage />,
+        buildContext({ data: store.data, setData, router }),
+      );
+
+      expect(syncToggle().checked).toBe(false);
+      act(() => {
+        fireEvent.click(syncToggle());
+      });
+      expect(syncToggle().checked).toBe(true);
+
+      const saveButton = screen.getByRole("button", { name: /Save/ });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+        "POST /api/budget",
+        "POST /api/section",
+        "POST /api/section",
+        "POST /api/category",
+      ]);
+
+      // The toggled section derives its amount from its categories…
+      const storedA = store.data.sections.get(SECTION_A_ID);
+      expect(storedA?.capacities[0].is_synced).toBe(true);
+      expect(storedA?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(300);
+      // …but neither the budget nor the sibling section was cascaded onto.
+      expect(store.data.budgets.get(BUDGET_ID)?.capacities[0].is_synced).toBe(false);
+      const storedB = store.data.sections.get(SECTION_B_ID);
+      expect(storedB?.capacities[0].is_synced).toBe(false);
+      expect(storedB?.capacities[0].month).toBe(500);
+    } finally {
+      resetGlobalData();
+    }
+  });
+
+  it("toggling infinite sync on a budget marks only the budget, not its sections", async () => {
+    const { data, SECTION_A_ID, SECTION_B_ID, CATEGORY_ID } = buildSyncFamily();
+
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ budget_id: BUDGET_ID }),
+    );
+    fetchStub = stubSaveEndpoints();
+
+    try {
+      renderWithContext(
+        <BudgetConfigPage />,
+        buildContext({ data: store.data, setData, router }),
+      );
+
+      // Infinite first: the "Limited budget" toggle disables once sync is on.
+      expect(limitedToggle().checked).toBe(true);
+      expect(syncToggle().checked).toBe(false);
+      act(() => {
+        fireEvent.click(limitedToggle());
+      });
+      expect(limitedToggle().checked).toBe(false);
+      act(() => {
+        fireEvent.click(syncToggle());
+      });
+      expect(syncToggle().checked).toBe(true);
+
+      const saveButton = screen.getByRole("button", { name: /Save/ });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      // Only the toggled budget is written — the infinite path no longer
+      // rewrites every section and category in the family.
+      expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+        "POST /api/budget",
+      ]);
+
+      // The toggled budget is infinite and synced…
+      const storedBudget = store.data.budgets.get(BUDGET_ID);
+      expect(storedBudget?.capacities[0].is_synced).toBe(true);
+      expect(storedBudget?.capacities[0].month).toBe(MAX_FLOAT);
+      // …but neither section was cascaded onto: each keeps its own mode and
+      // stored amount, so the childless section keeps resolving to 500
+      // instead of collapsing to 0 (a synced entity with no children
+      // resolves to 0 via Capacity.getActiveAmount).
+      const storedA = store.data.sections.get(SECTION_A_ID);
+      expect(storedA?.capacities[0].is_synced).toBe(false);
+      expect(storedA?.capacities[0].month).toBe(500);
+      const storedB = store.data.sections.get(SECTION_B_ID);
+      expect(storedB?.capacities[0].is_synced).toBe(false);
+      expect(storedB?.capacities[0].month).toBe(500);
+      expect(storedB?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(500);
+      expect(store.data.categories.get(CATEGORY_ID)?.capacities[0].month).toBe(300);
+      // …and the budget sums the sections' effective amounts.
+      expect(storedBudget?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(1000);
+    } finally {
+      resetGlobalData();
+    }
+  });
+
+  it("toggling infinite sync on a section marks only that section, not its siblings", async () => {
+    const { data, SECTION_A_ID, SECTION_B_ID, CATEGORY_ID } = buildSyncFamily();
+
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ section_id: SECTION_A_ID }),
+    );
+    fetchStub = stubSaveEndpoints();
+
+    try {
+      renderWithContext(
+        <BudgetConfigPage />,
+        buildContext({ data: store.data, setData, router }),
+      );
+
+      expect(limitedToggle().checked).toBe(true);
+      expect(syncToggle().checked).toBe(false);
+      act(() => {
+        fireEvent.click(limitedToggle());
+      });
+      act(() => {
+        fireEvent.click(syncToggle());
+      });
+
+      const saveButton = screen.getByRole("button", { name: /Save/ });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+        "POST /api/section",
+      ]);
+
+      // The toggled section is infinite and synced, and derives from its
+      // categories as they are…
+      const storedA = store.data.sections.get(SECTION_A_ID);
+      expect(storedA?.capacities[0].is_synced).toBe(true);
+      expect(storedA?.capacities[0].month).toBe(MAX_FLOAT);
+      expect(storedA?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(300);
+      expect(store.data.categories.get(CATEGORY_ID)?.capacities[0].month).toBe(300);
+      // …but neither the budget nor the sibling section was cascaded onto.
+      expect(store.data.budgets.get(BUDGET_ID)?.capacities[0].is_synced).toBe(false);
+      const storedB = store.data.sections.get(SECTION_B_ID);
+      expect(storedB?.capacities[0].is_synced).toBe(false);
+      expect(storedB?.capacities[0].month).toBe(500);
+    } finally {
+      resetGlobalData();
     }
   });
 });
