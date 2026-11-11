@@ -35,7 +35,7 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { refreshActiveSecuritySnapshots, BENCHMARK_SECURITY_ID, isAnomalousClose, MAX_SINGLE_STEP_RATIO } = await import("./refresh-security-snapshots");
+const { refreshActiveSecuritySnapshots, BENCHMARK_SECURITY_ID, isAnomalousClose } = await import("./refresh-security-snapshots");
 const { clearPriceCache } = await import("server/lib/polygon");
 const { clearYahooCache } = await import("server/lib/yahoo");
 
