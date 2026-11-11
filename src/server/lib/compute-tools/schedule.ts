@@ -112,6 +112,7 @@ const runSync = async () => {
           cash: r.cash,
           empty: r.empty,
           errors: r.errors,
+          anomalous: r.anomalous,
         }),
       )
       .catch((error) => {
