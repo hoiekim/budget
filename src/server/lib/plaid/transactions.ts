@@ -5,12 +5,11 @@ import {
   PlaidError,
   InvestmentsTransactionsGetRequest,
   InvestmentTransaction,
-  PlaidErrorType,
   Products,
 } from "plaid";
-import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
-import { JSONItem, ItemStatus, getDateString, LocalDate } from "common";
-import { getClient, ignorable_error_codes } from "./util";
+import { MaskedUser, updateItemStatus, upsertItems } from "server";
+import { JSONItem, getDateString, LocalDate } from "common";
+import { getClient, handlePlaidSyncError } from "./util";
 
 export interface PlaidTransaction extends Transaction {}
 
@@ -44,7 +43,7 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
     let plaidError: PlaidError | null = null;
 
     while (hasMore) {
-      const { item_id, access_token, cursor } = item;
+      const { access_token, cursor } = item;
 
       try {
         const request: TransactionsSyncRequest = {
@@ -61,18 +60,13 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
         hasMore = has_more;
         item.cursor = next_cursor;
       } catch (error: unknown) {
-        const errorWithResponse = error as { response?: { data?: PlaidError } };
-        plaidError = errorWithResponse?.response?.data ?? null;
-        if (plaidError?.error_code === "ITEM_LOGIN_REQUIRED") {
-          logger.warn("Failed to get transactions data: ITEM_LOGIN_REQUIRED", { itemId: item_id });
-        } else {
-          logger.error("Failed to get transactions data", { itemId: item_id }, plaidError || error);
-        }
-        if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-          updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
-            logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
-          });
-        }
+        const { plaidError: errorData } = handlePlaidSyncError(error, {
+          user,
+          item,
+          logLabel: "transactions",
+          warnOnLoginRequired: true,
+        });
+        plaidError = errorData ?? null;
         hasMore = false;
       }
     }
@@ -143,7 +137,7 @@ export const getInvestmentTransactions = async (
     // Defensive copy: the watermark write below must not mutate the caller's
     // object (syncPlaidTransactions runs both branches against the same item).
     const item = { ..._item };
-    const { item_id, access_token, updated } = item;
+    const { access_token, updated } = item;
     if (!item.available_products.includes(Products.Investments)) return;
 
     const now = new Date();
@@ -196,20 +190,16 @@ export const getInvestmentTransactions = async (
         allInvestmentTransactions.push(investmentTransactions);
         succeeded = true;
       } catch (error: unknown) {
-        const errorWithResponse = error as { response?: { data?: PlaidError } };
-        const errorData = errorWithResponse?.response?.data;
-        const errorCode = errorData?.error_code;
-        if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
-          logger.info(
+        const { plaidError: errorData, outcome } = handlePlaidSyncError(error, {
+          user,
+          item,
+          logLabel: "investment transaction",
+          unsupportedMessage:
             "Investment transactions not supported for item, removing Investments from available_products",
-            { itemId: item_id },
-          );
-          const updated_products = item.available_products.filter(
-            (p) => p !== Products.Investments,
-          );
-          upsertItemsFn(user, [{ ...item, available_products: updated_products }]).catch((e) => {
-            logger.error("Failed to update available_products for item", { itemId: item_id }, e);
-          });
+          updateItemStatusFn,
+          upsertItemsFn,
+        });
+        if (outcome === "unsupported") {
           // On the first page nothing was ever pushed, so keep the
           // existing no-push behavior and return. After a successful
           // page the old code had already pushed the item once, so fall
@@ -218,21 +208,14 @@ export const getInvestmentTransactions = async (
           if (!succeeded) return;
           failed = true;
           break;
-        } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
-          logger.error(
-            "Failed to get investment transaction data",
-            { itemId: item_id },
-            errorData || error,
-          );
+        }
+        if (outcome === "failed") {
           failed = true;
           if (!plaidError) plaidError = errorData ?? null;
-          if (errorData && errorData.error_type === PlaidErrorType.ItemError) {
-            updateItemStatusFn(user, item_id, ItemStatus.BAD, errorData.error_code).catch((e) => {
-              logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
-            });
-          }
           break;
         }
+        // Ignorable: fall through — the offset advances and the next
+        // page is tried.
       }
 
       options.offset += options.count;
