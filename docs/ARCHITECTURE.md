@@ -82,7 +82,7 @@ A prod backfill on 2026-05-13 set `label_category_confidence = 1` for every labe
 const isConfirmed = category_confidence === 1 && !!category_id;
 ```
 
-Used in `src/client/lib/hooks/calculation/budgets.ts` (budget-bar / unsorted-count) and `src/client/pages/TransactionsPage/index.tsx` (the `unsorted` filter). The `&& !!category_id` guard exists so a malformed `confidence=1, category_id=null` row goes to the unsorted bucket rather than into a `categories.get(null)` lookup that would silently drop it.
+Defined as `Transaction.isConfirmed()` in `src/client/lib/models/Transaction.ts`, called from `src/client/lib/hooks/calculation/budgets.ts` (budget-bar / unsorted-count) and `src/client/pages/TransactionsPage/filter.ts` (the `unsorted` filter). The `&& !!category_id` guard exists so a malformed `confidence=1, category_id=null` row goes to the unsorted bucket rather than into a `categories.get(null)` lookup that would silently drop it.
 
 **Split transactions and confidence.** `split_transactions` carries `label_category_confidence` alongside `label_category_id` and `label_budget_id`, mirroring `transactions`. When budget calc folds splits into the family via `SplitTransaction.toTransaction()`, the split's own label flows through the `isConfirmed` check, so a user-confirmed split (`confidence === 1`) lands in the sorted bucket and an auto-suggested split (`0 < confidence < 1`) lands in unsorted. The route layer applies `inferLabelConfidence` (see `src/server/lib/infer-label-confidence.ts`) on `POST /split-transaction` to write `1` when the user explicitly sets a category and `0` when they clear it.
 
