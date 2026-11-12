@@ -11,6 +11,7 @@ import {
   marketData,
   logger,
 } from "server";
+import { blankSecurity } from "../security";
 
 export interface BackfillSecurityRef {
   security_id: string;
@@ -158,21 +159,7 @@ export const backfillMonthlySecuritySnapshotsForward = async (
           // existing securities row untouched and only write the snapshot.
           name: null,
           iso_currency_code: null,
-          isin: null,
-          cusip: null,
-          sedol: null,
-          institution_security_id: null,
-          institution_id: null,
-          proxy_security_id: null,
-          is_cash_equivalent: null,
-          type: null,
-          update_datetime: null,
-          unofficial_currency_code: null,
-          market_identifier_code: null,
-          sector: null,
-          industry: null,
-          option_contract: null,
-          fixed_income: null,
+          ...blankSecurity(),
         },
       };
       newSnapshots.push(newSnapshot);
