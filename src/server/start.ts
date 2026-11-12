@@ -22,6 +22,7 @@ import {
   mutationSideEffectDomains,
   JsonStream,
   sendAlarm,
+  isProduction,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
 import type { MaskedUser } from "server/lib/postgres/models/user";
@@ -256,8 +257,6 @@ await initializePostgres();
 startRateLimitCleanup();
 scheduledSync();
 
-const isProduction = process.env.NODE_ENV === "production";
-
 // ---------------------------------------------------------------------------
 // Request logging
 //
@@ -450,12 +449,12 @@ async function finalResponseHeaders(
   // the client keeps its existing cookie and the next request persists again.
   let setCookieValue: string | null = null;
   try {
-    setCookieValue = await persistSession(session, isProduction);
+    setCookieValue = await persistSession(session, isProduction());
   } catch (error) {
     logger.error("Session persist failed", {}, error);
   }
   const responseHeaders: Record<string, string> = { ...SECURITY_HEADERS };
-  if (isProduction) {
+  if (isProduction()) {
     responseHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
   }
   if (setCookieValue) responseHeaders["Set-Cookie"] = setCookieValue;

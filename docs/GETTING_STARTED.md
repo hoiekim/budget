@@ -66,9 +66,8 @@ Copy `.env.example` to `.env.local` and fill in values. `Required` means the val
 | `POLYGON_API_KEY` | For Polygon | Polygon.io API key (for investment metadata) |
 | `POLYGON_RATE_LIMIT_PER_MIN` | No | Cap on outbound Polygon requests per minute (default: 5, which matches the free tier). `0` disables the gate. |
 | `PORT` | No | HTTP port the server listens on (default: 3005) |
+| `NODE_ENV` | No | `production` turns on the production posture: the session cookie carries `Secure`, API route responses carry `Strict-Transport-Security`, and logs are JSON lines. Read at runtime, so a prebuilt image takes it from the deployment's environment. Set it only behind HTTPS — off localhost, browsers refuse a `Secure` cookie over plain HTTP, so login stops working. |
 | `LOG_LEVEL` | No | Log verbosity, one of `debug`, `info`, `warn` or `error` (default: `info`, or `error` when `NODE_ENV=test`) |
 | `DISCORD_ALARM_WEBHOOK` | No | Discord webhook URL for server error alerts |
 
 > **Plaid is all-or-nothing.** The integration turns on only when `PLAID_CLIENT_ID` and `PLAID_SECRET_SANDBOX` are both set **and** at least one of `PLAID_SECRET_PRODUCTION` or `PLAID_SECRET_DEVELOPMENT` is set. Any other combination leaves Plaid off for every user, with one `Plaid is not configured` warning at startup and every authenticated link-token request failing with `Plaid integration is not configured on this server.`
-
-> **Note on `NODE_ENV`:** Bun bakes `NODE_ENV` at build time into the output bundle. Setting it via `docker run -e` at runtime has no effect — configure environment-dependent behavior through other env vars.

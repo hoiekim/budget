@@ -6,6 +6,8 @@
  * - Test: Silent by default (LOG_LEVEL=debug to enable)
  */
 
+import { isProduction, nodeEnv } from "server/lib/node-env";
+
 type LogLevel = "debug" | "info" | "warn" | "error";
 
 interface LogContext {
@@ -44,12 +46,8 @@ function getLogLevel(): LogLevel {
   const env = process.env.LOG_LEVEL?.toLowerCase();
   if (env && env in LOG_LEVELS) return env as LogLevel;
   // Default: silent in test, info otherwise
-  if (process.env.NODE_ENV === "test") return "error";
+  if (nodeEnv() === "test") return "error";
   return "info";
-}
-
-function isProduction(): boolean {
-  return process.env.NODE_ENV === "production";
 }
 
 function shouldLog(level: LogLevel): boolean {
