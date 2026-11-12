@@ -7,6 +7,7 @@ import {
   JSONSecurity,
 } from "common";
 import { searchSecurities, upsertSecurities } from "server";
+import { blankSecurity } from "../security";
 
 /**
  * Single canonical ticker for the auto-inferred USD cash holding. Plaid
@@ -33,24 +34,10 @@ export const ensureUSDCashSecurity = async (): Promise<JSONSecurity> => {
     security_id: getRandomId(),
     ticker_symbol: USD_CASH_TICKER,
     name: "US Dollar Cash",
-    type: "cash",
     close_price: 1,
     close_price_as_of: today,
     iso_currency_code: "USD",
-    isin: null,
-    cusip: null,
-    sedol: null,
-    institution_security_id: null,
-    institution_id: null,
-    proxy_security_id: null,
-    is_cash_equivalent: true,
-    update_datetime: null,
-    unofficial_currency_code: null,
-    market_identifier_code: null,
-    sector: null,
-    industry: null,
-    option_contract: null,
-    fixed_income: null,
+    ...blankSecurity({ type: "cash", is_cash_equivalent: true }),
   };
   await upsertSecurities([newSecurity]);
   return newSecurity;
