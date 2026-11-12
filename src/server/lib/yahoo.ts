@@ -9,6 +9,7 @@
 
 import { getDateString, JSONSecurity, Queue, QueueWaitTimeoutError } from "common";
 import { logger } from "./logger";
+import { createMissCache } from "./miss-cache";
 import type { PolygonResult, TickerDetail } from "./polygon";
 
 const YAHOO_HOST = "https://query1.finance.yahoo.com";
@@ -55,33 +56,21 @@ export const toYahooTicker = (
 const priceCache = new Map<string, { price: number; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-const missCache = new Map<string, number>();
-const MISS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const {
+  isRecentMiss,
+  rememberMiss,
+  prune: pruneMissCache,
+  clear: clearMissCache,
+} = createMissCache();
 
 const detailCache = new Map<string, { detail: TickerDetail; fetchedAt: number }>();
-
-const isRecentMiss = (key: string): boolean => {
-  const missedAt = missCache.get(key);
-  if (missedAt === undefined) return false;
-  if (Date.now() - missedAt >= MISS_CACHE_TTL_MS) {
-    missCache.delete(key);
-    return false;
-  }
-  return true;
-};
-
-const rememberMiss = (key: string): void => {
-  missCache.set(key, Date.now());
-};
 
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of priceCache) {
     if (now - entry.fetchedAt >= CACHE_TTL_MS) priceCache.delete(key);
   }
-  for (const [key, missedAt] of missCache) {
-    if (now - missedAt >= MISS_CACHE_TTL_MS) missCache.delete(key);
-  }
+  pruneMissCache(now);
   for (const [key, entry] of detailCache) {
     if (now - entry.fetchedAt >= CACHE_TTL_MS) detailCache.delete(key);
   }
@@ -327,5 +316,5 @@ export const getLatestClosePriceOnOrBefore = async (
 export const clearYahooCache = () => {
   priceCache.clear();
   detailCache.clear();
-  missCache.clear();
+  clearMissCache();
 };

@@ -12,6 +12,7 @@ import {
   QueueWaitTimeoutError,
 } from "common";
 import { logger } from "./logger";
+import { createMissCache } from "./miss-cache";
 
 const POLYGON_HOST = "https://api.polygon.io";
 
@@ -104,30 +105,12 @@ export const toPolygonTicker = (
 const priceCache = new Map<string, { price: number; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-/**
- * Lookups that came back empty, keyed by the same identity as the positive
- * cache. Without it a symbol Polygon does not know is the one lookup that
- * can never be served warm, so repeating it costs a rate slot every time
- * while a valid symbol costs one only once. The TTL is short because an
- * empty answer can turn into a real one within the day — a freshly listed
- * symbol, or today's close once the session settles.
- */
-const missCache = new Map<string, number>();
-const MISS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-const isRecentMiss = (key: string): boolean => {
-  const missedAt = missCache.get(key);
-  if (missedAt === undefined) return false;
-  if (Date.now() - missedAt >= MISS_CACHE_TTL_MS) {
-    missCache.delete(key);
-    return false;
-  }
-  return true;
-};
-
-const rememberMiss = (key: string): void => {
-  missCache.set(key, Date.now());
-};
+const {
+  isRecentMiss,
+  rememberMiss,
+  prune: pruneMissCache,
+  clear: clearMissCache,
+} = createMissCache();
 
 /**
  * Ticker details that resolved. The securities table is the durable cache,
@@ -143,9 +126,7 @@ setInterval(() => {
   for (const [key, entry] of priceCache) {
     if (now - entry.fetchedAt >= CACHE_TTL_MS) priceCache.delete(key);
   }
-  for (const [key, missedAt] of missCache) {
-    if (now - missedAt >= MISS_CACHE_TTL_MS) missCache.delete(key);
-  }
+  pruneMissCache(now);
   for (const [key, entry] of detailCache) {
     if (now - entry.fetchedAt >= CACHE_TTL_MS) detailCache.delete(key);
   }
@@ -526,5 +507,5 @@ export const getSecurityForSymbol = async (
 export const clearPriceCache = () => {
   priceCache.clear();
   detailCache.clear();
-  missCache.clear();
+  clearMissCache();
 };
