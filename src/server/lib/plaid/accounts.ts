@@ -1,7 +1,7 @@
-import { PlaidError, PlaidErrorType, Products } from "plaid";
-import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
-import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
-import { getClient, ignorable_error_codes } from "./util";
+import { PlaidError, Products } from "plaid";
+import { MaskedUser } from "server";
+import { JSONItem, JSONHolding, JSONSecurity, PlaidAccount } from "common";
+import { getClient, handlePlaidSyncError } from "./util";
 
 export type ItemError = PlaidError & { item_id: string };
 
@@ -21,24 +21,18 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
   const allAccounts: PlaidAccount[][] = [];
 
   const fetchJobs = items.map(async (item) => {
-    const { item_id, access_token } = item;
+    const { access_token } = item;
     try {
       const response = await client.accountsGet({ access_token });
       allAccounts.push(response.data.accounts as PlaidAccount[]);
       data.items.push({ ...item });
     } catch (error: unknown) {
-      const errorWithResponse = error as { response?: { data?: PlaidError } };
-      const plaidError = errorWithResponse?.response?.data;
-      if (plaidError?.error_code === "ITEM_LOGIN_REQUIRED") {
-        logger.warn("Failed to get accounts data: ITEM_LOGIN_REQUIRED", { itemId: item_id });
-      } else {
-        logger.error("Failed to get accounts data", { itemId: item_id }, plaidError || error);
-      }
-      if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-        updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
-          logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
-        });
-      }
+      const { plaidError } = handlePlaidSyncError(error, {
+        user,
+        item,
+        logLabel: "accounts",
+        warnOnLoginRequired: true,
+      });
       data.items.push({ ...item, plaidError });
     }
 
@@ -74,7 +68,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
   const allSecurities: JSONSecurity[][] = [];
 
   const fetchJobs = items.map(async (item) => {
-    const { item_id, access_token } = item;
+    const { access_token } = item;
     if (!item.available_products.includes(Products.Investments)) return;
     try {
       const response = await client.investmentsHoldingsGet({ access_token });
@@ -91,25 +85,14 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
       allSecurities.push(securities);
       data.items.push({ ...item });
     } catch (error: unknown) {
-      const errorWithResponse = error as { response?: { data?: PlaidError } };
-      const plaidError = errorWithResponse?.response?.data;
-      const errorCode = plaidError?.error_code;
-      if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
-        logger.info(
+      const { plaidError, outcome } = handlePlaidSyncError(error, {
+        user,
+        item,
+        logLabel: "holdings",
+        unsupportedMessage:
           "Holdings not supported for item, removing Investments from available_products",
-          { itemId: item_id },
-        );
-        const updated_products = item.available_products.filter((p) => p !== Products.Investments);
-        upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
-          logger.error("Failed to update available_products for item", { itemId: item_id }, e);
-        });
-      } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
-        logger.error("Failed to get holdings data", { itemId: item_id }, plaidError || error);
-        if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-          updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
-            logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
-          });
-        }
+      });
+      if (outcome === "failed") {
         data.items.push({ ...item, plaidError });
       }
     }
