@@ -21,6 +21,7 @@ import {
 } from "server";
 import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
+import { blankSecurity } from "server/lib/security";
 import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositories";
 
 export interface HoldingSnapshotPostResponse {
@@ -106,21 +107,7 @@ const resolveSecurityId = async (
     iso_currency_code: currency_name.toUpperCase(),
     close_price: null,
     close_price_as_of: null,
-    isin: null,
-    cusip: null,
-    sedol: null,
-    institution_security_id: null,
-    institution_id: null,
-    proxy_security_id: null,
-    is_cash_equivalent: null,
-    type: null,
-    update_datetime: null,
-    unofficial_currency_code: null,
-    market_identifier_code: null,
-    sector: null,
-    industry: null,
-    option_contract: null,
-    fixed_income: null,
+    ...blankSecurity(),
   };
   await upsertSecurities([newSecurity]);
   return { ok: true, security_id: newSecurity.security_id };

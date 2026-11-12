@@ -12,6 +12,7 @@ import {
   QueueWaitTimeoutError,
 } from "common";
 import { logger } from "./logger";
+import { blankSecurity } from "./security";
 
 const POLYGON_HOST = "https://api.polygon.io";
 
@@ -501,21 +502,7 @@ export const getSecurityForSymbol = async (
     iso_currency_code: currency_name.toUpperCase(),
     close_price: priceResult.data,
     close_price_as_of: getDateTimeString(date),
-    isin: null,
-    cusip: null,
-    sedol: null,
-    institution_security_id: null,
-    institution_id: null,
-    proxy_security_id: null,
-    is_cash_equivalent: null,
-    type: null,
-    update_datetime: null,
-    unofficial_currency_code: null,
-    market_identifier_code: null,
-    sector: null,
-    industry: null,
-    option_contract: null,
-    fixed_income: null,
+    ...blankSecurity(),
   };
 };
 
