@@ -5,6 +5,7 @@ import {
   useAppContext,
   call,
   PATH,
+  compareByOrder,
   useLocalStorageState,
   DateLabel,
   MoneyLabel,
@@ -50,12 +51,7 @@ export const BudgetDetailPage = () => {
 
   const sectionBars = Array.from(sections)
     .filter(([_section_id, section]) => section.budget_id === budget_id)
-    .sort(([a], [b]) => {
-      const indexA = sectionsOrder.indexOf(a);
-      const indexB = sectionsOrder.indexOf(b);
-      if (indexA === undefined || indexB === undefined) return 0;
-      return indexA - indexB;
-    })
+    .sort(([a], [b]) => compareByOrder(sectionsOrder, a, b))
     .map(([section_id, section]) => {
       return <SectionBar key={section_id} section={section} onSetOrder={setSectionsOrder} />;
     });
