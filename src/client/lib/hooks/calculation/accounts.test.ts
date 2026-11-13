@@ -460,6 +460,33 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-02")).toBeCloseTo(300, 2);
   });
 
+  // The reconciliation flow mints a buy row with a negative quantity — a
+  // sale of shares wearing a purchase's type. The balance chart's
+  // transaction tier used to read it as neither: the fold added a negative
+  // cost the clamp floored at zero, while the cash leg credited no
+  // proceeds, so the month rendered 150 for a 300 account.
+  test("a buy with a negative quantity is a sale, not neither", () => {
+    const balanceData = balancesFor(300, [
+      contribution("2022-01-10", 10),
+      contribution("2022-02-10", 30, -5),
+      new InvestmentTransaction({
+        investment_transaction_id: "recon",
+        account_id: ACCOUNT_ID,
+        security_id: "sec1",
+        date: "2022-03-10",
+        name: "Manual",
+        quantity: -5,
+        amount: -150,
+        price: 30,
+        type: InvestmentTransactionType.Buy,
+        subtype: InvestmentTransactionSubtype.Buy,
+      }),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(200, 2);
+    expect(at(balanceData, "2022-03")).toBeCloseTo(300, 2);
+  });
+
   // A month takes the state after everything in it, so a later row in the
   // same month has to win over an earlier one.
   test("a month reads the state after its last transaction, not its first", () => {
