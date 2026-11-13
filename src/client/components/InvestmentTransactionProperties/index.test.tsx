@@ -176,3 +176,87 @@ describe("InvestmentTransactionProperties — a second shape edit begun mid-save
     expect(postedBodies(stub!.calls)).toHaveLength(2);
   });
 });
+
+describe("InvestmentTransactionProperties — Amount display", () => {
+  // The Amount row follows the list row: the absolute value, with a `+`
+  // when cash arrives and no sign on a trade.
+  const amountRowText = (container: HTMLElement): string => {
+    const label = [...container.querySelectorAll(".propertyName")].find(
+      (el) => el.textContent === "Amount",
+    );
+    const row = label?.closest(".keyValue");
+    return (row?.textContent ?? "").replace(/\s+/g, " ").trim();
+  };
+
+  const renderAmount = (overrides: {
+    type?: InvestmentTransactionType;
+    subtype?: InvestmentTransactionSubtype;
+    quantity?: number;
+    price?: number;
+    amount?: number;
+  }): string => {
+    const { data } = buildData();
+    const tx = new InvestmentTransaction({
+      investment_transaction_id: TX_ID,
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date: "2026-01-15",
+      name: "Manual",
+      quantity: 5,
+      price: 30,
+      amount: 150,
+      iso_currency_code: "USD",
+      type: InvestmentTransactionType.Buy,
+      subtype: InvestmentTransactionSubtype.Buy,
+      source: "manual",
+      ...overrides,
+    } as never);
+    data.investmentTransactions.set(TX_ID, tx);
+    const { router } = buildRouter(PATH.TRANSACTIONS);
+    const { container } = renderWithContext(
+      <InvestmentTransactionProperties investmentTransaction={tx} />,
+      buildContext({ data, router }),
+    );
+    return amountRowText(container);
+  };
+
+  it("shows a sale as an unsigned absolute value", () => {
+    expect(
+      renderAmount({
+        type: InvestmentTransactionType.Sell,
+        subtype: InvestmentTransactionSubtype.Sell,
+        quantity: -5,
+        price: 2050,
+        amount: -10250,
+      }),
+    ).toBe("Amount$ 10,250.00");
+  });
+
+  it("shows cash arriving with a + prefix", () => {
+    expect(
+      renderAmount({
+        type: InvestmentTransactionType.Cash,
+        subtype: InvestmentTransactionSubtype.Deposit,
+        quantity: 0,
+        price: 0,
+        amount: -1000,
+      }),
+    ).toBe("Amount+ $ 1,000.00");
+  });
+
+  it("shows cash leaving with no sign", () => {
+    expect(
+      renderAmount({
+        type: InvestmentTransactionType.Cash,
+        subtype: InvestmentTransactionSubtype.Withdrawal,
+        quantity: 0,
+        price: 0,
+        amount: 500,
+      }),
+    ).toBe("Amount$ 500.00");
+  });
+
+  it("shows a buy with no sign", () => {
+    expect(renderAmount({})).toBe("Amount$ 150.00");
+  });
+});
