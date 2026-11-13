@@ -68,7 +68,9 @@ test("Capacity falls back to Math.random when both randomUUID and getRandomValue
 // Contract:
 //  - is_synced = false (default) → return stored this[interval]
 //  - is_synced = true →  sum children's getActiveAmount at the same period
-//    - no children → 0
+//    - no children argument → 0 (caller provided no context)
+//    - empty child list → stored this[interval] (a synced leaf keeps its
+//      stored amount instead of collapsing to zero)
 //    - any infinite child poisons the sum to ±MAX_FLOAT (sign follows the
 //      offending child)
 //    - children's period resolution uses each child.getActiveCapacity at
@@ -111,10 +113,15 @@ describe("Capacity.getActiveAmount", () => {
     expect(c.getActiveAmount(EPOCH, "month", [noisyChild])).toBe(50);
   });
 
-  test("is_synced=true with no children returns 0 (empty sum)", () => {
+  test("is_synced=true with no children argument returns 0 (no context)", () => {
     const c = new Capacity({ is_synced: true, month: 99 });
     expect(c.getActiveAmount(EPOCH, "month")).toBe(0);
-    expect(c.getActiveAmount(EPOCH, "month", [])).toBe(0);
+  });
+
+  test("is_synced=true with an empty child list falls back to the stored amount", () => {
+    const c = new Capacity({ is_synced: true, month: 99 });
+    expect(c.getActiveAmount(EPOCH, "month", [])).toBe(99);
+    expect(c.getActiveAmount(EPOCH, "year", [])).toBe(99 * 12);
   });
 
   test("is_synced=true ignores the stored month cache, uses derived sum", () => {
@@ -137,11 +144,11 @@ describe("Capacity.getActiveAmount", () => {
     expect(c.getActiveAmount(EPOCH, "month", [syncedChild])).toBe(66);
   });
 
-  test("is_synced=true with a synced child that has no grandchildren contributes 0", () => {
+  test("is_synced=true with a synced child that has no grandchildren contributes its stored amount", () => {
     const c = new Capacity({ is_synced: true });
-    const emptySyncedChild = buildChild([new Capacity({ is_synced: true })], []);
+    const emptySyncedChild = buildChild([new Capacity({ is_synced: true, month: 40 })], []);
     const concreteChild = buildChild([new Capacity({ month: 50 })]);
-    expect(c.getActiveAmount(EPOCH, "month", [emptySyncedChild, concreteChild])).toBe(50);
+    expect(c.getActiveAmount(EPOCH, "month", [emptySyncedChild, concreteChild])).toBe(90);
   });
 
   test("is_synced=true poisons to +MAX_FLOAT when a child is positive-infinite", () => {
@@ -264,12 +271,16 @@ describe("Capacity.getActiveAmount", () => {
     expect(fromBareJSON.getActiveAmount(EPOCH, "month")).toBe(12);
   });
 
-  test("is_synced=true at the leaf returns 0 even if the leaf has a stored month — never reads cache when synced", () => {
-    // Defensive: a leaf shouldn't normally be is_synced, but if a buggy
-    // caller flips a category to is_synced, the displayed amount becomes 0
-    // rather than silently emitting the stored (possibly stale) value.
+  test("is_synced=true at the leaf falls back to its stored month", () => {
+    // A synced leaf has nothing to derive from, so it keeps its stored
+    // amount. This is what stops a budget-level sync cascade from zeroing
+    // a childless section — and a leaf's stored month is its own amount,
+    // not a stale cache of a children-sum, so reading it is not a
+    // stale-cache leak. (Categories never carry the flag, so a synced
+    // category can only arise from corrupt data; it reads the same stored
+    // amount it would show unsynced.)
     const leaf = new Capacity({ is_synced: true, month: 9999 });
-    expect(leaf.getActiveAmount(EPOCH, "month", [])).toBe(0);
+    expect(leaf.getActiveAmount(EPOCH, "month", [])).toBe(9999);
   });
 
   test("toJSON emits ONLY whitelisted fields — no `year`/`isInfinite`/`isIncome` getter leakage", () => {
