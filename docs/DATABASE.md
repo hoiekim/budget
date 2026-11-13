@@ -70,7 +70,7 @@ A labeled transaction stores its category across three correlated columns. Both 
 | `label_budget_id` | UUID, nullable | ✓ | ✓ |
 | `label_category_confidence` | FLOAT, nullable | ✓ | ✓ (added by #344) |
 
-**Write both `label_category_id` and `label_budget_id` together.** The UI category `<select>` filters options by the row's budget. Writing only `label_category_id` leaves the dropdown unable to render the value. See `defaultApplyLabel` in `src/server/lib/compute-tools/auto-suggest.ts` for the canonical pattern.
+**Write both `label_category_id` and `label_budget_id` together.** The UI category `<select>` filters options by the row's budget. Writing only `label_category_id` leaves the dropdown unable to render the value. See `applyLabel` (and `applyLabelToSplit` for splits) in `src/server/lib/compute-tools/auto-suggest.ts` for the canonical pattern.
 
 **The four states of `label_category_confidence`:**
 
