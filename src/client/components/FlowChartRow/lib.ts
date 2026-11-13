@@ -189,32 +189,46 @@ export const getSankeyData = (
   const intersectionBudgets = new Map<string, number>();
   incomeBudgets.forEach((v, k) => expenseBudgets.has(k) && intersectionBudgets.set(k, v.amount));
 
-  const column1 = Array.from(incomeSections.values()).sort((a, b) => {
-    const isAIntersection = !!a.next && intersectionBudgets.has(a.next);
-    const isBIntersection = !!b.next && intersectionBudgets.has(b.next);
-    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
-    if (isAIntersection && isBIntersection) {
-      const intersectionBudgetDiff =
-        intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
-      if (intersectionBudgetDiff) return intersectionBudgetDiff;
-    }
-    const budgetA = a.next && incomeBudgets.get(a.next);
-    const budgetB = b.next && incomeBudgets.get(b.next);
-    if (!budgetA || !budgetB) return b.amount - a.amount;
-    return budgetB.amount - budgetA.amount || b.amount - a.amount;
-  });
+  // Shared sort for every Sankey column: budgets present on both the
+  // income and expense sides ("intersections") float to the top, ordered
+  // by their intersection amount. Section columns (1, 5) then order by
+  // their budget's amount, budget columns (2, 4) by their own amount,
+  // falling back to amount when a row's budget is missing. The five
+  // columns previously carried hand-copied copies of this rule — columns
+  // 2 and 4 were byte-identical — so a future sort fix had to land in
+  // five places. No behavior change: the sort keys are identical.
+  const sortSankeyColumn =
+    (
+      getBudgetId: (row: SankeyRow) => string | undefined,
+      budgets?: Map<string, SankeyRow>,
+    ) =>
+    (a: SankeyRow, b: SankeyRow): number => {
+      const aBudgetId = getBudgetId(a);
+      const bBudgetId = getBudgetId(b);
+      const isAIntersection = !!aBudgetId && intersectionBudgets.has(aBudgetId);
+      const isBIntersection = !!bBudgetId && intersectionBudgets.has(bBudgetId);
+      if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
+      if (isAIntersection && isBIntersection) {
+        const intersectionBudgetDiff =
+          intersectionBudgets.get(bBudgetId!)! - intersectionBudgets.get(aBudgetId!)!;
+        if (intersectionBudgetDiff) return intersectionBudgetDiff;
+      }
+      if (budgets) {
+        const budgetA = aBudgetId && budgets.get(aBudgetId);
+        const budgetB = bBudgetId && budgets.get(bBudgetId);
+        if (!budgetA || !budgetB) return b.amount - a.amount;
+        return budgetB.amount - budgetA.amount || b.amount - a.amount;
+      }
+      return b.amount - a.amount;
+    };
 
-  const column2 = Array.from(incomeBudgets.values()).sort((a, b) => {
-    const isAIntersection = intersectionBudgets.has(a.id);
-    const isBIntersection = intersectionBudgets.has(b.id);
-    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
-    if (isAIntersection && isBIntersection) {
-      const intersectionBudgetDiff =
-        intersectionBudgets.get(b.id!)! - intersectionBudgets.get(a.id!)!;
-      if (intersectionBudgetDiff) return intersectionBudgetDiff;
-    }
-    return b.amount - a.amount;
-  });
+  const column1 = Array.from(incomeSections.values()).sort(
+    sortSankeyColumn((row) => row.next, incomeBudgets),
+  );
+
+  const column2 = Array.from(incomeBudgets.values()).sort(
+    sortSankeyColumn((row) => row.id),
+  );
 
   const column3: SankeyColumn = total
     ? [
@@ -223,32 +237,13 @@ export const getSankeyData = (
       ]
     : [];
 
-  const column4 = Array.from(expenseBudgets.values()).sort((a, b) => {
-    const isAIntersection = intersectionBudgets.has(a.id);
-    const isBIntersection = intersectionBudgets.has(b.id);
-    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
-    if (isAIntersection && isBIntersection) {
-      const intersectionBudgetDiff =
-        intersectionBudgets.get(b.id!)! - intersectionBudgets.get(a.id!)!;
-      if (intersectionBudgetDiff) return intersectionBudgetDiff;
-    }
-    return b.amount - a.amount;
-  });
+  const column4 = Array.from(expenseBudgets.values()).sort(
+    sortSankeyColumn((row) => row.id),
+  );
 
-  const column5 = Array.from(expenseSections.values()).sort((a, b) => {
-    const isAIntersection = !!a.next && intersectionBudgets.has(a.next);
-    const isBIntersection = !!b.next && intersectionBudgets.has(b.next);
-    if (isAIntersection !== isBIntersection) return +isBIntersection - +isAIntersection;
-    if (isAIntersection && isBIntersection) {
-      const intersectionBudgetDiff =
-        intersectionBudgets.get(b.next!)! - intersectionBudgets.get(a.next!)!;
-      if (intersectionBudgetDiff) return intersectionBudgetDiff;
-    }
-    const budgetA = a.next && expenseBudgets.get(a.next);
-    const budgetB = b.next && expenseBudgets.get(b.next);
-    if (!budgetA || !budgetB) return b.amount - a.amount;
-    return budgetB.amount - budgetA.amount || b.amount - a.amount;
-  });
+  const column5 = Array.from(expenseSections.values()).sort(
+    sortSankeyColumn((row) => row.next, expenseBudgets),
+  );
 
   if (income < expense) {
     column1.push({
