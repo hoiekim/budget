@@ -13,6 +13,7 @@ export * from "./recurring";
 export * from "./investment_transaction";
 export * from "./split_transaction";
 export * from "./budget";
+export * from "./budget-family";
 export * from "./section";
 export * from "./category";
 export * from "./snapshot";
