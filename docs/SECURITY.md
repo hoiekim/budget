@@ -97,9 +97,10 @@ const snapshot = await searchSnapshots(user, { snapshot_id });
 if (!snapshot) return { status: "failed", message: "Not found" };
 await snapshotsTable.softDelete(snapshot_id);
 
-// Better — scope the delete query itself by user_id
-await pool.query(
-  "UPDATE snapshots SET is_deleted = TRUE WHERE snapshot_id = $1 AND user_id = $2",
-  [snapshot_id, user.user_id]
-);
+// Better — scope the delete itself by user_id, through the Table method
+// (`Table.softDelete` takes the owner id; see
+// `repositories/snapshots.ts` `deleteSnapshotById`), so the ownership check
+// lives in the write itself without raw SQL — matching DATABASE.md's
+// "Use `Table` class methods instead of direct SQL/pool operations".
+await snapshotsTable.softDelete(snapshot_id, user.user_id);
 ```
