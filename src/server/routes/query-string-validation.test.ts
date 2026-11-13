@@ -113,6 +113,16 @@ describe("query-string validation", () => {
     });
 
     test(`${label} passes a well-formed ?id= through to the repo`, async () => {
+      // The fake driver reports zero rows for every statement, so the
+      // split-transaction delete — which answers from the delete's row
+      // count — would answer failed on an empty mock. Give its UPDATE a
+      // deleted row, so this test pins the pass-through, not the row count.
+      if (route === deleteSplitTransactionRoute) {
+        mockUnsafe.mockResolvedValueOnce({
+          rows: [{ split_transaction_id: UUID }],
+          rowCount: 1,
+        });
+      }
       const result = await route.execute(
         makeReq("DELETE", route.path, { id: UUID }),
         fakeRes(),
@@ -194,7 +204,9 @@ describe("query-string validation", () => {
       makeReq("DELETE", "/snapshot", { id: "not-a-uuid" }),
       fakeRes(),
     );
-    expect(result?.status).toBe("success");
+    // Zero rows match, so the route answers failed — the clean no-op is
+    // that it neither throws nor alarms.
+    expect(result?.status).toBe("failed");
     expect(mockUnsafe).toHaveBeenCalled();
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
