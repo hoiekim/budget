@@ -235,13 +235,32 @@ export interface FieldSpec {
   required?: boolean;
   /** Explicit `null` is accepted — use where the column is nullable. Default false. */
   nullable?: boolean;
-  /** Maximum string length — use where the column has a VARCHAR(n) bound. */
+  /**
+   * Longest string the column takes — the `n` of a `VARCHAR(n)`. Only
+   * enforced for `type: "string"`; a `TEXT`/`JSONB` column has no bound to
+   * set, so its spec leaves this off.
+   */
   maxLength?: number;
   /** Inclusive numeric bounds — use where the column has a range (e.g. DECIMAL(p, s)). */
   min?: number;
-  /** Inclusive numeric upper bound — see `min`. */
+  /**
+   * Largest magnitude a number may carry — `|value| <= max`. Only enforced
+   * for `type: "number"`; the bound is on magnitude, not value, because a
+   * `DECIMAL(p, s)` column overflows on either sign. A `FLOAT` column's range
+   * dwarfs any JSON number, so its spec leaves this off.
+   */
   max?: number;
 }
+
+/**
+ * Largest magnitude a `DECIMAL(15, 2)` column takes — 13 integer digits.
+ * Shared so the route specs state the column's exact bound instead of
+ * restating the literal (and drifting from it).
+ */
+export const DECIMAL_15_2_MAX = 9999999999999.99;
+
+/** Largest magnitude a `DECIMAL(15, 6)` column takes — 9 integer digits. */
+export const DECIMAL_15_6_MAX = 999999999.999999;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -275,15 +294,23 @@ const isDateString = (value: unknown): boolean => {
   );
 };
 
-const matchesType = (value: unknown, type: FieldType): boolean => {
-  switch (type) {
+const matchesType = (value: unknown, spec: FieldSpec): boolean => {
+  switch (spec.type) {
     case "string":
-      return isString(value);
+      // A VARCHAR(n) column raises `22001 value too long` past n characters,
+      // so the bound lives here with the type check rather than at the write.
+      return isString(value) && (spec.maxLength === undefined || value.length <= spec.maxLength);
     case "number":
       // Postgres numerics reject NaN/Infinity, and JSON.parse can produce
       // neither — but a hand-built body over the wire can, so pin finiteness
-      // here rather than letting the driver decide.
-      return isNumber(value) && Number.isFinite(value);
+      // here rather than letting the driver decide. Magnitude is the second
+      // axis: a DECIMAL(p, s) column raises `22003 numeric field overflow`
+      // past 10^(p-s), on either sign, so `max` bounds |value|.
+      return (
+        isNumber(value) &&
+        Number.isFinite(value) &&
+        (spec.max === undefined || Math.abs(value) <= spec.max)
+      );
     case "boolean":
       return isBoolean(value);
     case "uuid":
@@ -295,6 +322,22 @@ const matchesType = (value: unknown, type: FieldType): boolean => {
       // `isNullableArray` throws on every later read of the row.
       return isArray(value);
   }
+};
+
+/**
+ * Whether the value has the right type but violates the bound its spec sets
+ * — the `matchesType` failure that deserves the bound's message, not the
+ * type's. A wrong-typed value can never be "over the bound" (a string has no
+ * magnitude, a number has no length), so this stays false for it.
+ */
+const exceedsBound = (value: unknown, spec: FieldSpec): boolean => {
+  if (spec.type === "string" && spec.maxLength !== undefined) {
+    return isString(value) && value.length > spec.maxLength;
+  }
+  if (spec.type === "number" && spec.max !== undefined) {
+    return isNumber(value) && Number.isFinite(value) && Math.abs(value) > spec.max;
+  }
+  return false;
 };
 
 const ARTICLE: Record<FieldType, string> = {
@@ -309,6 +352,16 @@ const ARTICLE: Record<FieldType, string> = {
 const typeError = ({ path, type }: FieldSpec): string =>
   `Field ${path} must be ${ARTICLE[type]} ${type}`;
 
+const boundError = (spec: FieldSpec): string => {
+  if (spec.type === "string" && spec.maxLength !== undefined) {
+    return `Field ${spec.path} must be at most ${spec.maxLength} characters`;
+  }
+  if (spec.type === "number" && spec.max !== undefined) {
+    return `Field ${spec.path} must be at most ${spec.max}`;
+  }
+  return typeError(spec);
+};
+
 /**
  * Check a request body's typed fields BEFORE any of them reach SQL.
  *
@@ -317,7 +370,10 @@ const typeError = ({ path, type }: FieldSpec): string =>
  * raises `22P02 invalid_text_representation` at the write, the route throws,
  * and `Route.execute` answers 500 **and** calls `sendAlarm`. A client type
  * error must not page, and must not spend a slot of `alarm.ts`'s global
- * per-window send ceiling that a real fault needs.
+ * per-window send ceiling that a real fault needs. The same holds for a value
+ * of the right type past its column's bound — a 256-character name into
+ * `VARCHAR(255)` or `1e13` into `DECIMAL(15, 2)` — so a spec may also carry
+ * `maxLength` / `max` and the refusal names the limit instead of paging.
  *
  * Returns the FIRST failure so the caller can answer `status: "failed"` with a
  * message that names the offending path. Missing optional fields are skipped:
@@ -370,8 +426,11 @@ export function validateFields(obj: object, specs: FieldSpec[]): ValidationResul
       if (spec.nullable) continue;
       return { success: false, error: typeError(spec) };
     }
-    if (!matchesType(value, spec.type)) {
-      return { success: false, error: typeError(spec) };
+    if (!matchesType(value, spec)) {
+      return {
+        success: false,
+        error: exceedsBound(value, spec) ? boundError(spec) : typeError(spec),
+      };
     }
     // Bounds only bite where the spec carries them, so every existing spec
     // behaves exactly as before. A type-correct value outside the column's
