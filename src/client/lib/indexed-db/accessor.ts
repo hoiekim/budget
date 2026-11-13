@@ -37,7 +37,7 @@ export enum StoreName {
   transactionFamilies = "transactionFamilies",
 }
 
-class IndexedDbAccessor {
+export class IndexedDbAccessor {
   private db: IDBDatabase | null = null;
   private available = true;
 
@@ -77,6 +77,24 @@ class IndexedDbAccessor {
     return this.opening;
   };
 
+  /**
+   * Opens the database, or null when it cannot be opened. A failed open
+   * means the cache is unavailable — the state `available === false`
+   * records — so callers treat it the way they treat an already-unavailable
+   * cache (a skipped write, an empty read), not as an error to report.
+   * Without this, the first write after a failed open rejects, every
+   * `.catch(console.error)` call site prints it, and the drop is never
+   * counted in `skippedWrites` — the sync's cursor then advances past a
+   * cache that never received the write.
+   */
+  private openOrNull = async (): Promise<IDBDatabase | null> => {
+    try {
+      return await this.init();
+    } catch {
+      return null;
+    }
+  };
+
   private open = (): Promise<IDBDatabase> =>
     new Promise((resolve, reject) => {
       let request: IDBOpenDBRequest;
@@ -84,7 +102,14 @@ class IndexedDbAccessor {
         request = indexedDB.open(this.dbName, this.dbVersion);
       } catch (err) {
         this.available = false;
-        console.warn("IndexedDB unavailable; local caching disabled.", err);
+        // A missing `indexedDB` global means this runtime has no IndexedDB
+        // at all — the test preload's happy-dom window, SSR, a worker — so
+        // the cache is unavailable by environment, not by failure. Warning
+        // here would print on every run that touches the cache; a genuine
+        // open failure (quota, blocked upgrade) still warns.
+        if (!(err instanceof ReferenceError)) {
+          console.warn("IndexedDB unavailable; local caching disabled.", err);
+        }
         reject(err);
         return;
       }
@@ -150,7 +175,11 @@ class IndexedDbAccessor {
       this.skippedWrites++;
       return;
     }
-    const database = await this.init();
+    const database = await this.openOrNull();
+    if (!database) {
+      this.skippedWrites++;
+      return;
+    }
     const transaction = database.transaction(storeName, "readwrite");
 
     const store = transaction.objectStore(storeName);
@@ -167,7 +196,11 @@ class IndexedDbAccessor {
       this.skippedWrites++;
       return;
     }
-    const database = await this.init();
+    const database = await this.openOrNull();
+    if (!database) {
+      this.skippedWrites++;
+      return;
+    }
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
 
@@ -183,7 +216,11 @@ class IndexedDbAccessor {
       this.skippedWrites++;
       return;
     }
-    const database = await this.init();
+    const database = await this.openOrNull();
+    if (!database) {
+      this.skippedWrites++;
+      return;
+    }
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
 
@@ -196,7 +233,8 @@ class IndexedDbAccessor {
 
   load = async <T>(storeName: StoreName): Promise<{ [key: string]: T }> => {
     if (!this.available) return {};
-    const database = await this.init();
+    const database = await this.openOrNull();
+    if (!database) return {};
     const transaction = database.transaction(storeName, "readonly");
     const store = transaction.objectStore(storeName);
 
@@ -236,7 +274,11 @@ class IndexedDbAccessor {
       this.skippedWrites++;
       return;
     }
-    const database = await this.init();
+    const database = await this.openOrNull();
+    if (!database) {
+      this.skippedWrites++;
+      return;
+    }
     const transaction = database.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
 
