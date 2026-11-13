@@ -2,6 +2,7 @@ import { AccountType } from "common/lib/plaid-enums";
 import { useEffect, useMemo, useState } from "react";
 import { cap, currencyCodeToSymbol, ViewDate } from "common";
 import {
+  accountMatchesTypes,
   colors,
   getAccountBalance,
   getDisplayBalance,
@@ -76,10 +77,10 @@ export const AccountsPage = () => {
     // the filter IS set, honor it verbatim — including a "Credit" pick
     // which surfaces credit accounts in the donut + table for that
     // filtered view.
-    const filteredAccounts = sortedAccounts.filter(({ hide, archived, type }) => {
-      if (hide || archived) return false;
-      if (selectedTypes.length === 0) return type !== AccountType.Credit;
-      return selectedTypes.includes(type);
+    const filteredAccounts = sortedAccounts.filter((account) => {
+      if (account.hide || account.archived) return false;
+      if (selectedTypes.length === 0) return account.type !== AccountType.Credit;
+      return accountMatchesTypes(account, selectedTypes);
     });
 
     // The Credit summary tile (next to the donut) shows totalCredit +
