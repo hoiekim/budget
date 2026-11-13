@@ -1,5 +1,11 @@
 import { KeyboardEvent, useMemo } from "react";
-import { currencyCodeToSymbol, ItemProvider, numberToCommaString, ViewDate } from "common";
+import {
+  currencyCodeToSymbol,
+  ItemProvider,
+  numberToCommaString,
+  ViewDate,
+  getDateString,
+} from "common";
 import {
   Account,
   PATH,
@@ -91,7 +97,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
   const divergence = useHoldingDivergence(
     accounts.map((a) => a.account_id),
     { holdingSnapshots, investmentTransactions, securitySnapshots },
-    viewEndDate.toISOString().slice(0, 10),
+    getDateString(viewEndDate),
   );
 
   // First pass: one row per (account, security) at the current viewDate —

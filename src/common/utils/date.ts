@@ -229,6 +229,37 @@ export const getDateString = (dateObject = new Date()) => {
 };
 
 /**
+ * Render a stored ISO date as a local `YYYY-MM-DD` for a date input.
+ * An unparseable value falls back to its first ten characters — the
+ * `YYYY-MM-DD` the caller already had — and an empty one to `""`.
+ */
+export const dateInputValue = (raw: string | null | undefined): string => {
+  if (!raw) return "";
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? raw.slice(0, 10) : getDateString(d);
+};
+
+/**
+ * The inverse of the snapshot-id derivation: the calendar day a snapshot
+ * id encodes.
+ *
+ * This — not the stored timestamp — is what a row must show and edit
+ * against. The id is the snapshot's identity (one per account per day, per
+ * security for holding snapshots) and both writers derive it the same way,
+ * from the SERVER's local components: `post-snapshot.ts` for user edits
+ * and `create-snapshots.ts` for the sync. Rendering the timestamp instead
+ * reads it in the BROWSER's zone, so a row can display, and compare
+ * against, a different day than it actually occupies.
+ *
+ * Returns null when the id is not the expected `<...>-<YYYYMMDD>` shape,
+ * so the caller can fall back rather than render garbage.
+ */
+export const dateFromSnapshotId = (id: string): string | null => {
+  const match = /-(\d{4})(\d{2})(\d{2})$/.exec(id);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : null;
+};
+
+/**
  * @param dateObject Date
  * @returns YYYYMMDD
  */

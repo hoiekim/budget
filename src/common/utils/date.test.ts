@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
+import { resolve } from "path";
 import {
   formatDate,
   getDateString,
+  dateInputValue,
+  dateFromSnapshotId,
   getSquashedDateString,
   getDateTimeString,
   getYearMonthString,
@@ -11,6 +14,8 @@ import {
   IsDate,
   isCalendarDate,
 } from "./date";
+
+const REPO_ROOT = resolve(import.meta.dir, "..", "..", "..");
 
 describe("getDateString", () => {
   it("should format date as YYYY-MM-DD", () => {
@@ -26,6 +31,107 @@ describe("getDateString", () => {
   it("should pad single-digit days", () => {
     const date = new Date(2024, 11, 5); // December 5, 2024
     expect(getDateString(date)).toBe("2024-12-05");
+  });
+
+  it("reads the LOCAL calendar day in the evening in a western zone", () => {
+    // getDateString builds from local components; toISOString reads UTC.
+    // A midday fixture passes under both, so the fixture is 18:00 on the
+    // last day of a month — UTC already reads the next day (and the next
+    // month). Pin the zone in a child process: process.env.TZ in-process
+    // leaks into every suite that runs after this one.
+    const script = [
+      'import { getDateString } from "./src/common/utils/date";',
+      "const d = new Date(2026, 8, 30, 18, 0, 0);",
+      "console.log(JSON.stringify({ local: getDateString(d), utc: d.toISOString().slice(0, 10) }));",
+    ].join("\n");
+
+    const { stdout, stderr, exitCode } = Bun.spawnSync({
+      cmd: ["bun", "-e", script],
+      cwd: REPO_ROOT,
+      env: { ...process.env, TZ: "America/Los_Angeles" },
+    });
+    expect(exitCode, stderr.toString()).toBe(0);
+
+    const { local, utc } = JSON.parse(stdout.toString());
+    // The fixture only proves anything if the two readings really do differ.
+    expect(utc).toBe("2026-10-01");
+    expect(local).toBe("2026-09-30");
+  });
+});
+
+describe("dateInputValue", () => {
+  it("reads the LOCAL calendar day, not the UTC one", () => {
+    // Same evening-of-the-last-day shape as getDateString above, for a
+    // stored ISO instant with an explicit offset: 18:00 PDT is 01:00 UTC
+    // the next day.
+    const script = [
+      'import { dateInputValue } from "./src/common/utils/date";',
+      'const raw = "2026-09-30T18:00:00-07:00";',
+      "console.log(JSON.stringify({ rendered: dateInputValue(raw), utc: new Date(raw).toISOString().slice(0, 10) }));",
+    ].join("\n");
+
+    const { stdout, stderr, exitCode } = Bun.spawnSync({
+      cmd: ["bun", "-e", script],
+      cwd: REPO_ROOT,
+      env: { ...process.env, TZ: "America/Los_Angeles" },
+    });
+    expect(exitCode, stderr.toString()).toBe(0);
+
+    const { rendered, utc } = JSON.parse(stdout.toString());
+    expect(utc).toBe("2026-10-01");
+    expect(rendered).toBe("2026-09-30");
+  });
+
+  it("returns '' for an empty, null, or undefined value", () => {
+    expect(dateInputValue("")).toBe("");
+    expect(dateInputValue(null)).toBe("");
+    expect(dateInputValue(undefined)).toBe("");
+  });
+
+  it("falls back to the first 10 chars when the value is not a real date", () => {
+    expect(dateInputValue("2026-09-30-garbage")).toBe("2026-09-30");
+  });
+});
+
+describe("dateFromSnapshotId", () => {
+  it("reads back the day the id encodes", () => {
+    expect(dateFromSnapshotId("a-20260710")).toBe("2026-07-10");
+    expect(dateFromSnapshotId("holding-acct-A-sec-1-20260701")).toBe("2026-07-01");
+    expect(dateFromSnapshotId("acct-99-20260710")).toBe("2026-07-10");
+  });
+
+  it("returns null for an id that is not the expected shape", () => {
+    expect(dateFromSnapshotId("acct-1")).toBe(null);
+    expect(dateFromSnapshotId("")).toBe(null);
+    expect(dateFromSnapshotId("a-2026071")).toBe(null);
+  });
+
+  it("is the day a holding row must show when its stored timestamp renders a day early", () => {
+    // A holding snapshot dated 2026-07-01 reaches the browser as the
+    // midnight-UTC carrier `2026-07-01T00:00:00.000Z`, which renders as
+    // 2026-06-30 in America/Los_Angeles — while its id says 2026-07-01.
+    // Pin the zone in a child process (never `process.env.TZ` in-process).
+    const script = [
+      'import { dateInputValue, dateFromSnapshotId } from "./src/common/utils/date";',
+      'const id = "holding-acct-A-sec-1-20260701";',
+      'const stored = "2026-07-01T00:00:00.000Z";',
+      "console.log(JSON.stringify({",
+      "  fromId: dateFromSnapshotId(id) ?? dateInputValue(stored),",
+      "  fromTimestamp: dateInputValue(stored),",
+      "}));",
+    ].join("\n");
+
+    const { stdout, stderr, exitCode } = Bun.spawnSync({
+      cmd: ["bun", "-e", script],
+      cwd: REPO_ROOT,
+      env: { ...process.env, TZ: "America/Los_Angeles" },
+    });
+    expect(exitCode, stderr.toString()).toBe(0);
+
+    const { fromId, fromTimestamp } = JSON.parse(stdout.toString());
+    // The fixture only proves anything if the two readings really do differ.
+    expect(fromTimestamp).toBe("2026-06-30");
+    expect(fromId).toBe("2026-07-01");
   });
 });
 
