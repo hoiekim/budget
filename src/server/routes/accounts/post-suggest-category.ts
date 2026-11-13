@@ -4,8 +4,8 @@ import {
   categoriesTable,
   isUuid,
   logger,
-  pool,
   transactionsTable,
+  USER_ID,
 } from "server";
 import { isString, isNullableString, isNumber } from "common";
 
@@ -41,6 +41,12 @@ const isSuggestion = (v: unknown): v is SuggestionInput => {
   if (o.label_budget_id !== undefined && !isNullableString(o.label_budget_id)) return false;
   return true;
 };
+
+// Max concurrent UPDATEs while applying a batch. The pg pool caps at 20
+// connections, and a 500-row batch used to pay one sequential round-trip
+// per suggestion; 10 in flight leaves headroom for the rest of the request
+// and for concurrent requests.
+const SUGGEST_UPDATE_CONCURRENCY = 10;
 
 export const postSuggestCategoryRoute = new Route<SuggestCategoryResponse>(
   "POST",
@@ -117,105 +123,139 @@ export const postSuggestCategoryRoute = new Route<SuggestCategoryResponse>(
       ),
     );
 
-    const [existingTxs, validCategoryIds, validBudgetIds] = await Promise.all([
-      fetchTransactionsForLabelUpdate(txIds, user.user_id),
+    // Pre-fetch through the repository layer, which applies the canonical
+    // soft-delete predicate and the user scoping — the route no longer
+    // hand-writes SQL for these reads.
+    const [existingTxs, categoryRows, budgetRows] = await Promise.all([
+      transactionsTable.queryByIds(txIds, { [USER_ID]: user.user_id }),
       categoryIds.length === 0
-        ? new Set<string>()
-        : queryIdSet(categoriesTable.name, "category_id", categoryIds, user.user_id),
+        ? []
+        : categoriesTable.queryByIds(categoryIds, { [USER_ID]: user.user_id }),
       budgetIds.length === 0
-        ? new Set<string>()
-        : queryIdSet(budgetsTable.name, "budget_id", budgetIds, user.user_id),
+        ? []
+        : budgetsTable.queryByIds(budgetIds, { [USER_ID]: user.user_id }),
     ]);
+    const validCategoryIds = new Set(categoryRows.map((r) => r.category_id));
+    const validBudgetIds = new Set(budgetRows.map((r) => r.budget_id));
 
-    const txByIdEntries = existingTxs.map(
-      (r) => [r.transaction_id, r] as const,
-    );
-    const txById = new Map<
-      string,
-      { transaction_id: string; label_category_confidence: number | null }
-    >(txByIdEntries);
+    const txById = new Map(existingTxs.map((r) => [r.transaction_id, r] as const));
 
-    for (const s of valid) {
+    // Validate every suggestion against the pre-fetched rows first, then
+    // apply the surviving updates in bounded-concurrency chunks instead of
+    // one sequential round-trip per suggestion. Outcomes stay aligned with
+    // the input order: each slot is filled either by validation or by its
+    // update's result.
+    const results: SuggestCategoryRowOutcome[] = new Array(valid.length);
+    const pending: {
+      index: number;
+      suggestion: SuggestionInput;
+      updates: Record<string, unknown>;
+    }[] = [];
+    for (let i = 0; i < valid.length; i++) {
+      const s = valid[i]!;
       const existing = txById.get(s.transaction_id);
       if (!existing) {
-        outcomes.push({
+        results[i] = {
           transaction_id: s.transaction_id,
           status: "skipped",
           reason: "Transaction not found or not owned by this user.",
-        });
+        };
         continue;
       }
       if (existing.label_category_confidence === 1) {
-        outcomes.push({
+        results[i] = {
           transaction_id: s.transaction_id,
           status: "skipped",
           reason: "Refusing to overwrite user-confirmed label (confidence = 1.0).",
-        });
+        };
         continue;
       }
       if (s.label_category_id && !validCategoryIds.has(s.label_category_id)) {
-        outcomes.push({
+        results[i] = {
           transaction_id: s.transaction_id,
           status: "error",
           reason: `Unknown label_category_id: ${s.label_category_id}`,
-        });
+        };
         continue;
       }
       if (s.label_budget_id && !validBudgetIds.has(s.label_budget_id)) {
-        outcomes.push({
+        results[i] = {
           transaction_id: s.transaction_id,
           status: "error",
           reason: `Unknown label_budget_id: ${s.label_budget_id}`,
-        });
+        };
         continue;
       }
       if (s.label_category_id === undefined && s.label_budget_id === undefined) {
-        outcomes.push({
+        results[i] = {
           transaction_id: s.transaction_id,
           status: "error",
           reason: "At least one of label_category_id / label_budget_id is required.",
-        });
+        };
         continue;
       }
+      const updates: Record<string, unknown> = {
+        label_category_confidence: s.confidence,
+      };
+      if (s.label_category_id !== undefined) {
+        updates.label_category_id = s.label_category_id;
+      }
+      if (s.label_budget_id !== undefined) {
+        updates.label_budget_id = s.label_budget_id;
+      }
+      pending.push({ index: i, suggestion: s, updates });
+    }
 
-      try {
-        const updates: Record<string, unknown> = {
-          label_category_confidence: s.confidence,
-        };
-        if (s.label_category_id !== undefined) {
-          updates.label_category_id = s.label_category_id;
-        }
-        if (s.label_budget_id !== undefined) {
-          updates.label_budget_id = s.label_budget_id;
-        }
-        const updated = await transactionsTable.update(
-          s.transaction_id,
-          updates,
-          undefined,
-          user.user_id,
-        );
-        if (updated) {
-          outcomes.push({ transaction_id: s.transaction_id, status: "updated" });
-        } else {
-          outcomes.push({
-            transaction_id: s.transaction_id,
-            status: "skipped",
-            reason: "Update produced no row change (concurrent modification?).",
-          });
-        }
-      } catch (error) {
-        logger.error(
-          "suggest-category update failed",
-          { transactionId: s.transaction_id },
-          error,
-        );
-        outcomes.push({
-          transaction_id: s.transaction_id,
-          status: "error",
-          reason: "Internal error during update.",
-        });
+    for (let start = 0; start < pending.length; start += SUGGEST_UPDATE_CONCURRENCY) {
+      const chunk = pending.slice(start, start + SUGGEST_UPDATE_CONCURRENCY);
+      const chunkOutcomes = await Promise.all(
+        chunk.map(
+          async ({
+            index,
+            suggestion: s,
+            updates,
+          }): Promise<{ index: number; outcome: SuggestCategoryRowOutcome }> => {
+            try {
+              const updated = await transactionsTable.update(
+                s.transaction_id,
+                updates,
+                undefined,
+                user.user_id,
+              );
+              return {
+                index,
+                outcome: updated
+                  ? { transaction_id: s.transaction_id, status: "updated" }
+                  : {
+                      transaction_id: s.transaction_id,
+                      status: "skipped",
+                      reason: "Update produced no row change (concurrent modification?).",
+                    },
+              };
+            } catch (error) {
+              logger.error(
+                "suggest-category update failed",
+                { transactionId: s.transaction_id },
+                error,
+              );
+              return {
+                index,
+                outcome: {
+                  transaction_id: s.transaction_id,
+                  status: "error",
+                  reason: "Internal error during update.",
+                },
+              };
+            }
+          },
+        ),
+      );
+      for (const { index, outcome } of chunkOutcomes) {
+        results[index] = outcome;
       }
     }
+
+    outcomes.push(...results);
 
     return { status: "success", body: summarize(outcomes) };
   },
@@ -232,38 +272,4 @@ function summarize(outcomes: SuggestCategoryRowOutcome[]): SuggestCategoryRespon
     else errored++;
   }
   return { outcomes, updated, skipped, errored };
-}
-
-async function fetchTransactionsForLabelUpdate(
-  ids: string[],
-  user_id: string,
-): Promise<{ transaction_id: string; label_category_confidence: number | null }[]> {
-  if (ids.length === 0) return [];
-  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
-  const sql = `
-    SELECT transaction_id, label_category_confidence
-    FROM ${transactionsTable.name}
-    WHERE transaction_id IN (${placeholders})
-      AND user_id = $${ids.length + 1}
-      AND (is_deleted IS NULL OR is_deleted = FALSE)
-  `;
-  const result = await pool.query(sql, [...ids, user_id]);
-  return result.rows as { transaction_id: string; label_category_confidence: number | null }[];
-}
-
-async function queryIdSet(
-  table: string,
-  pkColumn: string,
-  ids: string[],
-  user_id: string,
-): Promise<Set<string>> {
-  const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
-  const sql = `
-    SELECT ${pkColumn} FROM ${table}
-    WHERE ${pkColumn} IN (${placeholders})
-      AND user_id = $${ids.length + 1}
-      AND (is_deleted IS NULL OR is_deleted = FALSE)
-  `;
-  const result = await pool.query(sql, [...ids, user_id]);
-  return new Set(result.rows.map((row: Record<string, unknown>) => row[pkColumn] as string));
 }
