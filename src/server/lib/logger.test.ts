@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { logger } from "./logger";
+import { restoreEnv } from "test-helpers";
 
 let consoleErrorSpy: ReturnType<typeof spyOn>;
-const originalLogLevel = process.env.LOG_LEVEL;
-const originalNodeEnv = process.env.NODE_ENV;
 
 beforeEach(() => {
   process.env.LOG_LEVEL = "error";
@@ -13,10 +12,7 @@ beforeEach(() => {
 
 afterEach(() => {
   consoleErrorSpy.mockRestore();
-  if (originalLogLevel === undefined) delete process.env.LOG_LEVEL;
-  else process.env.LOG_LEVEL = originalLogLevel;
-  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = originalNodeEnv;
+  restoreEnv();
 });
 
 describe("logger.error", () => {
