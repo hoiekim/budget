@@ -25,6 +25,7 @@ import {
   isProduction,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
+import { readSessionData } from "server/lib/session-read";
 import type { MaskedUser } from "server/lib/postgres/models/user";
 import type { SessionData } from "server/lib/postgres/models/session";
 import * as routes from "server/routes";
@@ -102,7 +103,9 @@ async function loadSession(request: Request): Promise<Session & ServerRequest["s
   const sid = cookies[COOKIE_NAME];
 
   if (sid) {
-    const data = await sessionStore.get(sid).catch(() => null);
+    // A store fault degrades to an anonymous session, but it is logged
+    // and alarmed inside readSessionData — never swallowed silently.
+    const data = await readSessionData(sessionStore, sid);
     if (data) return makeSession(sid, data.user);
   }
 
