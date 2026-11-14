@@ -115,7 +115,9 @@ type ApiResult<T> =
   | { success: false; error: "no_api_key" | "api_error" | "no_data"; message: string };
 ```
 
-This forces callers to handle all failure modes explicitly. See `PolygonResult<T>` in `src/server/lib/polygon.ts`.
+This forces callers to handle all failure modes explicitly. See `PolygonResult<T>` in `src/server/lib/polygon.ts` and `BlsResult<T>` in `src/server/lib/bls.ts`.
+
+**Quota-limited APIs stay off the request path.** When an API's limit is per day (BLS: 25 keyless), a route must not call it on behalf of a client. Store the data from a scheduled job and serve it from the database — `GET /api/inflation` reads `cpi_snapshots`, which only `refreshCpiSnapshots` writes.
 
 Always validate HTTP responses before parsing:
 

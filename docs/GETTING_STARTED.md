@@ -65,6 +65,7 @@ Copy `.env.example` to `.env.local` and fill in values:
 | `HOST_NAME` | No | Domain name for hosting (required for Plaid OAuth) |
 | `POLYGON_API_KEY` | For Polygon | Polygon.io API key (for investment metadata) |
 | `POLYGON_RATE_LIMIT_PER_MIN` | No | Cap on outbound Polygon requests per minute (default: 5, which matches the free tier). `0` disables the gate. |
+| `BLS_API_KEY` | No | Bureau of Labor Statistics registration key for the CPI history behind the projection chart's auto inflation rate. Without it the keyless v1 API is used (the job spends at most 10 of its 25 requests/day); with it, v2 (at most 50 of 500/day). |
 | `PORT` | No | HTTP port the server listens on (default: 3005) |
 | `LOG_LEVEL` | No | Log verbosity, one of `debug`, `info`, `warn` or `error` (default: `info`, or `error` when `NODE_ENV=test`) |
 | `DISCORD_ALARM_WEBHOOK` | No | Discord webhook URL for server error alerts |

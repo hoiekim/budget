@@ -6,6 +6,7 @@ import { syncSimpleFinData } from "./sync-simple-fin";
 import { runAutoSuggestions } from "./auto-suggest";
 import { runTransferDetection } from "./detect-transfers";
 import { refreshActiveSecuritySnapshots } from "./refresh-security-snapshots";
+import { refreshCpiSnapshots } from "./refresh-cpi-snapshots";
 
 let syncTimer: ReturnType<typeof setInterval> | null = null;
 let isSyncing = false;
@@ -106,6 +107,11 @@ const runSync = async () => {
       )
       .catch((error) => {
         logger.error("Refresh active security snapshots failed", {}, error);
+      });
+    await refreshCpiSnapshots()
+      .then((r) => logger.info("Refreshed CPI snapshots", { ...r }))
+      .catch((error) => {
+        logger.error("Refresh CPI snapshots failed", {}, error);
       });
   } catch (err) {
     logger.error("Error occurred during scheduled sync", {}, err);

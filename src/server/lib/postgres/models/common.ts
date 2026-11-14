@@ -116,6 +116,10 @@ export const CONFIGURATION = "configuration";
 
 export const REJECTED_AT = "rejected_at";
 
+export const CPI_SNAPSHOT_ID = "cpi_snapshot_id";
+export const SERIES_ID = "series_id";
+export const INDEX_VALUE = "index_value";
+
 export const KEY_ID = "key_id";
 export const KEY_HASH = "key_hash";
 export const KEY_PREFIX = "key_prefix";

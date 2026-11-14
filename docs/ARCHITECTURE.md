@@ -6,7 +6,7 @@
 - **Backend**: Bun HTTP server (TypeScript)
 - **Database**: PostgreSQL
 - **Containerization**: Docker
-- **External APIs**: Plaid, SimpleFin, Polygon
+- **External APIs**: Plaid, SimpleFin, Polygon, BLS
 
 ## Project Structure
 
@@ -54,6 +54,20 @@ Core models are defined in `src/common/models/`:
 - **Snapshot** — point-in-time record of account balances, holdings, or security prices (discriminated by `snapshot_type`)
 - **Chart** — visualization configuration
 - **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
+- **CpiSnapshot** — one month of the BLS Consumer Price Index (global, not user-scoped; table `cpi_snapshots`)
+
+### Projection Chart: Auto Goal Configuration
+
+A projection chart's goal (living cost, its as-of date, tax rate, and yearly inflation) is either typed in, or — with `auto_goal_config` on — inferred on the client by `inferGoalConfig` (`src/client/lib/charts.ts`) through the `useGoalConfig` hook:
+
+| Field | Source when auto | Fallback |
+|---|---|---|
+| Living cost | Sum of the monthly amounts of the budgets in `configuration.budget_ids` at today (income and unlimited budgets skipped) | Stored manual value when no selected budget contributes |
+| Living cost as of | Latest `active_from` among those budgets' active capacities ("periods"), walking into children for synced capacities | Start of the current month when no period is dated |
+| YoY inflation | `GET /api/inflation` — compound annual CPI-U growth over the last 30 years of stored history (`server/lib/inflation.ts`) | Stored manual value until the CPI backfill has a year of data |
+| Tax rate | Federal + state income tax on 12 × living cost (carried to current dollars), single filer, standard deduction (`common/utils/tax.ts`) | Federal only when no state can be inferred |
+
+The residence state is the U.S. state that appears most often in `location.region` across the past 365 days of transactions (`inferResidenceState`). Tax tables live in `common/utils/tax-tables.ts` and are for one tax year (`TAX_YEAR`); local income taxes, payroll taxes, and phase-outs are out of scope. The manual values stay stored, so turning auto off restores them.
 
 ### Transaction Categorization (Auto-Suggest)
 
@@ -111,3 +125,12 @@ Key files:
 ### Polygon
 
 Fetches metadata for investment items when not available from Plaid or SimpleFin. Integration in `src/server/lib/polygon.ts`.
+
+### BLS (Bureau of Labor Statistics)
+
+Supplies CPI-U history (series `CUUR0000SA0`, not seasonally adjusted) for the projection chart's auto inflation rate. Integration in `src/server/lib/bls.ts`; the job is `refreshCpiSnapshots` in `src/server/lib/compute-tools/refresh-cpi-snapshots.ts`, run from the hourly `scheduledSync` after the security-snapshot refresh.
+
+- **Never on the request path.** `GET /api/inflation` reads `cpi_snapshots` only.
+- **Backfill.** Any completed year in the 30-year window (+1 for the base month) with no stored month is requested — an empty table fills in one run (4 requests keyless, 2 with a key). Presence, not completeness, is tested, so a month BLS never published (October 2025) is not re-requested forever.
+- **Refresh.** When the latest stored month is older than last month and nothing was written in the past 22 hours, the latest stored year through the current year is re-requested. Upserts re-stamp `updated`, which is the cadence gate, so it survives restarts.
+- **Daily budget.** Every request draws on a rolling 24-hour budget — 10/day keyless (BLS cap 25), 50/day with `BLS_API_KEY` (cap 500). A run that hits it, or BLS's own "daily threshold" refusal, stops and leaves the rest to a later run.
