@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  applyPhaseOut,
   computeBracketTax,
   estimateFederalIncomeTax,
   estimateIncomeTax,
@@ -61,6 +62,21 @@ describe("estimateStateIncomeTax", () => {
   it("applies a personal credit against tax, never below zero", () => {
     expect(estimateStateIncomeTax(10000, "YY", tables)).toBeCloseTo(400 - 150, 9);
     expect(estimateStateIncomeTax(2000, "YY", tables)).toBe(0);
+  });
+
+  it("shrinks a phased-out allowance linearly across its income range", () => {
+    const phased: Record<string, StateIncomeTaxTable> = {
+      PX: {
+        brackets: [[0, 0.1]],
+        standardDeduction: 0,
+        personalExemption: 10000,
+        personalCredit: 0,
+        phaseOut: { allowance: "personalExemption", from: 20000, to: 30000 },
+      },
+    };
+    expect(estimateStateIncomeTax(20000, "PX", phased)).toBeCloseTo(1000, 9); // full exemption
+    expect(estimateStateIncomeTax(25000, "PX", phased)).toBeCloseTo(2000, 9); // half: 25000 - 5000
+    expect(estimateStateIncomeTax(40000, "PX", phased)).toBeCloseTo(4000, 9); // none
   });
 
   it("is zero for a state with no income tax, an unknown state, or no state", () => {
@@ -143,6 +159,45 @@ describe("tax tables", () => {
       [256225, 0.35],
       [640600, 0.37],
     ]);
+  });
+});
+
+describe("applyPhaseOut", () => {
+  it("keeps the full amount up to `from`, none from `to`, and interpolates between", () => {
+    expect(applyPhaseOut(900, 10, 100, 400)).toBe(900);
+    expect(applyPhaseOut(900, 100, 100, 400)).toBe(900);
+    expect(applyPhaseOut(900, 200, 100, 400)).toBeCloseTo(600, 9);
+    expect(applyPhaseOut(900, 400, 100, 400)).toBe(0);
+    expect(applyPhaseOut(900, 1000, 100, 400)).toBe(0);
+  });
+
+  it("treats an empty range as fully phased out past it", () => {
+    expect(applyPhaseOut(900, 101, 100, 100)).toBe(0);
+  });
+});
+
+describe("tax table spot checks (computed by hand)", () => {
+  it("federal: $60,000 → 10% of $12,400 + 12% of $31,500 = $5,020", () => {
+    expect(estimateFederalIncomeTax(60000)).toBeCloseTo(5020, 6);
+  });
+
+  it("Pennsylvania: flat 3.07% with no deduction → $1,842 on $60,000", () => {
+    expect(estimateStateIncomeTax(60000, "PA")).toBeCloseTo(1842, 6);
+  });
+
+  it("Connecticut: the $15,000 exemption is two-thirds gone at $40,000", () => {
+    // exemption 15000 × (1 - 10000/15000) = 5000 → taxable 35000
+    // 2% × 10000 + 4.5% × 25000 = 200 + 1125
+    expect(estimateStateIncomeTax(40000, "CT")).toBeCloseTo(1325, 6);
+  });
+
+  it("Utah: the taxpayer credit is gone well before $100,000", () => {
+    expect(estimateStateIncomeTax(100000, "UT")).toBeCloseTo(4450, 6);
+  });
+
+  it("a high-tax state costs more than a no-tax one at the same income", () => {
+    expect(estimateIncomeTax(80000, "CA").total).toBeGreaterThan(estimateIncomeTax(80000, "TX").total);
+    expect(estimateIncomeTax(80000, "TX").state).toBe(0);
   });
 });
 

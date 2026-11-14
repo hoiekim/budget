@@ -11,8 +11,9 @@ import { FEDERAL_INCOME_TAX, STATE_INCOME_TAX, TAX_YEAR } from "./tax-tables";
  *
  * Deliberately left out: payroll taxes (withdrawals from savings are not
  * wages), local/city income taxes, credits beyond a state's flat personal
- * credit, and deduction phase-outs. The point is a defensible effective rate,
- * not a return.
+ * credit, and allowance phase-outs except the three that bite at ordinary
+ * incomes (see `StateIncomeTaxTable.phaseOut`). The point is a defensible
+ * effective rate, not a return.
  */
 
 /** `[lowerThreshold, marginalRate]`, ascending by threshold. */
@@ -24,6 +25,16 @@ export interface StateIncomeTaxTable {
   personalExemption: number;
   /** A flat per-filer credit against tax, for states that use one instead of an exemption. */
   personalCredit: number;
+  /**
+   * One allowance that shrinks linearly from its full value at income `from`
+   * to zero at `to`. Only modeled where the phase-out bites at ordinary
+   * incomes (CT, UT, WI); elsewhere allowances apply in full.
+   */
+  phaseOut?: {
+    allowance: "standardDeduction" | "personalExemption" | "personalCredit";
+    from: number;
+    to: number;
+  };
   /** Set when the figures are from a year other than `TAX_YEAR`. */
   taxYear?: number;
 }
@@ -193,8 +204,19 @@ export const estimateStateIncomeTax = (
 ): number => {
   const table = stateCode ? tables[stateCode] : undefined;
   if (!table) return 0;
-  const taxable = annualIncome - table.standardDeduction - table.personalExemption;
-  return Math.max(0, computeBracketTax(taxable, table.brackets) - table.personalCredit);
+  const allowance = (key: "standardDeduction" | "personalExemption" | "personalCredit") =>
+    table.phaseOut?.allowance === key
+      ? applyPhaseOut(table[key], annualIncome, table.phaseOut.from, table.phaseOut.to)
+      : table[key];
+  const taxable = annualIncome - allowance("standardDeduction") - allowance("personalExemption");
+  return Math.max(0, computeBracketTax(taxable, table.brackets) - allowance("personalCredit"));
+};
+
+/** `amount` reduced linearly from full at `from` to zero at `to`. */
+export const applyPhaseOut = (amount: number, income: number, from: number, to: number): number => {
+  if (income <= from) return amount;
+  if (income >= to || to <= from) return 0;
+  return amount * (1 - (income - from) / (to - from));
 };
 
 export interface IncomeTaxEstimate {
