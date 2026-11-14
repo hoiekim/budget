@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { useMemo } from "react";
 import {
   currencyCodeToSymbol,
@@ -41,7 +41,7 @@ interface Props {
 export const AccountProperties = ({ account }: Props) => {
   const { account_id, balances, name, type, subtype } = account;
   const { available, current, iso_currency_code } = balances;
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   const { graphViewDate, graphData, cursorAmount } = useAccountGraph([account]);
 
@@ -138,6 +138,12 @@ export const AccountProperties = ({ account }: Props) => {
     const params = new URLSearchParams();
     params.append("account_id", account_id);
     router.go(PATH.SNAPSHOTS, { params });
+  };
+
+  const onClickImportPlanStatement = () => {
+    const params = new URLSearchParams();
+    params.append("account_id", account_id);
+    router.go(PATH.PLAN_STATEMENT_IMPORT, { params });
   };
 
   const latestViewDate = new ViewDate(viewDate.getInterval());
@@ -265,6 +271,11 @@ export const AccountProperties = ({ account }: Props) => {
             {type === AccountType.Investment && (
               <ButtonRow onClick={onClickAddInvestmentTransaction}>
                 Add&nbsp;Investment&nbsp;Transaction
+              </ButtonRow>
+            )}
+            {isManualAccount && type === AccountType.Investment && (
+              <ButtonRow onClick={onClickImportPlanStatement}>
+                Import&nbsp;Plan&nbsp;Statement
               </ButtonRow>
             )}
           </Property>

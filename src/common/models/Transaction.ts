@@ -1,4 +1,6 @@
 import {
+  InvestmentTransactionSubtype,
+  InvestmentTransactionType,
   Location,
   PaymentMeta,
   Transaction as PlaidTransaction,
@@ -7,7 +9,7 @@ import {
   TransactionPaymentChannelEnum,
   TransactionTransactionTypeEnum,
   InvestmentTransaction as PlaidInvestmentTransaction,
-} from "plaid";
+} from "../lib/plaid-enums";
 
 export interface JSONTransactionLabel {
   budget_id?: string | null;
@@ -23,7 +25,13 @@ export interface JSONTransactionLabel {
   category_confidence?: number | null;
 }
 
-export interface JSONTransaction extends PlaidTransaction {
+// The three enum-typed fields are Omit-ted from the SDK interface and
+// redeclared below with the local unions (see plaid-enums.ts): a local
+// union is not assignable to the SDK enum, so inheriting them would make
+// the redeclarations below a type error.
+export interface JSONTransaction
+  extends Omit<PlaidTransaction, "transaction_type" | "payment_channel" | "transaction_code">
+{
   transaction_type?: TransactionTransactionTypeEnum;
   pending_transaction_id: string | null;
   category_id: string | null;
@@ -75,7 +83,52 @@ export interface JSONTransferPair {
   updated?: string | null;
 }
 
-export interface JSONInvestmentTransaction extends PlaidInvestmentTransaction {
+export type RecurringStatus = "suggested" | "confirmed" | "dismissed";
+
+export type RecurringCadence =
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "quarterly"
+  | "semiannual"
+  | "annual";
+
+/** A recurring's default budget/category. Its transactions take this label
+ *  while it's confirmed, except ones the user labeled differently. */
+export interface JSONRecurringLabel {
+  budget_id: string | null;
+  category_id: string | null;
+}
+
+/** A fixed share of each charge joining a recurring, split off with its own
+ *  label. `amount` is unsigned; the split takes the charge's sign. */
+export interface JSONRecurringSplit {
+  amount: number;
+  label: JSONRecurringLabel;
+}
+
+export interface JSONRecurring {
+  recurring_id: string;
+  merchant_key: string;
+  merchant_name: string;
+  cadence: RecurringCadence;
+  is_income: boolean;
+  status: RecurringStatus;
+  transaction_ids: string[];
+  label: JSONRecurringLabel;
+  splits: JSONRecurringSplit[];
+  updated?: string | null;
+}
+
+// `type` / `subtype` are Omit-ted from the SDK interface and redeclared
+// with the local unions (see plaid-enums.ts): a local union is not
+// assignable to the SDK enum, so inheriting them would make the
+// redeclarations below a type error.
+export interface JSONInvestmentTransaction
+  extends Omit<PlaidInvestmentTransaction, "type" | "subtype">
+{
+  type: InvestmentTransactionType;
+  subtype: InvestmentTransactionSubtype;
   /**
    * Represents relations by pair of budget_id and category_id
    */

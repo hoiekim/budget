@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, mockClientQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const {
   addRejectedCategory,
@@ -21,7 +21,7 @@ const fakeUser = () =>
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 const fakeRow = (overrides: Record<string, unknown> = {}) => ({
@@ -33,7 +33,7 @@ const fakeRow = (overrides: Record<string, unknown> = {}) => ({
 });
 
 // NOTE — All assertions in this file are SQL-string shape checks against
-// the mocked pg pool. They document the contracts the helpers are
+// the mocked pool. They document the contracts the helpers are
 // designed to produce; behavioral coverage of the composite-PK UPSERT
 // happens at the live sandbox spin (per the PR's verification step).
 // Stage 2 will replace these with integration tests once the table is
@@ -41,12 +41,12 @@ const fakeRow = (overrides: Record<string, unknown> = {}) => ({
 
 describe("addRejectedCategory [SQL-shape]", () => {
   test("INSERT … ON CONFLICT DO UPDATE refreshes rejected_at — composite-PK upsert", async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [fakeRow({ rejected_at: "now" })],
       rowCount: 1,
     }));
     const result = await addRejectedCategory(fakeUser(), "tx-1", "cat-A");
-    const [sql, values] = mockQuery.mock.calls[0];
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/INSERT INTO rejected_categories/);
     expect(sql).toMatch(
       /\(\s*transaction_id,\s+user_id,\s+category_id\s*\)\s*VALUES\s*\(\$1,\s*\$2,\s*\$3\)/,
@@ -62,9 +62,9 @@ describe("addRejectedCategory [SQL-shape]", () => {
 
 describe("removeRejectedCategory [SQL-shape]", () => {
   test("DELETE scoped on (user_id, transaction_id, category_id) — used when user changes their mind", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 }));
     const n = await removeRejectedCategory(fakeUser(), "tx-1", "cat-A");
-    const [sql, values] = mockQuery.mock.calls[0];
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/DELETE FROM rejected_categories/);
     expect(sql).toMatch(/user_id\s*=\s*\$1/);
     expect(sql).toMatch(/transaction_id\s*=\s*\$2/);
@@ -74,7 +74,7 @@ describe("removeRejectedCategory [SQL-shape]", () => {
   });
 
   test("returns 0 when no row matched", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
     const n = await removeRejectedCategory(fakeUser(), "tx-nope", "cat-nope");
     expect(n).toBe(0);
   });
@@ -84,18 +84,18 @@ describe("migrateRejectedCategoriesOnPendingPosted [SQL-shape]", () => {
   test("no-op when pending and posted ids match — guards against accidental no-op transitions", async () => {
     const n = await migrateRejectedCategoriesOnPendingPosted("tx-same", "tx-same");
     expect(n).toBe(0);
-    expect(mockClientQuery).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("transaction wraps BEGIN / INSERT-with-conflict / DELETE / COMMIT", async () => {
     // 4 queries: BEGIN, INSERT, DELETE, COMMIT. Plus the connect call.
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 })); // INSERT
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 })); // DELETE
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // COMMIT
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 })); // INSERT
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 })); // DELETE
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // COMMIT
     const n = await migrateRejectedCategoriesOnPendingPosted("PENDING-1", "POSTED-1");
 
-    const sqls = mockClientQuery.mock.calls.map((c) => c[0]);
+    const sqls = mockReservedUnsafe.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toMatch(/^BEGIN$/);
     expect(sqls[1]).toMatch(/INSERT INTO rejected_categories/);
     expect(sqls[1]).toMatch(/SELECT\s+\$1,\s+user_id,\s+category_id,\s+rejected_at/);
@@ -107,55 +107,55 @@ describe("migrateRejectedCategoriesOnPendingPosted [SQL-shape]", () => {
     expect(sqls[3]).toMatch(/^COMMIT$/);
 
     // INSERT values: ($1=posted, $2=pending)
-    expect(mockClientQuery.mock.calls[1][1]).toEqual(["POSTED-1", "PENDING-1"]);
+    expect(mockReservedUnsafe.mock.calls[1][1]).toEqual(["POSTED-1", "PENDING-1"]);
     // DELETE values: ($1=pending)
-    expect(mockClientQuery.mock.calls[2][1]).toEqual(["PENDING-1"]);
+    expect(mockReservedUnsafe.mock.calls[2][1]).toEqual(["PENDING-1"]);
 
     expect(n).toBe(3);
   });
 
   test("rolls back if the INSERT throws — no partial state left behind", async () => {
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
-    mockClientQuery.mockImplementationOnce(async () => {
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
+    mockReservedUnsafe.mockImplementationOnce(async () => {
       throw new Error("simulated INSERT failure");
     });
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
     await expect(
       migrateRejectedCategoriesOnPendingPosted("PENDING-1", "POSTED-1"),
     ).rejects.toThrow(/simulated INSERT failure/);
-    const sqls = mockClientQuery.mock.calls.map((c) => c[0]);
+    const sqls = mockReservedUnsafe.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toMatch(/^BEGIN$/);
     expect(sqls[2]).toMatch(/^ROLLBACK$/);
   });
 
   test("rolls back if the DELETE throws AFTER a successful INSERT — multi-step guarantee", async () => {
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 2 })); // INSERT ok
-    mockClientQuery.mockImplementationOnce(async () => {
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 2 })); // INSERT ok
+    mockReservedUnsafe.mockImplementationOnce(async () => {
       throw new Error("simulated DELETE failure");
     });
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
     await expect(
       migrateRejectedCategoriesOnPendingPosted("PENDING-1", "POSTED-1"),
     ).rejects.toThrow(/simulated DELETE failure/);
-    const sqls = mockClientQuery.mock.calls.map((c) => c[0]);
+    const sqls = mockReservedUnsafe.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toMatch(/^BEGIN$/);
     expect(sqls[1]).toMatch(/INSERT INTO rejected_categories/);
     expect(sqls[3]).toMatch(/^ROLLBACK$/);
   });
 
   test("rolls back if the COMMIT itself throws — last-step failure can't leave an open txn", async () => {
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 })); // INSERT
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 })); // DELETE
-    mockClientQuery.mockImplementationOnce(async () => {
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // BEGIN
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 })); // INSERT
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 1 })); // DELETE
+    mockReservedUnsafe.mockImplementationOnce(async () => {
       throw new Error("simulated COMMIT failure");
     });
-    mockClientQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
+    mockReservedUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 })); // ROLLBACK
     await expect(
       migrateRejectedCategoriesOnPendingPosted("PENDING-1", "POSTED-1"),
     ).rejects.toThrow(/simulated COMMIT failure/);
-    const sqls = mockClientQuery.mock.calls.map((c) => c[0]);
+    const sqls = mockReservedUnsafe.mock.calls.map((c) => c[0]);
     expect(sqls[0]).toMatch(/^BEGIN$/);
     expect(sqls[3]).toMatch(/^COMMIT$/);
     expect(sqls[4]).toMatch(/^ROLLBACK$/);
@@ -166,11 +166,11 @@ describe("getRejectedCategoriesForTransactions [SQL-shape]", () => {
   test("short-circuits when transaction_ids is empty (no DB call)", async () => {
     const result = await getRejectedCategoriesForTransactions(fakeUser(), []);
     expect(result).toEqual([]);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("user_id in WHERE, transaction_ids passed via IN, ORDER BY ensures stable read order", async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [fakeRow({ transaction_id: "tx-1" }), fakeRow({ transaction_id: "tx-2" })],
       rowCount: 2,
     }));
@@ -179,7 +179,7 @@ describe("getRejectedCategoriesForTransactions [SQL-shape]", () => {
       "tx-2",
       "tx-3",
     ]);
-    const [sql, values] = mockQuery.mock.calls[0];
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toContain("FROM rejected_categories");
     expect(sql).toContain("user_id");
     expect(sql).toContain("transaction_id");
@@ -193,7 +193,7 @@ describe("getRejectedCategoriesForTransactions [SQL-shape]", () => {
   });
 
   test("model maps row → toJSON shape with rejected_at preserved", async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [fakeRow({ rejected_at: "2026-06-09T13:00:00Z" })],
       rowCount: 1,
     }));

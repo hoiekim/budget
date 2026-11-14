@@ -1,4 +1,4 @@
-import { PlaidError, Products } from "plaid";
+import { PlaidError, Products } from "../lib/plaid-enums";
 
 export enum ItemStatus {
   OK = "ok",
@@ -45,3 +45,11 @@ export interface JSONItem {
    */
   last_sync_error?: string;
 }
+
+/**
+ * The shape of an item as serialized to the browser. `access_token` is a
+ * long-lived server-side credential (the Plaid production access token, or
+ * the SimpleFin access URL with embedded HTTP Basic credentials) and is
+ * never sent to the client.
+ */
+export type JSONClientItem = Omit<JSONItem, "access_token">;

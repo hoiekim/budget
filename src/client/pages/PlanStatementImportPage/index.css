@@ -1,0 +1,28 @@
+div.PlanStatementImportPage label.fileInput {
+  cursor: pointer;
+  text-align: right;
+}
+
+div.PlanStatementImportPage label.fileInput > input {
+  display: none;
+}
+
+div.PlanStatementImportPage label.fileInput > span {
+  text-decoration: underline;
+}
+
+div.PlanStatementImportPage .row.fundNote {
+  color: var(--textMuted);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+div.PlanStatementImportPage .row.statementRow {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+div.PlanStatementImportPage .row.button > button:disabled {
+  color: var(--textMuted);
+  cursor: default;
+}

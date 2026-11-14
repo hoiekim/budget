@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { rejectTransferRoute } = await import("./reject\-transfer");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -56,48 +56,64 @@ describe("reject-transfer", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects missing id query param", async () => {
     const result = await rejectTransferRoute.execute(makeReq({}), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects empty id query param", async () => {
     const result = await rejectTransferRoute.execute(makeReq({ id: "   " }), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects array id query param (?id=a&id=b)", async () => {
     const result = await rejectTransferRoute.execute(makeReq({ id: ["a", "b"] }), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("happy path returns success and pins user_id into the WHERE clause", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-    const result = await rejectTransferRoute.execute(makeReq({ id: "p-1" }), fakeRes());
-    expect(result?.status).toBe("success");
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockQuery.mock.calls[0];
-    expect(sql).toMatch(/UPDATE transaction_pairs/i);
-    expect(sql).toMatch(/user_id/);
-    expect(values).toContain("p-1");
-    expect(values).toContain("u-1");
-  });
-
-  test("cross-user delete: the route forwards the session user_id, never a client value", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
     const result = await rejectTransferRoute.execute(
-      makeReq({ id: "p-belongs-to-B" }, { user: { user_id: "u-A", username: "a" } }),
+      makeReq({ id: "a8e9c6d4-1234-4abc-8def-0123456789ab" }),
       fakeRes(),
     );
     expect(result?.status).toBe("success");
-    const [, values] = mockQuery.mock.calls[0];
-    expect(values).toContain("p-belongs-to-B");
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql, values] = mockUnsafe.mock.calls[0];
+    expect(sql).toMatch(/UPDATE transaction_pairs/i);
+    expect(sql).toMatch(/user_id/);
+    expect(values).toContain("a8e9c6d4-1234-4abc-8def-0123456789ab");
+    expect(values).toContain("u-1");
+  });
+
+  test("rejects a non-UUID id at the boundary — never reaches the DB", async () => {
+    const result = await rejectTransferRoute.execute(
+      makeReq({ id: "not-a-uuid" }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/id must be a uuid/);
+    expect(mockUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("cross-user delete: the route forwards the session user_id, never a client value", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await rejectTransferRoute.execute(
+      makeReq(
+        { id: "b7d8a5c3-2345-4bcd-9efa-1234567890cd" },
+        { user: { user_id: "u-A", username: "a" } },
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    const [, values] = mockUnsafe.mock.calls[0];
+    expect(values).toContain("b7d8a5c3-2345-4bcd-9efa-1234567890cd");
     expect(values).toContain("u-A");
     expect(values).not.toContain("u-B");
   });

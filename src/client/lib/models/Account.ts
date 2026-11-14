@@ -3,8 +3,15 @@ import {
   AccountSubtype,
   AccountBaseVerificationStatusEnum,
   AccountBalance,
-} from "plaid";
-import { getRandomId, assign, JSONAccount, AccountLabel, AccountGraphOptions } from "common";
+} from "common/lib/plaid-enums";
+import {
+  getRandomId,
+  assign,
+  JSONAccount,
+  AccountLabel,
+  AccountGraphOptions,
+  PlanFundMapping,
+} from "common";
 
 export class Account implements JSONAccount {
   get id() {
@@ -23,7 +30,11 @@ export class Account implements JSONAccount {
   mask: string | null = null;
   name: string = "Unknown";
   official_name: string | null = null;
-  type = AccountType.Other;
+  // Explicit annotation: without it the field infers the literal type of
+  // the default (`"other"`), and every comparison against another member
+  // reads as a no-overlap error. The same applies to the other enum
+  // defaults in this file's sibling models.
+  type: AccountType = AccountType.Other;
   subtype: AccountSubtype | null = null;
   verification_status?: AccountBaseVerificationStatusEnum;
   institution_id: string = "Unknown";
@@ -58,6 +69,8 @@ export class Account implements JSONAccount {
     useHoldingSnapshots: true,
     useTransactions: true,
   };
+  /** How each fund in this account's plan statements maps to a security. */
+  plan_fund_mappings?: PlanFundMapping[];
 
   constructor(init?: Partial<Account>) {
     assign(this, init);

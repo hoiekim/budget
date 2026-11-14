@@ -1,6 +1,6 @@
 // Run with: bun test --preload ./scripts/test-preload.ts filter.test.ts
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 
 import {
   isAcceptableSuggestion,
@@ -13,8 +13,8 @@ import type { TransactionsPageType } from "client/components";
 import { Transaction } from "../../lib/models/Transaction";
 import { SplitTransaction } from "../../lib/models/SplitTransaction";
 import { InvestmentTransaction } from "../../lib/models/InvestmentTransaction";
-import { TransferDictionary } from "../../lib/models/Data";
-import type { TransferPair } from "server";
+import { RecurringDictionary, TransferDictionary } from "../../lib/models/Data";
+import type { Recurring, TransferPair } from "server";
 
 // Thin per-test wrapper around the class API so the assertions stay in
 // the `predicate(row, types, ctx)` shape. Each call constructs its own
@@ -279,10 +279,18 @@ describe("TypePredicates.any — investment branch", () => {
   const mkInv = (amount: number): InvestmentTransaction =>
     new InvestmentTransaction({
       account_id: investAccount,
-      type: InvestmentTransactionType.Buy,
+      type: InvestmentTransactionType.Cash,
+      subtype: InvestmentTransactionSubtype.Deposit,
+      amount,
+      date: "2026-02-15",
+    });
+  const mkTrade = (type: InvestmentTransactionType, amount: number): InvestmentTransaction =>
+    new InvestmentTransaction({
+      account_id: investAccount,
+      type,
       subtype: InvestmentTransactionSubtype.Buy,
-      quantity: 1,
-      price: amount,
+      quantity: amount / 25,
+      price: 25,
       amount,
       date: "2026-02-15",
     });
@@ -302,6 +310,17 @@ describe("TypePredicates.any — investment branch", () => {
     expect(investMatch(mkInv(50), ["expenses"])).toBe(true);
     expect(investMatch(mkInv(50), ["deposits"])).toBe(false);
     expect(investMatch(mkInv(-50), ["deposits"])).toBe(true);
+  });
+  test("a buy or sell is neither a deposit nor an expense, whichever way its amount is signed", () => {
+    const trades = [InvestmentTransactionType.Buy, InvestmentTransactionType.Sell].flatMap((type) =>
+      [50, -50].map((amount) => mkTrade(type, amount)),
+    );
+    const matches = trades.map((t) => [
+      investMatch(t, ["deposits"]),
+      investMatch(t, ["expenses"]),
+      investMatch(t, []),
+    ]);
+    expect(matches).toEqual(trades.map(() => [false, false, true]));
   });
   test("mixed (sign + non-sign): sign rules; non-sign always false", () => {
     expect(investMatch(mkInv(50), ["expenses", "transfers"])).toBe(true);
@@ -462,5 +481,29 @@ describe("matchesAnySelectedType — manual", () => {
     const plaidDeposit = mkTxn("t1", "plaid");
     plaidDeposit.amount = -5;
     expect(matchesAnySelectedType(plaidDeposit, ["manual", "deposits"], makeCtx())).toBe(true);
+  });
+});
+
+describe("recurring filter", () => {
+  const recurringCtx = (memberIds: string[]): FilterContext => ({
+    transfers: new TransferDictionary(),
+    recurrings: new RecurringDictionary([
+      [
+        "r1",
+        {
+          recurring_id: "r1",
+          status: "confirmed",
+          transactions: memberIds.map((id) => ({ transaction_id: id }) as never),
+        } as Recurring,
+      ],
+    ]),
+  });
+
+  test("a member transaction and its splits match; another transaction's split doesn't", () => {
+    const ctx = recurringCtx(["t1"]);
+    expect(matchesAnySelectedType(makeTxn("t1", 10), ["recurring"], ctx)).toBe(true);
+    expect(matchesAnySelectedType(makeSplit("s1", "t1", 3), ["recurring"], ctx)).toBe(true);
+    expect(matchesAnySelectedType(makeSplit("s2", "t2", 3), ["recurring"], ctx)).toBe(false);
+    expect(matchesAnySelectedType(makeTxn("t2", 10), ["recurring"], ctx)).toBe(false);
   });
 });

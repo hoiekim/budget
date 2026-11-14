@@ -3,7 +3,7 @@
 // (searchSecuritiesById / getSecuritySnapshots / upsertSnapshots /
 // getClosePrice). The function now calls into the real repositories
 // and `polygon.getClosePrice` directly; the bundle inlines all of
-// that, so we leaf-mock `pg` for the DB layer and `globalThis.fetch`
+// that, so we leaf-mock the SQL driver for the DB layer and `globalThis.fetch`
 // for polygon. The bundle's polygon module reads
 // `process.env.POLYGON_API_KEY` / `POLYGON_RATE_LIMIT_PER_MIN` on
 // every call, so we set them BEFORE importing the bundle to ensure:
@@ -14,20 +14,18 @@
 //
 // index.ts) so this file's `globalThis.fetch` override and env-var
 // writes would otherwise leak to every subsequent test file.
-// `restoreLeaves` puts `fetch` back; the env originals are snapshotted
+// `restoreLeaves` puts `fetch` and the env back from the preload's snapshots
 // below and restored alongside it.
-const originalApiKey = process.env.POLYGON_API_KEY;
-const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
 
 process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
 const mockFetch = mock(
   async (_url: string | URL | Request, _init?: RequestInit): Promise<Response> =>
@@ -38,13 +36,6 @@ globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 const { backfillMonthlySecuritySnapshotsForward } = await import("./backfill\-snapshots");
 
 afterAll(restoreLeaves);
-
-afterAll(() => {
-  if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
-  else process.env.POLYGON_API_KEY = originalApiKey;
-  if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
-  else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
-});
 
 /**
  * Per-test routing for SQL. The repositories layer fires:
@@ -119,8 +110,8 @@ const enqueueFetch = (responder: (url: string) => Response | Promise<Response>) 
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   securitiesRows = [];
   snapshotsRows = [];
 
@@ -156,7 +147,7 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     const result = await backfillMonthlySecuritySnapshotsForward([]);
     expect(result).toEqual({ filled: 0, skipped: 0, empty: 0, errors: 0 });
     // No DB or polygon traffic on the empty path.
-    expect(mockQuery).toHaveBeenCalledTimes(0);
+    expect(mockUnsafe).toHaveBeenCalledTimes(0);
     expect(polygonCalls()).toHaveLength(0);
   });
 
@@ -242,7 +233,7 @@ describe("backfillMonthlySecuritySnapshotsForward", () => {
     expect(result.filled).toBe(0);
     expect(polygonCalls()).toHaveLength(0);
     // searchSecuritiesById still SELECTs the security; getSecuritySnapshots is NOT called.
-    const snapshotSelects = mockQuery.mock.calls.filter((c) =>
+    const snapshotSelects = mockUnsafe.mock.calls.filter((c) =>
       /\bFROM\s+snapshots\b/i.test(c[0] as string),
     );
     expect(snapshotSelects).toHaveLength(0);

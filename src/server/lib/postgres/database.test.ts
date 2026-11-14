@@ -140,7 +140,7 @@ describe("buildUpdate", () => {
     });
     expect(q).not.toBeNull();
     expect(q!.sql).toBe(
-      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1, note = $2 WHERE id = $3",
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1, note = $2 WHERE id = $3 AND (is_deleted IS NULL OR is_deleted = FALSE)",
     );
     expect(q!.values).toEqual([10, "x", "t1"]);
   });
@@ -157,7 +157,7 @@ describe("buildUpdate", () => {
       amount: 5,
     });
     expect(q!.sql).toBe(
-      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2",
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND (is_deleted IS NULL OR is_deleted = FALSE)",
     );
     expect(q!.values).toEqual([5, "t1"]);
   });
@@ -173,7 +173,7 @@ describe("buildUpdate", () => {
       },
     );
     expect(q!.sql).toBe(
-      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND label_category_confidence = $3",
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND label_category_confidence = $3 AND (is_deleted IS NULL OR is_deleted = FALSE)",
     );
     expect(q!.values).toEqual([5, "t1", 1]);
   });
@@ -192,7 +192,7 @@ describe("buildUpdate", () => {
       },
     );
     expect(q!.sql).toBe(
-      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND label_category_id IS NULL AND merchant_name IS NOT NULL",
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2 AND label_category_id IS NULL AND merchant_name IS NOT NULL AND (is_deleted IS NULL OR is_deleted = FALSE)",
     );
     expect(q!.values).toEqual([5, "t1"]);
   });
@@ -208,9 +208,17 @@ describe("buildUpdate", () => {
     expect(q!.sql.endsWith("RETURNING id")).toBe(true);
   });
 
-  it("omits the live-row predicate by default — an update is also how a row is restored", () => {
+  it("includes the live-row predicate by default — exclusion is the default, inclusion is opt-in", () => {
     const q = buildUpdate("transactions", "id", "t1", { amount: 5 });
-    expect(q!.sql).not.toContain("is_deleted");
+    expect(q!.sql).toContain("is_deleted");
+    const optOut = buildUpdate(
+      "transactions",
+      "id",
+      "t1",
+      { amount: 5 },
+      { excludeDeleted: false },
+    );
+    expect(optOut!.sql).not.toContain("is_deleted");
   });
 
   it("appends the live-row predicate for excludeDeleted without consuming a param", () => {
@@ -415,6 +423,21 @@ describe("buildSelectWithFilters", () => {
       excludeDeleted: false,
     });
     expect(values).toEqual(["2026-01-01", "2026-02-01"]);
+  });
+
+  it("adds a keyset bound after the other conditions, ahead of ORDER BY and LIMIT", () => {
+    const { sql, values } = buildSelectWithFilters("transactions", "*", {
+      user_id: "u1",
+      after: { column: "transaction_id", value: "t-500" },
+      orderBy: "transaction_id",
+      limit: 500,
+      excludeDeleted: true,
+    });
+    expect(sql).toBe(
+      `SELECT * FROM transactions WHERE user_id = $1 AND ${SOFT_DELETE_CONDITION}` +
+        " AND transaction_id > $2 ORDER BY transaction_id LIMIT $3",
+    );
+    expect(values).toEqual(["u1", "t-500", 500]);
   });
 
   it("places ORDER BY, LIMIT, and OFFSET after the WHERE clause with trailing params", () => {

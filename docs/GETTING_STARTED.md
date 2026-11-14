@@ -47,13 +47,13 @@ The app will be available at http://localhost:3005.
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in values:
+Copy `.env.example` to `.env.local` and fill in values. `Required` means the value must be set for the deployment to work as described — a `No` row works unset via the documented default or fallback:
 
 | Variable | Required | Description |
 |---|---|---|
 | `ADMIN_PASSWORD` | Yes | Password for the admin user. Unset falls back to the literal `budget`, the credential published for the public demo instance, so a private deployment must set it. |
 | `DEMO_PASSWORD` | Yes | Password for the `demo` user, which is created on every startup alongside `admin`. Unset falls back to the literal `budget`, the credential published for the public demo instance, so a private deployment must set it. |
-| `POSTGRES_HOST` | Yes | Address to your PostgreSQL server |
+| `POSTGRES_HOST` | No | Address of your PostgreSQL server (default: `localhost`) |
 | `POSTGRES_PORT` | No | PostgreSQL port (default: 5432) |
 | `POSTGRES_USER` | No | PostgreSQL user |
 | `POSTGRES_PASSWORD` | No | PostgreSQL password |
@@ -67,9 +67,8 @@ Copy `.env.example` to `.env.local` and fill in values:
 | `POLYGON_RATE_LIMIT_PER_MIN` | No | Cap on outbound Polygon requests per minute (default: 5, which matches the free tier). `0` disables the gate. |
 | `BLS_API_KEY` | No | Bureau of Labor Statistics registration key for the CPI history behind the projection chart's auto inflation rate. Without it the keyless v1 API is used (the job spends at most 10 of its 25 requests/day); with it, v2 (at most 50 of 500/day). |
 | `PORT` | No | HTTP port the server listens on (default: 3005) |
+| `NODE_ENV` | No | `production` turns on the production posture: the session cookie carries `Secure`, API route responses carry `Strict-Transport-Security`, and logs are JSON lines. Read at runtime, so a prebuilt image takes it from the deployment's environment. Set it only behind HTTPS — off localhost, browsers refuse a `Secure` cookie over plain HTTP, so login stops working. |
 | `LOG_LEVEL` | No | Log verbosity, one of `debug`, `info`, `warn` or `error` (default: `info`, or `error` when `NODE_ENV=test`) |
 | `DISCORD_ALARM_WEBHOOK` | No | Discord webhook URL for server error alerts |
 
 > **Plaid is all-or-nothing.** The integration turns on only when `PLAID_CLIENT_ID` and `PLAID_SECRET_SANDBOX` are both set **and** at least one of `PLAID_SECRET_PRODUCTION` or `PLAID_SECRET_DEVELOPMENT` is set. Any other combination leaves Plaid off for every user, with one `Plaid is not configured` warning at startup and every authenticated link-token request failing with `Plaid integration is not configured on this server.`
-
-> **Note on `NODE_ENV`:** Bun bakes `NODE_ENV` at build time into the output bundle. Setting it via `docker run -e` at runtime has no effect — configure environment-dependent behavior through other env vars.

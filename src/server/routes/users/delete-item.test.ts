@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { deleteItemRoute } = await import("./delete\-item");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(
@@ -80,19 +80,19 @@ describe("delete-item", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects missing id query param", async () => {
     const result = await deleteItemRoute.execute(makeReq({}), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/Missing required parameter: id/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("cross-user attempt: item not in caller's items → 'not owned' failure", async () => {
     // User u-1 asks to delete an item that returns no rows in their scope.
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await deleteItemRoute.execute(
       makeReq({ id: "i-belongs-to-other" }),
@@ -101,16 +101,16 @@ describe("delete-item", () => {
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not owned by the request user/);
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
     // SELECT was scoped to the caller's user_id — pinned at the SQL layer
     // by `WHERE user_id = $N`.
-    const [, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+    const [, values] = mockUnsafe.mock.calls[0] as [string, unknown[]];
     expect(values).toContain("u-1");
   });
 
   test("item exists but for a different item_id → 'not owned' failure", async () => {
     // Caller owns i-A, but requests deletion of i-B.
-    mockQuery.mockResolvedValueOnce({
+    mockUnsafe.mockResolvedValueOnce({
       rows: [makeItemRow({ item_id: "i-A" })],
       rowCount: 1,
     });

@@ -1,6 +1,6 @@
 // Run with: bun test --preload ./test-preload.ts holdings.test.ts
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 
 import {
   buildSecurityPriceIndex,
@@ -300,6 +300,64 @@ describe("getPriceForHolding", () => {
 });
 
 describe("inferCostBasis", () => {
+  // Average cost divides by the shares held, so a sale arriving with no
+  // position behind it — its buy predating the fetched window — divides by
+  // zero. The NaN survives every later buy and spreads to the whole chart.
+  test("a sale with no position behind it leaves later buys intact, not NaN", () => {
+    const transactions = new InvestmentTransactionDictionary();
+    transactions.set(
+      "tx1",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 100, -5, "2026-01-10"),
+    );
+    transactions.set(
+      "tx2",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 10, 10, "2026-01-12"),
+    );
+
+    const result = inferCostBasis({
+      accountId: "acc1",
+      securityId: "sec1",
+      investmentTransactions: transactions,
+      asOfDate: new Date("2026-01-20"),
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.costBasis).toBe(100);
+    expect(result!.totalQuantity).toBe(10);
+  });
+
+  // A sale can only take out basis the position actually holds; the rest
+  // belongs to shares bought before the window and never recorded. Left
+  // negative, that debt is carried against the next purchase — so the later
+  // buy is what shows whether the floor held, since an emptied position
+  // reports nothing either way.
+  test("a sale larger than the position takes it to zero, and no debt carries forward", () => {
+    const transactions = new InvestmentTransactionDictionary();
+    transactions.set(
+      "tx1",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 100, 5, "2026-01-10"),
+    );
+    transactions.set(
+      "tx2",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Sell, 100, -50, "2026-01-15"),
+    );
+    transactions.set(
+      "tx3",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 10, 10, "2026-01-18"),
+    );
+
+    const result = inferCostBasis({
+      accountId: "acc1",
+      securityId: "sec1",
+      investmentTransactions: transactions,
+      asOfDate: new Date("2026-01-20"),
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.costBasis).toBe(100);
+    expect(result!.totalQuantity).toBe(10);
+  });
+
   test("should calculate cost basis from buy transactions", () => {
     const transactions = new InvestmentTransactionDictionary();
     transactions.set(
@@ -508,6 +566,47 @@ describe("getHoldingsValueData", () => {
 
     const costBasis = result.getHoldingCostBasis("acc1_sec1", new Date("2026-01-20"));
     expect(costBasis).toBe(900); // 90 * 10
+  });
+
+  test("a derived snapshot with an unknown cost isn't re-priced from buys alone", () => {
+    // 100 units entered with no cost, then a 10-unit contribution. The server
+    // writes every later snapshot with an unknown cost; the 100 entered units
+    // have no buys behind them, so pricing only the contribution would show
+    // them as pure gain.
+    const derived = (id: string, quantity: number, date: string) =>
+      new HoldingSnapshot({
+        snapshot: { snapshot_id: `derived-holding-acc1-sec1-${id}`, date },
+        holding: {
+          account_id: "acc1",
+          security_id: "sec1",
+          quantity,
+          institution_price: 10,
+          institution_value: quantity * 10,
+          cost_basis: null,
+          holding_id: "acc1_sec1",
+        },
+      });
+    const holdingSnapshots = new HoldingSnapshotDictionary();
+    holdingSnapshots.set("entered", createHoldingSnapshot("acc1", "sec1", 100, 10, 1000, null, "2026-01-02"));
+    holdingSnapshots.set("d1", derived("20260305-a", 110, "2026-03-05T12:00:00Z"));
+    holdingSnapshots.set("d2", derived("20260401-b", 110, "2026-04-01T12:00:00Z"));
+    const investmentTransactions = new InvestmentTransactionDictionary();
+    investmentTransactions.set(
+      "tx1",
+      createInvestmentTransaction("acc1", "sec1", InvestmentTransactionType.Buy, 10, 10, "2026-03-05"),
+    );
+
+    const result = getHoldingsValueData({
+      holdingSnapshots,
+      securitySnapshots: new SecuritySnapshotDictionary(),
+      securities: new SecurityDictionary(),
+      investmentTransactions,
+    });
+
+    for (const month of ["2026-03-15", "2026-04-15"]) {
+      expect(result.getHoldingCostBasis("acc1_sec1", new Date(month))).toBeNull();
+      expect(result.getHoldingUnrealizedGain("acc1_sec1", new Date(month))).toBeNull();
+    }
   });
 
   test("classifies a holding with institution_price=1 as cash (yields 0% gain)", () => {

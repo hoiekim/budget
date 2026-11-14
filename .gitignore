@@ -24,3 +24,9 @@ bun.lock
 
 .items
 es_data.json
+
+# Tool-specific agent files; each contributor sets up their own, pointing at AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+GEMINI.md
+.claude/

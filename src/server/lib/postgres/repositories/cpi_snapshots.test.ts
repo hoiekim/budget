@@ -1,15 +1,15 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
-mock.module("pg", () => pg);
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
+mock.module("../sql-driver", () => driver);
 
 const { getCpiSnapshots, upsertCpiSnapshots } = await import("./cpi_snapshots");
 const { CpiSnapshotModel, getCpiSnapshotId } = await import("../models");
 
 afterAll(restoreLeaves);
 
-beforeEach(() => resetQueryMocks());
+beforeEach(() => resetSqlMocks());
 
 describe("CpiSnapshotModel", () => {
   test("keys a month by series and YYYY-MM so a re-fetch upserts the same row", () => {
@@ -56,7 +56,7 @@ describe("CpiSnapshotModel", () => {
 
 describe("cpi_snapshots repository", () => {
   test("getCpiSnapshots filters by series and orders oldest first", async () => {
-    mockQuery.mockImplementationOnce(async () => ({
+    mockUnsafe.mockImplementationOnce(async () => ({
       rows: [
         {
           cpi_snapshot_id: "CUUR0000SA0-2026-09",
@@ -72,7 +72,7 @@ describe("cpi_snapshots repository", () => {
     expect(rows).toEqual([
       { series_id: "CUUR0000SA0", date: "2026-09-01", value: 324.5, updated: null },
     ]);
-    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+    const [sql, values] = mockUnsafe.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/SELECT \* FROM cpi_snapshots/);
     expect(sql).toMatch(/series_id = \$1/);
     expect(sql).toMatch(/ORDER BY snapshot_date ASC/);
@@ -81,14 +81,14 @@ describe("cpi_snapshots repository", () => {
   });
 
   test("upsertCpiSnapshots writes every month in one statement and re-stamps updated", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [{}, {}], rowCount: 2 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [{}, {}], rowCount: 2 }));
     const written = await upsertCpiSnapshots([
       { series_id: "CUUR0000SA0", date: "2026-08-01", value: 323.9 },
       { series_id: "CUUR0000SA0", date: "2026-09-01", value: 324.5 },
     ]);
     expect(written).toBe(2);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    const [sql] = mockQuery.mock.calls[0] as [string];
+    expect(mockUnsafe).toHaveBeenCalledTimes(1);
+    const [sql] = mockUnsafe.mock.calls[0] as [string];
     expect(sql).toMatch(/INSERT INTO cpi_snapshots/);
     expect(sql).toMatch(/ON CONFLICT \(cpi_snapshot_id\) DO UPDATE SET .*index_value = EXCLUDED\.index_value/);
     expect(sql).toMatch(/updated = CURRENT_TIMESTAMP/);
@@ -96,6 +96,6 @@ describe("cpi_snapshots repository", () => {
 
   test("upsertCpiSnapshots skips the round trip for an empty batch", async () => {
     expect(await upsertCpiSnapshots([])).toBe(0);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

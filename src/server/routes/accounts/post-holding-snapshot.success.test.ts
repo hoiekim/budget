@@ -1,7 +1,7 @@
 // Success / side-effect coverage for POST /snapshots/holding. The sibling
 // `post-holding-snapshot.test.ts` pins the cheap pre-DB validation guards;
 // this file drives the two real modes (update + create) through a SQL-routing
-// fake `pg` Pool so the ownership gate, the re-sync chain, the deterministic
+// fake driver client so the ownership gate, the re-sync chain, the deterministic
 // snapshot_id, and the no-API-key branch are actually exercised — not just the
 // early returns.
 //
@@ -10,14 +10,14 @@
 // only the two SELECTs are scripted (snapshots → holding rows, securities →
 // security rows); everything else falls through to an empty/ok result.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { getSquashedDateString, LocalDate } from "common";
 
 let snapshotRows: Record<string, unknown>[] = [];
 let securityRows: Record<string, unknown>[] = [];
 let accountRows: Record<string, unknown>[] = [];
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _values?: unknown[]) => {
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, _values?: unknown[]) => {
   if (/select[\s\S]*from\s+snapshots/i.test(sql)) {
     return { rows: snapshotRows, rowCount: snapshotRows.length };
   }
@@ -31,14 +31,34 @@ const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string, _val
   return { rows: [{ ok: true }], rowCount: 1 };
 });
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
+
+// `mock.module` is process-global in Bun and `restoreLeaves` only restores the
+// driver / `password` leaves, so spread the real module rather than replacing it —
+// and put it back in `afterAll` (the post-transaction-routes.test.ts pattern)
+// so sibling files sharing the process exercise the real `sendAlarm`.
+const realAlarm = { ...(await import("server/lib/alarm")) };
+
+const mockSendAlarm = mock(async (_title: string, _detail: string, _key?: string) => undefined);
+mock.module("server/lib/alarm", () => ({ ...realAlarm, sendAlarm: mockSendAlarm }));
 
 const { postHoldingSnapshotRoute } = await import("./post\-holding\-snapshot");
 
-afterAll(restoreLeaves);
+afterAll(() => {
+  mock.module("server/lib/alarm", () => realAlarm);
+  restoreLeaves();
+});
 
 beforeEach(() => {
-  clearQueryMocks();
+  // The create path starts a monthly backfill it does not await, so this file
+  // cannot await it either. With no API key every month short-circuits before
+  // reaching `fetch`, and the chain finishes in microtasks instead of
+  // outliving the file and recording its calls against whatever stub the next
+  // file installs. Stated here rather than inherited from the ambient env,
+  // which a leak from an earlier file can make truthy.
+  process.env.POLYGON_API_KEY = "";
+  clearSqlMocks();
+  mockSendAlarm.mockClear();
   snapshotRows = [];
   securityRows = [];
   accountRows = [];
@@ -76,7 +96,7 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof postHoldingSnapshotRoute.execute>[1];
 
 const findCall = (re: RegExp): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (re.test(sql)) return { sql, values: (call[1] ?? []) as unknown[] };
   }
@@ -169,9 +189,9 @@ const accountRow = (overrides: Record<string, unknown> = {}) => ({
 
 describe("post-holding-snapshot update mode", () => {
   test("rejects a snapshot_id the user does not own (ownership gate)", async () => {
-    // getHoldingSnapshots returns the user's snapshots; the requested id is
-    // absent → cross-user access is denied without touching the write path.
-    snapshotRows = [holdingSnapshotRow({ snapshot_id: "owned-by-me" })];
+    // The by-id lookup finds nothing for this id → cross-user access is
+    // denied without touching the write path.
+    snapshotRows = [];
 
     const result = await postHoldingSnapshotRoute.execute(
       makeReq({ snapshot_id: "someone-elses", quantity: 5 }),
@@ -218,6 +238,22 @@ describe("post-holding-snapshot update mode", () => {
     expect(upd!.values).toContain(250);
     expect(upd!.values).toContain("snap-1");
     expect(upd!.values).toContain("u-1");
+
+    // Both snapshots reads are by-id lookups, not full-list fetches: the
+    // ownership check and the post-write re-read each carry the requested
+    // id and the caller, and each answers one row.
+    const selects = mockUnsafe.mock.calls.filter((call) =>
+      /select[\s\S]*from\s+snapshots/i.test(call[0] as string),
+    );
+    expect(selects).toHaveLength(2);
+    for (const call of selects) {
+      const values = (call[1] ?? []) as unknown[];
+      expect(values).toContain("snap-1");
+      expect(values).toContain("u-1");
+      // One row, not the whole list — the limit is a bound parameter.
+      expect(call[0] as string).toMatch(/LIMIT\s+\$\d+/i);
+      expect(values).toContain(1);
+    }
   });
 
   // The date axis the sibling route guards: an unparseable string reaches
@@ -225,7 +261,7 @@ describe("post-holding-snapshot update mode", () => {
   // global alarm pages.
   test("rejects an unparseable snapshot_date instead of throwing past the try", async () => {
     for (const snapshot_date of ["garbage", "2026-13-45x"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       snapshotRows = [holdingSnapshotRow()];
 
       const result = await postHoldingSnapshotRoute.execute(
@@ -241,7 +277,7 @@ describe("post-holding-snapshot update mode", () => {
 
   test("rejects a non-string snapshot_date instead of dropping it from the patch", async () => {
     for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
-      clearQueryMocks();
+      clearSqlMocks();
       snapshotRows = [holdingSnapshotRow()];
 
       const result = await postHoldingSnapshotRoute.execute(
@@ -253,6 +289,47 @@ describe("post-holding-snapshot update mode", () => {
       expect(result?.message).toMatch(/must be a string/i);
       expect(findCall(/update\s+snapshots/i)).toBeNull();
     }
+  });
+
+  test("rejects a non-number patch field before any SQL or alarm", async () => {
+    // The #776 pattern: the numeric patch fields are validated before the
+    // ownership lookup, so a client type error issues no SQL and no alarm.
+    // Without the guard the route reaches the snapshots SELECT and then the
+    // DECIMAL write, so both assertions discriminate.
+    snapshotRows = [holdingSnapshotRow()];
+    for (const [field, value] of [
+      ["quantity", "abc"],
+      ["cost_basis", "abc"],
+      ["institution_price", true],
+      ["institution_value", "abc"],
+    ] as [string, unknown][]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", [field]: value }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(`Field ${field} must be a number`);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("an explicit null patch clears the column instead of failing", async () => {
+    // The four numeric columns are nullable, so null is a legitimate
+    // "clear this field" edit — the spec says so, the write must agree.
+    snapshotRows = [holdingSnapshotRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: null }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const upd = findCall(/update\s+snapshots/i);
+    expect(upd).not.toBeNull();
+    expect(upd!.values).toContain(null);
   });
 
   test("a valid snapshot_date still patches the row", async () => {
@@ -289,6 +366,30 @@ describe("post-holding-snapshot create mode", () => {
     // snapshot_id = `holding-${account_id}-${security_id}-${squashedDate}`.
     const expectedDate = getSquashedDateString(new LocalDate("2024-03-15"));
     expect(result?.body?.snapshot_id).toBe(`holding-acct-9-sec-1-${expectedDate}`);
+  });
+
+  test("a security named by id is used as given, without a ticker lookup", async () => {
+    securityRows = [existingSecurityRow({ security_id: "sec-mapped" })];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-mapped", quantity: 3, snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+
+    const expectedDate = getSquashedDateString(new LocalDate("2024-03-15"));
+    expect(result?.body).toMatchObject({ security_id: "sec-mapped", snapshot_id: `holding-acct-9-sec-mapped-${expectedDate}` });
+    expect(findCall(/from\s+securities[\s\S]*ticker_symbol/i)).toBeNull();
+  });
+
+  test("a security id that doesn't exist is refused", async () => {
+    accountRows = [accountRow()];
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-gone", quantity: 3, snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+    expect(result).toMatchObject({ status: "failed", message: "Security not found." });
+    expect(findCall(/^\s*INSERT INTO snapshots/i)).toBeNull();
   });
 
   test("re-posting the same (account, security, date) reuses the snapshot_id", async () => {
@@ -370,6 +471,33 @@ describe("post-holding-snapshot create mode", () => {
     expect(lookup!.values).toContain("victim-account");
   });
 
+  test("rejects non-number numerics in create mode before any SQL or alarm", async () => {
+    // Same #776 shape as the update-mode test: validation runs before the
+    // ownership lookup, so a bad quantity (or optional numeric) issues no
+    // SQL and no alarm. Without the guard the route reaches the accounts
+    // SELECT and then the DECIMAL write.
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+    for (const [field, value] of [
+      ["quantity", "abc"],
+      ["quantity", true],
+      ["cost_basis", "abc"],
+      ["institution_price", true],
+      ["institution_value", "abc"],
+    ] as [string, unknown][]) {
+      clearSqlMocks();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 3, [field]: value }),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(`Field ${field} must be a number`);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
   test("a create with no snapshot_date defaults to today, not to a fixed instant", async () => {
     securityRows = [existingSecurityRow()];
     accountRows = [accountRow()];
@@ -387,7 +515,7 @@ describe("post-holding-snapshot create mode", () => {
 
   test("rejects an unparseable snapshot_date instead of minting a NaN id", async () => {
     for (const snapshot_date of ["garbage", "2026-13-45x"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       securityRows = [existingSecurityRow()];
       accountRows = [accountRow()];
 
@@ -407,7 +535,7 @@ describe("post-holding-snapshot create mode", () => {
   // a real 1970 snapshot into the user's graph rather than failing.
   test("rejects a non-string snapshot_date instead of reading it as epoch ms", async () => {
     for (const snapshot_date of [20260701, { $ne: null }, ["2024-03-15"]]) {
-      clearQueryMocks();
+      clearSqlMocks();
       securityRows = [existingSecurityRow()];
       accountRows = [accountRow()];
 

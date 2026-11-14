@@ -63,12 +63,11 @@ const RESYNC_JITTER_MS = 2_000;
 const STABLE_CONNECTION_MS = 60_000;
 
 /**
- * Floor between two reconnect-driven `onReconnect` calls. `onReconnect` is a
- * whole-app refetch — O(all data), not O(gap) — so a flapping stream must not
+ * Floor between two `retry-full`-driven `onReconnect` calls. `onReconnect` is
+ * a whole-app refetch — O(all data), not O(gap) — so a flapping stream must not
  * be able to schedule one per flap. Suppressed calls are deferred to the end
- * of the interval, never dropped: each one stands for a gap during which the
- * server broadcast to an empty subscriber set and buffered nothing, so
- * skipping it loses those events for the life of the tab.
+ * of the interval, never dropped: each one stands for a gap the server's buffer
+ * could not replay, so skipping it loses those events for the life of the tab.
  */
 const RESYNC_MIN_INTERVAL_MS = 30_000;
 
@@ -94,7 +93,7 @@ export interface ServerEventsConnectionOptions {
   onEvent: ServerEventHandler;
   onReconnect?: () => void;
   /** Injection seams for the tests; production uses the globals. */
-  createEventSource?: () => EventSource;
+  createEventSource?: (lastEventId: string | null) => EventSource;
   now?: () => number;
   random?: () => number;
 }
@@ -116,7 +115,13 @@ export const createServerEventsConnection = (
     onReconnect,
     // withCredentials sends the session cookie; without it the SSE
     // request is anonymous and the server 401s.
-    createEventSource = () => new EventSource("/api/events", { withCredentials: true }),
+    createEventSource = (lastEventId) =>
+      new EventSource(
+        lastEventId === null
+          ? "/api/events"
+          : `/api/events?last-event-id=${encodeURIComponent(lastEventId)}`,
+        { withCredentials: true },
+      ),
     now = Date.now,
     random = Math.random,
   } = options;
@@ -131,6 +136,13 @@ export const createServerEventsConnection = (
   let warnedExhausted = false;
   let lastResyncAt = 0;
   let disposed = false;
+  // Carried across reconnects by hand: each reconnect is a new EventSource,
+  // which starts with no Last-Event-ID, and without one the server can't
+  // replay the gap and orders a whole-app resync instead.
+  let lastEventId: string | null = null;
+  const rememberId = (e: MessageEvent) => {
+    if (e.lastEventId) lastEventId = e.lastEventId;
+  };
 
   const runResync = () => {
     lastResyncAt = now();
@@ -155,11 +167,14 @@ export const createServerEventsConnection = (
   };
 
   const connect = () => {
-    const es = createEventSource();
+    const es = createEventSource(lastEventId);
     source = es;
+
+    es.addEventListener("connected", rememberId);
 
     for (const domain of domains) {
       es.addEventListener(`${domain}-updated`, (e: MessageEvent) => {
+        rememberId(e);
         let payload: ServerEventPayload = {};
         try {
           if (e.data) payload = JSON.parse(e.data) as ServerEventPayload;
@@ -280,9 +295,9 @@ export const createServerEventsConnection = (
  * one (a session-store blip, the subscriber cap, a 500 all answer non-2xx and
  * all heal by themselves), and a tab that has stopped renders a normal app
  * that silently never updates again. Each
- * re-established stream calls `onReconnect`, because the server buffers
- * nothing and replays nothing: an event emitted while the stream was down
- * reached no one, and only a refetch can close that gap. That call is
+ * re-established stream resumes from the last event id it received, and the
+ * server replays the events it missed. Only when the server's buffer no longer
+ * covers that gap does it send `retry-full`, which calls `onReconnect`. That call is
  * rate-limited — it is a whole-app refetch, and a flapping stream must not be
  * able to schedule one per flap — but rate-limited on the trailing edge, so a
  * gap that falls inside the interval is reconciled late rather than never.

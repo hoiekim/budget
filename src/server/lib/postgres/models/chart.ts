@@ -56,7 +56,7 @@ export class ChartModel extends Model<JSONChart, ChartSchema> implements ChartRo
 
   constructor(data: unknown) {
     super(data, ChartModel.typeChecker);
-    // Type conversion: pg parses JSONB to object, need to stringify for our string type
+    // Type conversion: the driver parses JSONB to object, need to stringify for our string type
     this.configuration =
       typeof this.configuration === "object"
         ? JSON.stringify(this.configuration)
@@ -78,8 +78,13 @@ export class ChartModel extends Model<JSONChart, ChartSchema> implements ChartRo
     if (c.name !== undefined) r.name = c.name;
     if (c.type !== undefined) r.type = c.type;
     if (c.configuration !== undefined) {
+      // The client sends configuration as a JSON string; parse it to the
+      // object the JSONB column stores. A string bound for JSONB would be
+      // stored as a JSON string value under Bun.sql (pg had the server
+      // parse it into JSON). A malformed string throws here instead of
+      // failing at the server — either way the write is refused.
       r.configuration =
-        typeof c.configuration === "string" ? c.configuration : JSON.stringify(c.configuration);
+        typeof c.configuration === "string" ? JSON.parse(c.configuration) : c.configuration;
     }
     return r;
   }

@@ -7,7 +7,7 @@
 // The function calls `usersTable.query`, `transactionsTable.query`,
 // `pool.query` (feature signal + split fetch), and `Table.update` for
 // both label-apply paths. The bundle inlines all of that; the test
-// leaf-mocks `pg` so every SELECT/UPDATE lands on `mockQuery`.
+// leaf-mock the SQL driver so every SELECT/UPDATE lands on `mockUnsafe`.
 //
 // A SQL router dispatches each call by shape:
 //   - `FROM users`                            → userRows
@@ -16,15 +16,15 @@
 //   - `FROM split_transactions`               → splitRows (per userId)
 //   - `UPDATE transactions`/`split_transactions` → captured + return ok
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../postgres/sql-driver", () => driver);
 
-const { runAutoSuggestions, CAS_NULL_CONFIDENCE } = await import("./auto\-suggest");
+const { runAutoSuggestions, CAS_NULL_CONFIDENCE, IDENTITY_SCORE_THRESHOLD, ROW_SCORE_THRESHOLD } = await import("./auto\-suggest");
 
 afterAll(restoreLeaves);
 const { buildUpdate } = await import("../postgres/database");
@@ -111,13 +111,13 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
     return { rows: userRows, rowCount: userRows.length };
   }
 
-  // Default — UPDATE/INSERT calls fall here. Tests inspect mockQuery.mock.calls.
+  // Default — UPDATE/INSERT calls fall here. Tests inspect mockUnsafe.mock.calls.
   return { rows: [], rowCount: 0 };
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   userRows = [];
   unlabeledByUser = new Map();
   splitsByUser = new Map();
@@ -126,12 +126,19 @@ beforeEach(() => {
 });
 
 const updateCalls = (target: RegExp): Array<{ sql: string; values: unknown[] }> =>
-  mockQuery.mock.calls
+  mockUnsafe.mock.calls
     .map((c) => ({ sql: c[0] as string, values: (c[1] ?? []) as unknown[] }))
     .filter((c) => target.test(c.sql));
 
 const signalCalls = (): number =>
-  mockQuery.mock.calls.filter((c) => isSignalSql(c[0] as string)).length;
+  mockUnsafe.mock.calls.filter((c) => isSignalSql(c[0] as string)).length;
+
+// The $12 param of each signal call — the per-row score threshold for
+// that tier (identity first, standard as fallback).
+const signalThresholds = (): unknown[] =>
+  mockUnsafe.mock.calls
+    .filter((c) => isSignalSql(c[0] as string))
+    .map((c) => ((c[1] ?? []) as unknown[])[11]);
 
 describe("runAutoSuggestions", () => {
   test("skips when no users found", async () => {
@@ -148,6 +155,20 @@ describe("runAutoSuggestions", () => {
   // skips W_PFC; payment_channel=null skips W_PAYMENT_CHANNEL.)
   // Tests below use signal rows whose accepted/count_matched values
   // produce known quality = accepted / (count_matched × 107).
+
+  test("the category and section joins are scoped to the user, so a label naming another user's category joins nothing", async () => {
+    userRows = [userRow({ user_id: "user-1" })];
+    unlabeledByUser.set("user-1", [txRow({ transaction_id: "txn-1", user_id: "user-1", merchant_name: "Coffee Shop" })]);
+    await runAutoSuggestions();
+    const signalSql = String(mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string))?.[0]).replace(/\s+/g, " ");
+    // Anchored on what follows each join, so a clause appended after the scope can't widen it.
+    expect(signalSql).toContain(
+      "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1 JOIN sections",
+    );
+    expect(signalSql).toContain(
+      "JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1 LIMIT 1",
+    );
+  });
 
   test("skips when count_matched < 3 (sample-size floor)", async () => {
     userRows = [userRow({ user_id: "user-1" })];
@@ -307,6 +328,64 @@ describe("runAutoSuggestions", () => {
     expect(signalCalls()).toBe(2);
   });
 
+  test("identity tier is tried first and skips the fallback when it applies", async () => {
+    userRows = [userRow({ user_id: "u-tier1" })];
+    unlabeledByUser.set("u-tier1", [
+      txRow({ transaction_id: "txn-1", user_id: "u-tier1", merchant_name: "Tier One Co" }),
+    ]);
+    // Passing signal — quality = 1000/(10×107) ≈ 0.935.
+    signalRow = {
+      label_category_id: "cat-tier1",
+      label_budget_id: "bud-tier1",
+      accepted: "1000",
+      count_matched: "10",
+      rejected: "0",
+    };
+
+    await runAutoSuggestions();
+
+    expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(1);
+    // One signal query only: the identity tier applied, so the
+    // standard-tier fallback never runs.
+    expect(signalCalls()).toBe(1);
+    expect(signalThresholds()).toEqual([IDENTITY_SCORE_THRESHOLD]);
+  });
+
+  test("falls back to the standard tier when the identity tier yields no suggestion (budget#1018)", async () => {
+    userRows = [userRow({ user_id: "u-tier2" })];
+    unlabeledByUser.set("u-tier2", [
+      txRow({ transaction_id: "txn-1", user_id: "u-tier2", merchant_name: "Diluted Co" }),
+    ]);
+    // Same shape as the #1018 signal: 50 rows averaging score 30 each
+    // → quality = 1500/(50×107) ≈ 0.28 < 0.30 — fails the gate at
+    // either tier, so the engine tries both and suggests nothing.
+    signalRow = {
+      label_category_id: "cat-tier2",
+      label_budget_id: "bud-tier2",
+      accepted: "1500",
+      count_matched: "50",
+      rejected: "0",
+    };
+
+    await runAutoSuggestions();
+
+    expect(updateCalls(/UPDATE\s+transactions\b/i)).toHaveLength(0);
+    // Two signal queries for the one target: identity tier first,
+    // standard tier as fallback — same SQL, different $12.
+    expect(signalCalls()).toBe(2);
+    expect(signalThresholds()).toEqual([IDENTITY_SCORE_THRESHOLD, ROW_SCORE_THRESHOLD]);
+  });
+
+  test("identity threshold sits above the weak-only maximum (budget#1018)", () => {
+    // A row matching only the five non-identity features scores at
+    // most amount(5) + pfc(10) + channel(1) + account(1) + day(1) =
+    // 18. The identity tier must sit above that (and at or below the
+    // smallest identity weight, name at 50) so only merchant/name
+    // matches count there.
+    expect(IDENTITY_SCORE_THRESHOLD).toBe(19);
+    expect(IDENTITY_SCORE_THRESHOLD).toBeGreaterThan(ROW_SCORE_THRESHOLD);
+  });
+
   test("continues processing other users when one fails", async () => {
     userRows = [userRow({ user_id: "fail-user" }), userRow({ user_id: "ok-user" })];
     throwOnUnlabeledFor.add("fail-user");
@@ -316,8 +395,8 @@ describe("runAutoSuggestions", () => {
 
     // Both users had their unlabeled SELECT attempted (the fail-user's threw,
     // the ok-user's resolved). The transactionsTable.query for ok-user must
-    // be present in mockQuery.mock.calls — proves the loop continued.
-    const txSelects = mockQuery.mock.calls.filter(
+    // be present in mockUnsafe.mock.calls — proves the loop continued.
+    const txSelects = mockUnsafe.mock.calls.filter(
       (c) => /^\s*SELECT[\s\S]*FROM\s+transactions\b/i.test(c[0] as string),
     );
     const userIdsHit = txSelects.map((c) => (c[1] as unknown[])?.[0]);
@@ -440,7 +519,11 @@ describe("runAutoSuggestions", () => {
       expect(query).not.toBeNull();
       expect(query!.sql).toContain("WHERE transaction_id = $2");
       expect(query!.sql).toContain("AND user_id = $3");
-      expect(query!.sql).not.toContain("IS NULL");
+      // The single-object additionalWhere carries an equality, not a null
+      // guard — the only IS NULL in the statement is the live-row predicate
+      // buildUpdate now appends by default.
+      expect(query!.sql).not.toContain("label_category_confidence IS NULL");
+      expect(query!.sql).toContain("is_deleted");
     });
 
     test("CAS_NULL_CONFIDENCE pins the column + null value the engine must always pass", () => {
@@ -535,7 +618,7 @@ describe("runAutoSuggestions", () => {
         rejected: "0",
       };
       await runAutoSuggestions();
-      const signalQuery = mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string));
+      const signalQuery = mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string));
       expect(signalQuery).toBeDefined();
       return signalQuery![0] as string;
     };
@@ -681,7 +764,7 @@ describe("runAutoSuggestions", () => {
         rejected: "0",
       };
       await runAutoSuggestions();
-      const call = mockQuery.mock.calls.find((c) => isSignalSql(c[0] as string));
+      const call = mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string));
       expect(call).toBeDefined();
       const values = (call![1] ?? []) as unknown[];
       // $1 = userId, $2 = merchant, $3 = sim threshold (0.5),
@@ -702,10 +785,11 @@ describe("runAutoSuggestions", () => {
       const day = new Date().getUTCDate();
       expect(values[9]).toBe(day - 3);
       expect(values[10]).toBe(day + 3);
-      // $12 is the per-row score threshold (ROW_SCORE_THRESHOLD) —
+      // $12 is the per-row score threshold for this tier — the FIRST
+      // signal call runs the identity tier (IDENTITY_SCORE_THRESHOLD);
       // a row only contributes to the SUM if its score exceeds this.
       expect(typeof values[11]).toBe("number");
-      expect(values[11] as number).toBeGreaterThan(0);
+      expect(values[11]).toBe(IDENTITY_SCORE_THRESHOLD);
       // $13 carries the target's raw amount — used as the sign source
       // for the merchant/name/pfc gates in SCORE_EXPR.
       expect(values[12]).toBe(100);

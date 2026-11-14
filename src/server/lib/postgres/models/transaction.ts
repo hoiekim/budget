@@ -226,6 +226,8 @@ export const transactionsTable = createTable({
     // Also the only `user_id` index this table needs: a `user_id`-only lookup is a
     // leftmost-prefix scan of this composite.
     { columns: [USER_ID, UPDATED] },
+    // A cold sync streams the user's whole table in primary-key batches.
+    { columns: [USER_ID, TRANSACTION_ID] },
   ],
   ModelClass: TransactionModel,
 });

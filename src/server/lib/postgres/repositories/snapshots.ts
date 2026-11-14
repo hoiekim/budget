@@ -1,8 +1,8 @@
-import { JSONSnapshotData } from "common";
+import { JSONSecurity, JSONSnapshotData } from "common";
 import {
   MaskedUser,
-  SnapshotModel,
   snapshotsTable,
+  SnapshotModel,
   isAccountSnapshot,
   isSecuritySnapshot,
   isHoldingSnapshot,
@@ -24,6 +24,8 @@ import {
   INSTITUTION_VALUE,
   COST_BASIS,
   QUANTITY,
+  QueryExecutor,
+  toJSONBatches,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { searchSecuritiesById } from "./securities";
@@ -36,7 +38,6 @@ export interface SearchSnapshotsOptions {
   snapshot_type?: "account_balance" | "security" | "holding";
   startDate?: string;
   endDate?: string;
-  limit?: number;
   /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
    *  the response so the client can treat them as tombstones and
    *  evict them from its local cache (IDB + in-memory dict). Defaults
@@ -59,7 +60,7 @@ export interface HoldingSnapshot {
   holding_security_id: string;
   institution_price?: number;
   institution_value?: number;
-  cost_basis?: number;
+  cost_basis?: number | null;
   quantity?: number;
 }
 
@@ -68,14 +69,14 @@ export interface HoldingSnapshot {
 // otherwise exclude them by the `user_id = $1` filter, leaving the frontend
 // unable to resolve `security_id → ticker_symbol`.
 //
-// Two queries instead of one: `snapshotsTable.query` filters by a single
-// `user_id`, so it can't express the `user_id = $1 OR user_id IS NULL` union
-// that surfacing shared security rows alongside the user's own requires.
-// Two scoped `.query` calls + concat is the smaller change.
-export const searchSnapshots = async (
+// Two queries instead of one: `snapshotsTable.queryInBatches` filters by a
+// single `user_id`, so it can't express the `user_id = $1 OR user_id IS NULL`
+// union that surfacing shared security rows alongside the user's own requires.
+// The scoped queries are yielded one after the other.
+export async function* searchSnapshots(
   user: MaskedUser | null,
   options: SearchSnapshotsOptions = {},
-): Promise<JSONSnapshotData[]> => {
+): AsyncGenerator<JSONSnapshotData[]> {
   // Filter by `updated`, not `snapshot_date` — matches the transactions
   // repository (`{ column: UPDATED, ... }`). Soft-deletes and edits bump
   // `updated`, so the FE's delta-by-cursor sync surfaces them regardless
@@ -87,21 +88,22 @@ export const searchSnapshots = async (
     options.startDate || options.endDate
       ? { column: UPDATED, start: options.startDate, end: options.endDate }
       : undefined;
+  const excludeDeleted = !options.includeDeleted;
 
-  const userSnapshots = await snapshotsTable.query(
-    {
-      [SNAPSHOT_TYPE]: options.snapshot_type,
-      [ACCOUNT_ID]: options.account_id,
-      [SECURITY_ID]: options.security_id,
-    },
-    {
-      user_id: user?.user_id,
-      inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
-      dateRange,
-      orderBy: `${SNAPSHOT_DATE} DESC`,
-      limit: options.limit,
-      excludeDeleted: !options.includeDeleted,
-    },
+  yield* toJSONBatches(
+    snapshotsTable.queryInBatches(
+      {
+        [SNAPSHOT_TYPE]: options.snapshot_type,
+        [ACCOUNT_ID]: options.account_id,
+        [SECURITY_ID]: options.security_id,
+      },
+      {
+        user_id: user?.user_id,
+        inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
+        dateRange,
+        excludeDeleted,
+      },
+    ),
   );
 
   // Holding snapshots store the account in `holding_account_id` and leave
@@ -119,30 +121,28 @@ export const searchSnapshots = async (
   const wantsHoldingByAccount =
     (!options.snapshot_type || options.snapshot_type === "holding") &&
     (options.account_id || options.account_ids?.length);
-  const holdingByAccountSnapshots: SnapshotModel[] = [];
   if (wantsHoldingByAccount) {
-    const holdingSnapshots = await snapshotsTable.query(
-      {
-        [SNAPSHOT_TYPE]: "holding",
-        [HOLDING_ACCOUNT_ID]: options.account_id,
-        // Holding rows store the security in `holding_security_id`; the
-        // `security_id` column is NULL for them. Filtering by `SECURITY_ID`
-        // here would match zero rows (latent for any future caller that
-        // passes both `account_id` and `security_id`).
-        [HOLDING_SECURITY_ID]: options.security_id,
-      },
-      {
-        user_id: user?.user_id,
-        inFilters: options.account_ids?.length
-          ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
-          : undefined,
-        dateRange,
-        orderBy: `${SNAPSHOT_DATE} DESC`,
-        limit: options.limit,
-        excludeDeleted: !options.includeDeleted,
-      },
+    yield* toJSONBatches(
+      snapshotsTable.queryInBatches(
+        {
+          [SNAPSHOT_TYPE]: "holding",
+          [HOLDING_ACCOUNT_ID]: options.account_id,
+          // Holding rows store the security in `holding_security_id`; the
+          // `security_id` column is NULL for them. Filtering by `SECURITY_ID`
+          // here would match zero rows (latent for any future caller that
+          // passes both `account_id` and `security_id`).
+          [HOLDING_SECURITY_ID]: options.security_id,
+        },
+        {
+          user_id: user?.user_id,
+          inFilters: options.account_ids?.length
+            ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
+            : undefined,
+          dateRange,
+          excludeDeleted,
+        },
+      ),
     );
-    holdingByAccountSnapshots.push(...holdingSnapshots);
   }
 
   // Security snapshots only make sense when the caller isn't narrowing to a
@@ -152,53 +152,40 @@ export const searchSnapshots = async (
     (!options.snapshot_type || options.snapshot_type === "security") &&
     !options.account_id &&
     !options.account_ids?.length;
-  if (!wantsSecurity) {
-    return [...userSnapshots, ...holdingByAccountSnapshots].map((s) => s.toJSON());
-  }
-
-  const securitySnapshots = await snapshotsTable.query(
-    {
-      [SNAPSHOT_TYPE]: "security",
-      [SECURITY_ID]: options.security_id,
-    },
-    {
-      dateRange,
-      orderBy: `${SNAPSHOT_DATE} DESC`,
-      limit: options.limit,
-      excludeDeleted: !options.includeDeleted,
-    },
-  );
+  if (!wantsSecurity) return;
 
   // Enrich each security snapshot with ticker_symbol / name / type from the
   // securities table. Without this the frontend's `securitySnapshots` dict
   // would carry only `{ security_id, close_price }` and `HoldingsComposition`
   // still couldn't resolve `security_id → ticker`. Same enrichment pattern
-  // as `getHoldingSnapshotsRoute`.
-  const uniqueSecurityIds = [
-    ...new Set(securitySnapshots.map((s) => s.security_id as string).filter(Boolean)),
-  ];
-  const securities = uniqueSecurityIds.length ? await searchSecuritiesById(uniqueSecurityIds) : [];
-  const securityMap = new Map(securities.map((s) => [s.security_id, s]));
-
-  const enrichedSecuritySnapshots = securitySnapshots.map((model) => {
-    const snap = model.toJSON();
-    if (!isSecuritySnapshot(snap)) return snap;
-    const sec = securityMap.get(snap.security.security_id);
-    if (sec) {
-      // Spread the full security record first, then keep the snapshot's
-      // historical `close_price` (per snapshot_date) — the securities table
-      // only holds the latest price.
-      snap.security = { ...sec, close_price: snap.security.close_price };
+  // as `getHoldingSnapshotsRoute`. Securities are few, so each one is looked
+  // up once and reused across batches.
+  const securityMap = new Map<string, JSONSecurity>();
+  const securityBatches = snapshotsTable.queryInBatches(
+    { [SNAPSHOT_TYPE]: "security", [SECURITY_ID]: options.security_id },
+    { dateRange, excludeDeleted },
+  );
+  for await (const models of securityBatches) {
+    const missingIds = [
+      ...new Set(models.map((s) => s.security_id as string).filter((id) => id && !securityMap.has(id))),
+    ];
+    if (missingIds.length) {
+      for (const sec of await searchSecuritiesById(missingIds)) securityMap.set(sec.security_id, sec);
     }
-    return snap;
-  });
-
-  return [
-    ...userSnapshots.map((s) => s.toJSON()),
-    ...holdingByAccountSnapshots.map((s) => s.toJSON()),
-    ...enrichedSecuritySnapshots,
-  ];
-};
+    yield models.map((model) => {
+      const snap = model.toJSON();
+      if (!isSecuritySnapshot(snap)) return snap;
+      const sec = securityMap.get(snap.security.security_id);
+      if (sec) {
+        // Spread the full security record first, then keep the snapshot's
+        // historical `close_price` (per snapshot_date) — the securities table
+        // only holds the latest price.
+        snap.security = { ...sec, close_price: snap.security.close_price };
+      }
+      return snap;
+    });
+  }
+}
 
 export const getSecuritySnapshots = async (
   options: { security_id?: string; startDate?: string; endDate?: string } = {},
@@ -222,6 +209,20 @@ export const getSecuritySnapshots = async (
   }));
 };
 
+/** Row → `HoldingSnapshot`, the seven field conversions `getHoldingSnapshots`
+ *  applies per row. Shared by the list accessor and the by-id accessor so
+ *  the two cannot drift apart. */
+const toHoldingSnapshot = (s: SnapshotModel): HoldingSnapshot => ({
+  snapshot_id: s.snapshot_id,
+  snapshot_date: String(s.snapshot_date),
+  holding_account_id: s.holding_account_id as string,
+  holding_security_id: s.holding_security_id as string,
+  institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
+  institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
+  cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
+  quantity: s.quantity != null ? Number(s.quantity) : undefined,
+});
+
 export const getHoldingSnapshots = async (
   user: MaskedUser,
   options: { account_id?: string; security_id?: string; startDate?: string; endDate?: string } = {},
@@ -239,16 +240,27 @@ export const getHoldingSnapshots = async (
     orderBy: SNAPSHOT_DATE,
   });
 
-  return snapshots.map((s) => ({
-    snapshot_id: s.snapshot_id,
-    snapshot_date: String(s.snapshot_date),
-    holding_account_id: s.holding_account_id as string,
-    holding_security_id: s.holding_security_id as string,
-    institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
-    institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
-    cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
-    quantity: s.quantity != null ? Number(s.quantity) : undefined,
-  }));
+  return snapshots.map(toHoldingSnapshot);
+};
+
+/**
+ * One holding snapshot by primary key, user-scoped. The ownership checks
+ * in the holding-snapshot routes used to fetch every snapshot the user owns
+ * and scan the array in JS — `O(total snapshot rows)` per edit, twice per
+ * update. `queryOne` filters on the key server-side (and, like `query`,
+ * excludes soft-deleted rows), so a lookup that finds nothing answers
+ * `undefined` — the caller's "not found or access denied".
+ */
+export const getHoldingSnapshotById = async (
+  user: MaskedUser,
+  snapshot_id: string,
+): Promise<HoldingSnapshot | undefined> => {
+  const row = await snapshotsTable.queryOne({
+    [SNAPSHOT_ID]: snapshot_id,
+    [SNAPSHOT_TYPE]: "holding",
+    [USER_ID]: user.user_id,
+  });
+  return row ? toHoldingSnapshot(row) : undefined;
 };
 
 /** Columns a holding-snapshot conflict may rewrite. `snapshot_id` is minted
@@ -294,6 +306,49 @@ export const upsertHoldingSnapshots = async (
   }
   return results;
 };
+
+/**
+ * Live holding snapshots for some of an account's securities, in date order,
+ * read on `client` when given.
+ */
+export const getHoldingSnapshotsForSecurities = async (
+  user: MaskedUser,
+  account_id: string,
+  security_ids: string[],
+  options: { client?: QueryExecutor } = {},
+): Promise<HoldingSnapshot[]> => {
+  if (!security_ids.length) return [];
+  const snapshots = await snapshotsTable.query(
+    { [SNAPSHOT_TYPE]: "holding", [HOLDING_ACCOUNT_ID]: account_id },
+    {
+      user_id: user.user_id,
+      inFilters: { [HOLDING_SECURITY_ID]: security_ids },
+      orderBy: `${SNAPSHOT_DATE}, ${SNAPSHOT_ID}`,
+    },
+    options.client,
+  );
+  return snapshots.map((s) => ({
+    snapshot_id: s.snapshot_id,
+    snapshot_date: String(s.snapshot_date),
+    holding_account_id: s.holding_account_id as string,
+    holding_security_id: s.holding_security_id as string,
+    institution_price: s.institution_price != null ? Number(s.institution_price) : undefined,
+    institution_value: s.institution_value != null ? Number(s.institution_value) : undefined,
+    cost_basis: s.cost_basis != null ? Number(s.cost_basis) : undefined,
+    quantity: s.quantity != null ? Number(s.quantity) : undefined,
+  }));
+};
+
+/** Soft-deletes the caller's holding snapshots by id, so clients receive the tombstones. */
+export const softDeleteHoldingSnapshots = async (
+  user: MaskedUser,
+  snapshot_ids: string[],
+  client?: QueryExecutor,
+): Promise<void> => {
+  if (!snapshot_ids.length) return;
+  await snapshotsTable.bulkSoftDelete(snapshot_ids, { [USER_ID]: user.user_id }, client);
+};
+
 
 /** Columns an account-balance conflict may rewrite. `Table.upsert` otherwise
  *  defaults to every supplied key, which lets a colliding `snapshot_id` reassign

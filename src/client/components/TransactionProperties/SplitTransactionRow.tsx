@@ -112,7 +112,13 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
   };
 
   const onChangeAmount: ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const abs = Math.abs(+e.target.value || 0);
+    const raw = +e.target.value;
+    // Unparseable input is not zero: bail before the `!abs` branch can
+    // mistake it for a deliberate delete. The input layer restores the
+    // display on such a blur; this guard is the backstop if a value ever
+    // arrives here unparsed.
+    if (isNaN(raw)) return;
+    const abs = Math.abs(raw);
 
     if (!abs) {
       const deleteResponse = await call.delete(
@@ -159,7 +165,7 @@ const SplitTransactionRow = ({ splitTransaction }: Props) => {
     <div className="SplitTransactionRow">
       <div className="amount">
         {isIncome && <>+&nbsp;</>}
-        {currencyCodeToSymbol(iso_currency_code || "")}&nbsp;
+        {currencyCodeToSymbol(iso_currency_code)}&nbsp;
         <CapacityInput defaultValue={Math.abs(amount)} fixed={2} onBlur={onChangeAmount} />
       </div>
       <select value={selectedBudgetIdLabel} onChange={onChangeBudgetSelect}>

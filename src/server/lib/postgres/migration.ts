@@ -6,19 +6,46 @@
  * Ported from inbox (hoiekim/inbox) for consistency.
  */
 
-import { PoolClient } from "pg";
-import { builtinsTypes } from "pg-types";
-import { pool } from "./client";
+import { pool, type SqlClient } from "./client";
 import { Schema } from "./models/base";
 import { logger } from "../logger";
 
 /**
  * Normalized PostgreSQL type names used for comparison.
- * Based on builtinsTypes from pg-types, plus common SQL aliases.
- * We normalize to these canonical forms for consistent comparison.
+ * The builtin set mirrors what pg-types used to export, plus common SQL
+ * aliases. We normalize to these canonical forms for consistent comparison.
  */
+type BuiltinPgType =
+  | "BOOL"
+  | "BYTEA"
+  | "CHAR"
+  | "INT8"
+  | "INT2"
+  | "INT4"
+  | "TEXT"
+  | "OID"
+  | "JSON"
+  | "XML"
+  | "FLOAT4"
+  | "FLOAT8"
+  | "VARCHAR"
+  | "DATE"
+  | "TIME"
+  | "TIMESTAMP"
+  | "TIMESTAMPTZ"
+  | "TIMETZ"
+  | "INTERVAL"
+  | "NUMERIC"
+  | "UUID"
+  | "JSONB"
+  | "TSVECTOR"
+  | "NAME"
+  | "MONEY"
+  | "INET"
+  | "CIDR";
+
 type NormalizedPgType =
-  | builtinsTypes
+  | BuiltinPgType
   | "INTEGER"    // Alias for INT4
   | "BIGINT"     // Alias for INT8
   | "SMALLINT"   // Alias for INT2
@@ -180,7 +207,7 @@ export function typesCompatible(schemaType: NormalizedPgType, dbType: Normalized
  */
 async function getExistingColumns(
   tableName: string,
-  client?: PoolClient
+  client?: SqlClient
 ): Promise<Map<string, DbColumn>> {
   const queryFn = client || pool;
   const result = await queryFn.query<DbColumn>(`
@@ -245,7 +272,7 @@ export interface MigrationResult {
  * Internal version that accepts a client for transaction support.
  */
 async function migrateTableWithClient(
-  client: PoolClient,
+  client: SqlClient,
   tableName: string,
   schema: Schema
 ): Promise<MigrationResult> {

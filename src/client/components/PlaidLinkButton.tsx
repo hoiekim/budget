@@ -25,8 +25,10 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
   const { user, setData } = useAppContext();
   const { scriptLoaded, openLink } = usePlaidLinkContext();
 
-  const access_token = (item && item.access_token) || "";
-  const [token, setToken] = useState(tokens.get(access_token) || "");
+  // The link token is cached per item. The key is the item_id — the item's
+  // server-side credential never leaves the server.
+  const item_id = (item && item.item_id) || "";
+  const [token, setToken] = useState(tokens.get(item_id) || "");
   const [storedToken, setStoredToken] = useLocalStorageState("storedToken", "");
 
   const { sync } = useSync();
@@ -72,32 +74,32 @@ export const PlaidLinkButton = ({ item, children }: Props) => {
       return;
     }
 
-    if (oauth_state_id || tokens.has(access_token)) return;
+    if (oauth_state_id || tokens.has(item_id)) return;
 
-    if (promisedTokens.has(access_token)) {
-      promisedTokens.get(access_token)?.then((_r) => {
-        const existingToken = tokens.get(access_token);
+    if (promisedTokens.has(item_id)) {
+      promisedTokens.get(item_id)?.then((_r) => {
+        const existingToken = tokens.get(item_id);
         if (existingToken) setToken(existingToken);
       });
       return;
     }
 
     let queryString: string = "";
-    if (access_token) {
-      queryString += "?" + new URLSearchParams({ access_token }).toString();
+    if (item_id) {
+      queryString += "?" + new URLSearchParams({ item_id }).toString();
     }
 
     const promisedToken = call
       .get<LinkTokenGetResponse>("/api/link-token" + queryString)
       .then((r) => {
         const token = r.body || "";
-        tokens.set(access_token, token);
+        tokens.set(item_id, token);
         setToken(token);
         return token;
       });
 
-    promisedTokens.set(access_token, promisedToken);
-  }, [token, userLoggedIn, access_token, oauth_state_id]);
+    promisedTokens.set(item_id, promisedToken);
+  }, [token, userLoggedIn, item_id, oauth_state_id]);
 
   const onClick: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation();

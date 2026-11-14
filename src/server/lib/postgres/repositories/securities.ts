@@ -3,7 +3,6 @@ import {
   MaskedUser,
   SecurityModel,
   securitiesTable,
-  snapshotsTable,
   SECURITY_ID,
   USER_ID,
 } from "../models";
@@ -15,11 +14,6 @@ import {
 import { pool } from "../client";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
-
-export const getSecurities = async (): Promise<JSONSecurity[]> => {
-  const models = await securitiesTable.query({});
-  return models.map((m) => m.toJSON());
-};
 
 /**
  * Securities the given user has any holding for (active or soft-deleted).
@@ -91,14 +85,3 @@ export const upsertSecurities = async (securities: JSONSecurity[]): Promise<Upse
   return results;
 };
 
-export const deleteSecurities = async (security_ids: string[]): Promise<{ deleted: number }> => {
-  if (!security_ids.length) return { deleted: 0 };
-
-  // Securities table doesn't have is_deleted column - use hard delete
-  for (const security_id of security_ids) {
-    await snapshotsTable.hardDeleteByColumn(SECURITY_ID, security_id);
-  }
-
-  const deleted = await securitiesTable.bulkHardDelete(security_ids);
-  return { deleted };
-};

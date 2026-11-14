@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { KeyboardEvent } from "react";
 import { ItemProvider } from "common";
 import { Account, useAppContext, useAccountGraph, PATH, NoLabel } from "client";

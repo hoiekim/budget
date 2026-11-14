@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves, updateColumnsOf } from "test-helpers";
+import { createFakeSql, restoreLeaves, updateColumnsOf } from "test-helpers";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { deleteHoldings, searchHoldingsByAccountId, upsertHoldings } = await import("./holdings");
 
@@ -15,8 +15,8 @@ const mockUser = { user_id: "usr-1", username: "tester" } as {
 };
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockQuery.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
+  clearSqlMocks();
+  mockUnsafe.mockImplementation(async () => ({ rows: [], rowCount: 1 }));
 });
 
 describe("deleteHoldings — terminator-only model", () => {
@@ -29,7 +29,7 @@ describe("deleteHoldings — terminator-only model", () => {
 
   test("only the holdings table is updated — snapshots are untouched", async () => {
     await deleteHoldings(mockUser, ["acc-1-sec-a", "acc-1-sec-b"]);
-    const updateCalls = mockQuery.mock.calls.filter(([sql]) =>
+    const updateCalls = mockUnsafe.mock.calls.filter(([sql]) =>
       String(sql).toUpperCase().startsWith("UPDATE "),
     );
     expect(updateCalls.length).toBeGreaterThan(0);
@@ -41,18 +41,18 @@ describe("deleteHoldings — terminator-only model", () => {
 
   test("empty input is a no-op (no SQL emitted)", async () => {
     await deleteHoldings(mockUser, []);
-    expect(mockQuery.mock.calls.length).toBe(0);
+    expect(mockUnsafe.mock.calls.length).toBe(0);
   });
 
   test("returns the deleted-rowCount from the holdings UPDATE", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 3 }));
     const result = await deleteHoldings(mockUser, ["acc-1-sec-a", "acc-1-sec-b", "acc-1-sec-c"]);
     expect(result).toEqual({ deleted: 3 });
   });
 
   test("user_id is part of the WHERE clause (caller is scoped)", async () => {
     await deleteHoldings(mockUser, ["acc-1-sec-a"]);
-    const [sql, values] = mockQuery.mock.calls[0];
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(String(sql)).toContain("user_id");
     expect(values).toContain("usr-1");
   });
@@ -66,7 +66,7 @@ describe("searchHoldingsByAccountId — single batched query", () => {
 
   test("N accounts issue exactly one SELECT with an IN clause", async () => {
     await searchHoldingsByAccountId(mockUser, ["acc-1", "acc-2", "acc-3"]);
-    const selectCalls = mockQuery.mock.calls.filter(([sql]) =>
+    const selectCalls = mockUnsafe.mock.calls.filter(([sql]) =>
       String(sql).toUpperCase().includes("SELECT"),
     );
     expect(selectCalls.length).toBe(1);
@@ -77,12 +77,12 @@ describe("searchHoldingsByAccountId — single batched query", () => {
 
   test("empty input is a no-op (no SQL emitted)", async () => {
     await searchHoldingsByAccountId(mockUser, []);
-    expect(mockQuery.mock.calls.length).toBe(0);
+    expect(mockUnsafe.mock.calls.length).toBe(0);
   });
 
   test("query is scoped by user_id", async () => {
     await searchHoldingsByAccountId(mockUser, ["acc-1"]);
-    const [sql, values] = mockQuery.mock.calls[0];
+    const [sql, values] = mockUnsafe.mock.calls[0];
     expect(String(sql)).toContain("user_id = $1");
     expect(values).toContain("usr-1");
   });
@@ -104,7 +104,7 @@ describe("upsertHoldings conflict", () => {
         unofficial_currency_code: null,
       },
     ]);
-    return mockQuery.mock.calls[0][0] as string;
+    return mockUnsafe.mock.calls[0][0] as string;
   };
 
   test("never reassigns the row owner or the account", async () => {
@@ -148,7 +148,7 @@ describe("upsertHoldings conflict", () => {
         quantity: 999,
       } as never,
     ]);
-    const columns = updateColumnsOf(mockQuery.mock.calls[0][0] as string);
+    const columns = updateColumnsOf(mockUnsafe.mock.calls[0][0] as string);
     expect(columns).toContain("quantity");
     expect(columns).not.toContain("institution_price_as_of");
     expect(columns).not.toContain("cost_basis");

@@ -65,11 +65,11 @@ const truncateSecurityId = (id: string) => id.slice(0, 6);
 export const HoldingsComposition = ({ accounts }: Props) => {
   const firstAccount = accounts[0];
   const { iso_currency_code } = firstAccount?.balances ?? {};
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   const { calculations, router, viewDate, data } = useAppContext();
-  const { holdingsValueData, balanceData } = calculations;
-  const { items, securitySnapshots, holdingSnapshots, investmentTransactions } = data;
+  const { holdingsValueData, balanceData, holdingSnapshots } = calculations;
+  const { items, securities, securitySnapshots, investmentTransactions } = data;
 
   // "Add Holding" and manual-account visibility only apply when a single
   // manual account is shown; multi-account aggregation has no single target.
@@ -119,15 +119,19 @@ export const HoldingsComposition = ({ accounts }: Props) => {
           isCash,
         } = summary;
 
-        let name: string | null = null;
-        let ticker: string | null = null;
-
+        // The security's own row is re-sent on every sync; a price snapshot's embedded copy can
+        // be stale or missing (a just-created or unquotable security), so it is only a fallback.
+        let snapshotName: string | null = null;
+        let snapshotTicker: string | null = null;
         securitySnapshots.forEach((snap) => {
           if (snap.security.security_id === security_id) {
-            name = snap.security.name?.trim() || null;
-            ticker = snap.security.ticker_symbol ?? null;
+            snapshotName = snap.security.name?.trim() || null;
+            snapshotTicker = snap.security.ticker_symbol ?? null;
           }
         });
+        const security = securities.get(security_id);
+        const name = security?.name?.trim() || snapshotName;
+        const ticker = security?.ticker_symbol || snapshotTicker;
 
         return {
           holdingId,
@@ -144,7 +148,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
         };
       })
       .filter((r): r is PerSecurityRow => r !== null);
-  }, [accounts, holdingsValueData, viewEndDate, securitySnapshots]);
+  }, [accounts, holdingsValueData, viewEndDate, securitySnapshots, securities]);
 
   // Second pass: bucket per-security rows by ticker. Cash → `__CASH__`
   // (regardless of any ticker on the underlying security). Real ticker
@@ -270,7 +274,9 @@ export const HoldingsComposition = ({ accounts }: Props) => {
     return sum + bal;
   }, 0);
   const unknownDiff = accountBalance !== null ? accountBalance - holdingsTotal : 0;
-  const showUnknownRow = accountBalance !== null && Math.abs(unknownDiff) >= 0.01;
+  // The row renders at zero decimals, so tie its threshold to the display
+  // unit: a sub-dollar residual would render as $0 or a phantom $1.
+  const showUnknownRow = accountBalance !== null && Math.round(Math.abs(unknownDiff)) >= 1;
 
   // For manual accounts we want the section visible even with no rows yet
   // and no balance discrepancy — it hosts the "Add Holding" button.
@@ -302,7 +308,7 @@ export const HoldingsComposition = ({ accounts }: Props) => {
           <span className="col-value">Value</span>
           <span className="col-gain">Growth</span>
         </div>
-        {tickerRows.length === 0 && isManualAccount && (
+        {tickerRows.length === 0 && !showUnknownRow && isManualAccount && (
           <div className="holdingsRow holdingsEmpty">
             <span className="col-name disabled">No holdings recorded</span>
           </div>

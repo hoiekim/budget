@@ -1,5 +1,5 @@
 import { JSONSplitTransaction } from "common";
-import type { TransferPair } from "server";
+import type { TransferPair, Recurring } from "server";
 import {
   BalanceData,
   AmountByMonth,
@@ -16,6 +16,7 @@ import {
   Account,
   TransactionDictionary,
   TransferDictionary,
+  RecurringDictionary,
   Dictionary,
   Transaction,
   InvestmentTransactionDictionary,
@@ -215,6 +216,30 @@ export const saveTransfer = (pair: TransferPair) => {
   return indexedDbAccessor.save(StoreName.transfers, pair.pair_id, pair);
 };
 
+export const saveRecurrings = async (data: RecurringDictionary) => {
+  await saveDictionary(StoreName.recurrings, data);
+};
+
+export const loadRecurrings = async (): Promise<RecurringDictionary> => {
+  // Recurring is a plain interface — no model class to construct.
+  // Feed loaded entries directly into RecurringDictionary's constructor,
+  // which rebuilds the pivot (transaction_id → recurring) from them.
+  const data = await indexedDbAccessor.load<JSON>(StoreName.recurrings);
+  const entries: [string, Recurring][] = Object.entries(data).map(
+    ([recurring_id, recurring]) => [recurring_id, recurring as unknown as Recurring],
+  );
+  return new RecurringDictionary(entries);
+};
+
+/**
+ * Single-recurring save for mutations (confirm / create). Same rationale
+ * as `saveTransfer`: the interface has no class, so it needs a dedicated
+ * helper. Use from `useRecurrings` after the optimistic setData lands.
+ */
+export const saveRecurring = (recurring: Recurring) => {
+  return indexedDbAccessor.save(StoreName.recurrings, recurring.recurring_id, recurring);
+};
+
 export const loadSplitTransactions = () => {
   return loadDictionary(
     StoreName.splitTransactions,
@@ -335,6 +360,7 @@ export const saveAllData = async (data: Data) => {
     holdingSnapshots,
     securitySnapshots,
     transfers,
+    recurrings,
   } = data;
 
   await Promise.all([
@@ -354,6 +380,7 @@ export const saveAllData = async (data: Data) => {
     saveHoldingSnapshots(holdingSnapshots),
     saveSecuritySnapshots(securitySnapshots),
     saveTransfers(transfers),
+    saveRecurrings(recurrings),
   ]);
 };
 
@@ -375,6 +402,7 @@ export const loadAllData = async () => {
     holdingSnapshots,
     securitySnapshots,
     transfers,
+    recurrings,
   ] = await Promise.all([
     loadInstitutions(),
     loadAccounts(),
@@ -392,6 +420,7 @@ export const loadAllData = async () => {
     loadHoldingSnapshots(),
     loadSecuritySnapshots(),
     loadTransfers(),
+    loadRecurrings(),
   ]);
 
   return new Data({
@@ -411,6 +440,7 @@ export const loadAllData = async () => {
     holdingSnapshots,
     securitySnapshots,
     transfers,
+    recurrings,
   });
 };
 

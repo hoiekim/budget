@@ -27,6 +27,7 @@ import {
   MaskedUser,
   deleteSplitTransactionsByTransaction,
   migrateRejectedCategoriesOnPendingPosted,
+  repointSplitTransactionsOnPendingPosted,
   logger,
 } from "server";
 import {
@@ -35,6 +36,7 @@ import {
   upsertSecuritiesWithSnapshots,
 } from "./create-snapshots";
 import { inferCashHoldings } from "./cash-holding";
+import { sendAlarm } from "server/lib/alarm";
 import { Products } from "plaid";
 
 /** Build O(n) lookup maps for stored transactions to avoid O(n²) in modelize. */
@@ -57,7 +59,7 @@ export const buildTransactionLookupMaps = (
  * Detect pending→posted transitions across a batch of incoming Plaid
  * transactions. Returns `{pending, posted}` pairs for downstream
  * migrations that need to follow the id rename (currently:
- * `rejected_categories` rows; future work may extend).
+ * `rejected_categories` rows and `split_transactions` rows).
  *
  * Mechanism: Plaid's posted transaction carries
  * `pending_transaction_id` pointing back at the prior pending id. The
@@ -76,6 +78,105 @@ export const detectPendingPostedTransitions = (
     if (pending && pending !== posted) transitions.push({ pending, posted });
   }
   return transitions;
+};
+
+/**
+ * A provider re-issued an `account_id` for an account that already exists
+ * on the item: same (name, mask, subtype), new id. The old row goes stale
+ * until someone notices; the new row starts with no history. Deliberately
+ * matches on all three attributes, never name alone — two cards from the
+ * same bank can legitimately share a name.
+ *
+ * Only incoming ids absent from the stored set are candidates: once the
+ * new id is upserted, later syncs see it as known, so a pair fires on the
+ * sync where it first appears and never again. When several stored
+ * accounts match, the live (non-archived) one is the predecessor — the
+ * archived ones are already dead ends; if all matches are archived,
+ * each is reported rather than an arbitrary first pick.
+ */
+export interface AccountIdChurn {
+  item_id: string;
+  old_account_id: string;
+  new_account_id: string;
+  name: string;
+  mask: string | null;
+  subtype: string | null;
+}
+
+export const detectAccountIdChurn = (
+  incoming: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
+  stored: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
+): AccountIdChurn[] => {
+  const storedIds = new Set(stored.map((a) => a.account_id));
+  const churn: AccountIdChurn[] = [];
+  for (const account of incoming) {
+    if (storedIds.has(account.account_id)) continue;
+    const siblings = stored.filter(
+      (s) =>
+        s.item_id === account.item_id &&
+        s.name.toLowerCase() === account.name.toLowerCase() &&
+        s.mask === account.mask &&
+        s.subtype === account.subtype,
+    );
+    // The live account is the one being re-issued: prefer non-archived
+    // siblings, since an archived predecessor is already a dead end. If
+    // several remain tied (two archived predecessors), report each rather
+    // than silently picking the first — the true predecessor is
+    // unknowable from these fields, so no single old id may be named.
+    const live = siblings.filter((s) => !s.archived);
+    const candidates = live.length ? live : siblings;
+    for (const sibling of candidates) {
+      churn.push({
+        item_id: account.item_id,
+        old_account_id: sibling.account_id,
+        new_account_id: account.account_id,
+        name: account.name,
+        mask: account.mask,
+        subtype: account.subtype,
+      });
+    }
+  }
+  return churn;
+};
+
+/**
+ * Log a WARN with all three ids plus the matched attributes, and fire a
+ * Discord alarm on the same channel as the other sync alarms. The alarm
+ * key is per pair, so the same churn cannot spam within the cooldown
+ * window. Never throws and never rejects — the sync calls it
+ * fire-and-forget, not as a gate.
+ */
+export const reportAccountIdChurn = (
+  incoming: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
+  stored: Pick<
+    JSONAccount,
+    "account_id" | "name" | "mask" | "subtype" | "item_id" | "archived"
+  >[],
+): void => {
+  for (const c of detectAccountIdChurn(incoming, stored)) {
+    logger.warn("Provider re-issued account_id for an existing account", {
+      itemId: c.item_id,
+      oldAccountId: c.old_account_id,
+      newAccountId: c.new_account_id,
+      name: c.name,
+      mask: c.mask,
+      subtype: c.subtype,
+    });
+    void sendAlarm(
+      "Account ID churn detected",
+      `**Item:** ${c.item_id}\n**Old account_id:** ${c.old_account_id}\n**New account_id:** ${c.new_account_id}\n**Name:** ${c.name}\n**Mask:** ${c.mask ?? "null"}\n**Subtype:** ${c.subtype ?? "null"}`,
+      `account-id-churn:${c.old_account_id}:${c.new_account_id}`,
+    );
+  }
 };
 
 /**
@@ -171,23 +272,60 @@ export const syncPlaidTransactions = async (item_id: string) => {
       const removedTransactionIds = removed.map((e) => e.transaction_id);
 
       // Pending → posted transitions across both added and modified
-      // batches. Used to migrate `rejected_categories` rows from the old
-      // pending id to the new posted id after the posted row is upserted.
+      // batches. Used to migrate `rejected_categories` rows and
+      // re-point `split_transactions` rows from the old pending id to
+      // the new posted id after the posted row is upserted.
       const pendingPostedTransitions = detectPendingPostedTransitions([
         ...added,
         ...modified,
       ]);
 
-      const updateJobs = [
-        upsertTransactions(user, [...modeledAdded, ...modeledModified]),
-        deleteTransactions(user, removedTransactionIds),
-        ...removedTransactionIds.map((txId) => deleteSplitTransactionsByTransaction(user, txId)),
-      ];
-
       const updated = getDateString();
 
       const partialItems = items.map(({ item_id, cursor }) => ({ item_id, cursor, updated }));
-      return Promise.all(updateJobs)
+
+      // Sequenced, not one Promise.all: the re-point MUST run after the
+      // upsert (so the posted row exists) and before the removal
+      // cascade (deleteTransactions soft-deletes splits by
+      // transaction_id, which would tombstone the pending row's splits
+      // before they could ride across). Once re-pointed, the
+      // cascade finds no live splits under the pending id and the
+      // posted id is never in `removed`, so the splits survive.
+      return upsertTransactions(user, [...modeledAdded, ...modeledModified])
+        .then(async () => {
+          // Re-point live splits for each transition. Parallelize with
+          // allSettled like the rejected-categories migration below:
+          // failures are logged at warn and do not interrupt counting;
+          // a failed re-point leaves the splits under the pending id,
+          // where the cascade below tombstones them — the pre-fix
+          // behaviour, not a worse one. The helper is a single UPDATE
+          // per pair: a same-id pair short-circuits without a query,
+          // and a pending id with no live splits still issues one
+          // UPDATE returning 0.
+          const repoints = await Promise.allSettled(
+            pendingPostedTransitions.map((t) =>
+              repointSplitTransactionsOnPendingPosted(user, t.pending, t.posted),
+            ),
+          );
+          repoints.forEach((r, i) => {
+            if (r.status === "rejected") {
+              const t = pendingPostedTransitions[i];
+              logger.warn(
+                "Failed to re-point split_transactions on pending→posted",
+                { pending: t.pending, posted: t.posted },
+                r.reason,
+              );
+            }
+          });
+        })
+        .then(() =>
+          Promise.all([
+            deleteTransactions(user, removedTransactionIds),
+            ...removedTransactionIds.map((txId) =>
+              deleteSplitTransactionsByTransaction(user, txId),
+            ),
+          ]),
+        )
         .then(async () => {
           // Migrate rejected_categories rows from each pending → posted
           // pair. Runs AFTER upsertTransactions so the posted FK target
@@ -319,6 +457,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
     .getAccounts(user, [item])
     .then(async (r) => r.accounts.map(mergeWithExisting))
     .then(async (accounts) => {
+      reportAccountIdChurn(accounts, storedAccounts ?? []);
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       return accounts;
     })
@@ -348,7 +487,7 @@ export const syncPlaidAccounts = async (item_id: string) => {
       await upsertAccountsWithSnapshots(user, accounts, storedAccounts);
       // Securities first so holdings never reference a not-yet-written
       // securities row within the same sync.
-      await upsertSecuritiesWithSnapshots(securities);
+      await upsertSecuritiesWithSnapshots(securities, "closePriceAsOf");
       await upsertAndDeleteHoldingsWithSnapshots(user, allHoldings, storedHoldings);
 
       return accounts;

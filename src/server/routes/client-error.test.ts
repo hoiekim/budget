@@ -2,7 +2,7 @@ import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { restoreLeaves } from "test-helpers";
 
 // `mock.module` is process-global in Bun and `restoreLeaves` only restores the
-// `pg` / `bcrypt` leaves, so capture the real modules up front and restore them
+// driver / `password` leaves, so capture the real modules up front and restore them
 // in `afterAll` (the post-plaid-hook.test.ts pattern) to keep these stubs out of
 // sibling route tests sharing the process.
 const realAlarm = { ...(await import("server/lib/alarm")) };
@@ -82,6 +82,20 @@ describe("POST /client-error", () => {
 
     const [, detail] = mockSendAlarm.mock.calls[0] as [string, string, string];
     expect(detail).toContain("(no message)");
+  });
+
+  test("reports through the cooldown bucket when the body is missing entirely", async () => {
+    // start.ts leaves req.body undefined when there is no JSON
+    // content-type, the JSON is unparseable, or the payload is null —
+    // the report must still land in the dedicated bucket, not as a 500
+    // in the default alarm bucket.
+    for (const body of [undefined, null]) {
+      const result = await postClientErrorRoute.execute(makeReq(body), makeRes());
+      expect(result?.status).toBe("success");
+      const [, detail, key] = mockSendAlarm.mock.calls.at(-1) as [string, string, string];
+      expect(detail).toContain("(no message)");
+      expect(key).toBe("client-error");
+    }
   });
 
   test("ignores non-string fields instead of interpolating them", async () => {

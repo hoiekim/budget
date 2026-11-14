@@ -3,7 +3,6 @@ import {
   MaskedUser,
   HoldingModel,
   holdingsTable,
-  HOLDING_ID,
   USER_ID,
   ACCOUNT_ID,
   SECURITY_ID,
@@ -14,41 +13,13 @@ import {
   QUANTITY,
   ISO_CURRENCY_CODE,
   RAW,
+  QueryExecutor,
 } from "../models";
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
 export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
   const models = await holdingsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const getHolding = async (
-  user: MaskedUser,
-  holding_id: string,
-): Promise<JSONHolding | null> => {
-  const model = await holdingsTable.queryOne({ [USER_ID]: user.user_id, [HOLDING_ID]: holding_id });
-  return model?.toJSON() ?? null;
-};
-
-export const getHoldingsByAccount = async (
-  user: MaskedUser,
-  account_id: string,
-): Promise<JSONHolding[]> => {
-  const models = await holdingsTable.query({ [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const searchHoldings = async (
-  user: MaskedUser,
-  options: { holding_id?: string; account_id?: string; security_id?: string } = {},
-): Promise<JSONHolding[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
-  if (options.holding_id) filters[HOLDING_ID] = options.holding_id;
-  if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
-  if (options.security_id) filters[SECURITY_ID] = options.security_id;
-
-  const models = await holdingsTable.query(filters);
   return models.map((m) => m.toJSON());
 };
 
@@ -87,6 +58,19 @@ export const upsertHoldings = async (
     }
   }
   return results;
+};
+
+/**
+ * One holdings row, throwing on failure. Inside a transaction a swallowed
+ * error leaves Postgres aborted, and the COMMIT that follows rolls back
+ * without raising, so the caller would report a write that never happened.
+ */
+export const upsertHoldingOrThrow = async (
+  user: MaskedUser,
+  holding: JSONHolding,
+  client?: QueryExecutor,
+): Promise<void> => {
+  await holdingsTable.upsert(HoldingModel.fromJSON(holding, user.user_id), HOLDING_UPDATE_COLUMNS, client);
 };
 
 export const deleteHoldings = async (

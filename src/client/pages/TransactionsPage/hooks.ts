@@ -10,7 +10,7 @@ import { getSearchPool, OrderingContext, TransactionRow } from "./sort";
  */
 export const useOrderingContext = (): OrderingContext => {
   const { data, calculations } = useAppContext();
-  const { budgets, sections, categories, accounts, institutions, transactions } = data;
+  const { budgets, sections, categories, accounts, institutions, securities, transactions } = data;
   const { transactionFamilies } = calculations;
   return useMemo(
     () => ({
@@ -19,10 +19,11 @@ export const useOrderingContext = (): OrderingContext => {
       budgets,
       sections,
       categories,
+      securities,
       transactions,
       transactionFamilies,
     }),
-    [accounts, institutions, budgets, sections, categories, transactions, transactionFamilies],
+    [accounts, institutions, budgets, sections, categories, securities, transactions, transactionFamilies],
   );
 };
 

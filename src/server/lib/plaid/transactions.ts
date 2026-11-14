@@ -98,8 +98,34 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
 
 export interface PlaidInvestmentTransaction extends InvestmentTransaction {}
 
-export const getInvestmentTransactions = async (user: MaskedUser, items: JSONItem[]) => {
-  const client = getClient(user);
+/**
+ * Test seam for {@link getInvestmentTransactions}: the Plaid client factory
+ * and the item writes it needs. Defaults are the production imports, so
+ * callers pass nothing and behavior is unchanged. Tests pass fakes here
+ * instead of mocking the shared leaves: mock.module is process-global in
+ * Bun, and a module imported while a mock is registered keeps the mock —
+ * mocking these leaves in the test file leaked into sibling test files
+ * (mocked logger broke webhook.test.ts's warning throttle, mocked
+ * upsertItems broke items.test.ts, mocked plaid util broke
+ * get-institutions tests) whenever the suite ran together.
+ */
+export interface InvestmentTransactionDeps {
+  getClient?: typeof getClient;
+  upsertItems?: typeof upsertItems;
+  updateItemStatus?: typeof updateItemStatus;
+}
+
+export const getInvestmentTransactions = async (
+  user: MaskedUser,
+  items: JSONItem[],
+  deps: InvestmentTransactionDeps = {},
+) => {
+  const {
+    getClient: getClientFn = getClient,
+    upsertItems: upsertItemsFn = upsertItems,
+    updateItemStatus: updateItemStatusFn = updateItemStatus,
+  } = deps;
+  const client = getClientFn(user);
 
   type PlaidInvestmentTransactionsResponse = {
     items: JSONItem[];
@@ -113,7 +139,10 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
 
   const allInvestmentTransactions: PlaidInvestmentTransaction[][] = [];
 
-  const fetchJobs = items.map(async (item) => {
+  const fetchJobs = items.map(async (_item) => {
+    // Defensive copy: the watermark write below must not mutate the caller's
+    // object (syncPlaidTransactions runs both branches against the same item).
+    const item = { ..._item };
     const { item_id, access_token, updated } = item;
     if (!item.available_products.includes(Products.Investments)) return;
 
@@ -148,6 +177,14 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
     };
 
     let total: number | undefined;
+    let plaidError: PlaidError | null = null;
+    let succeeded = false;
+    // A non-ignorable page failure, set in the failure branch below. The
+    // watermark gate reads this flag, not plaidError nullability: a failure
+    // with no Plaid response payload (a transport error with no
+    // response.data) leaves plaidError null, and gating on nullability
+    // advanced the watermark past the failed page.
+    let failed = false;
 
     while (total === undefined || options.offset < total) {
       if (total === undefined) total = 0;
@@ -157,12 +194,11 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
         const investmentTransactions = response.data.investment_transactions;
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);
-        item.updated = end_date;
-        data.items.push({ ...item });
+        succeeded = true;
       } catch (error: unknown) {
         const errorWithResponse = error as { response?: { data?: PlaidError } };
-        const plaidError = errorWithResponse?.response?.data;
-        const errorCode = plaidError?.error_code;
+        const errorData = errorWithResponse?.response?.data;
+        const errorCode = errorData?.error_code;
         if (errorCode === "PRODUCTS_NOT_SUPPORTED") {
           logger.info(
             "Investment transactions not supported for item, removing Investments from available_products",
@@ -171,27 +207,48 @@ export const getInvestmentTransactions = async (user: MaskedUser, items: JSONIte
           const updated_products = item.available_products.filter(
             (p) => p !== Products.Investments,
           );
-          upsertItems(user, [{ ...item, available_products: updated_products }]).catch((e) => {
+          upsertItemsFn(user, [{ ...item, available_products: updated_products }]).catch((e) => {
             logger.error("Failed to update available_products for item", { itemId: item_id }, e);
           });
+          // On the first page nothing was ever pushed, so keep the
+          // existing no-push behavior and return. After a successful
+          // page the old code had already pushed the item once, so fall
+          // through to the post-loop push (without advancing the
+          // watermark) instead of dropping it.
+          if (!succeeded) return;
+          failed = true;
           break;
         } else if (!errorCode || !ignorable_error_codes.has(errorCode)) {
           logger.error(
             "Failed to get investment transaction data",
             { itemId: item_id },
-            plaidError || error,
+            errorData || error,
           );
-          if (plaidError && plaidError.error_type === PlaidErrorType.ItemError) {
-            updateItemStatus(user, item_id, ItemStatus.BAD, plaidError.error_code).catch((e) => {
+          failed = true;
+          if (!plaidError) plaidError = errorData ?? null;
+          if (errorData && errorData.error_type === PlaidErrorType.ItemError) {
+            updateItemStatusFn(user, item_id, ItemStatus.BAD, errorData.error_code).catch((e) => {
               logger.error("Failed to update item status to BAD", { itemId: item_id }, e);
             });
           }
-          data.items.push({ ...item, plaidError });
+          break;
         }
       }
 
       options.offset += options.count;
     }
+
+    // The watermark advances only when every page succeeded: this path is
+    // offset-based, so a skipped offset is never revisited — unlike the
+    // cursor-based cash path, where the cursor itself is the resume point.
+    // A failed page still pushes the item (carrying plaidError when the
+    // failure had a Plaid payload, plain when it did not), so the item is
+    // never silently dropped from the result. The item is pushed exactly
+    // once per sync, never once per page.
+    if (succeeded && !failed) item.updated = end_date;
+    if (plaidError) data.items.push({ ...item, plaidError });
+    else if (failed) data.items.push({ ...item });
+    else if (succeeded) data.items.push({ ...item });
   });
 
   await Promise.all(fetchJobs);

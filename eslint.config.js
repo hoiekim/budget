@@ -44,6 +44,34 @@ export default [
     },
   },
   {
+    // Issue 847: the Plaid Node SDK must not reach the browser bundle. The client
+    // and common layers take their Plaid enums from src/common/lib/plaid-enums
+    // (and the interfaces as types from there); only that module may import
+    // "plaid", as a type-only re-export. A future value import fails lint
+    // here instead of silently adding 400 kB to every page load.
+    files: ["src/client/**/*.ts", "src/client/**/*.tsx", "src/common/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "plaid",
+              message:
+                'Import Plaid enums from "common/lib/plaid-enums" instead — a value import of the SDK pulls plaid + axios into the browser bundle (issue 847).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // The single sanctioned gateway: plaid-enums.ts re-exports the SDK's
+    // interfaces as types. Must come after the ban above so it wins.
+    files: ["src/common/lib/plaid-enums.ts"],
+    rules: { "no-restricted-imports": "off" },
+  },
+  {
     ignores: ["build/**", "node_modules/**", "coverage/**", "*.config.js"],
   },
 ];

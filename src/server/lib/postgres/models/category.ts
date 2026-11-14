@@ -85,7 +85,10 @@ export class CategoryModel extends Model<JSONCategory, CategorySchema> implement
     if (c.name !== undefined) r.name = c.name;
     if (c.roll_over !== undefined) r.roll_over = c.roll_over;
     if (c.roll_over_start_date !== undefined) r.roll_over_start_date = c.roll_over_start_date;
-    if (c.capacities !== undefined) r.capacities = JSON.stringify(c.capacities);
+    // Pass the array through, not a string: Bun.sql stores a string bound
+    // for a JSONB column as a JSON string value, not the object (pg had the
+    // server parse the string into JSON). The driver encodes objects as JSON.
+    if (c.capacities !== undefined) r.capacities = c.capacities;
     return r;
   }
 }

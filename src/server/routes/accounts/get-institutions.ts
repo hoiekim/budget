@@ -70,6 +70,12 @@ export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
       return { status: "success", body: stored };
     }
 
+    if (!plaid.isPlaidConfigured) {
+      // No credentials — the Plaid fallback can't run. Return what the DB
+      // has rather than failing the whole render pass.
+      return { status: "success", body: stored };
+    }
+
     const budget = institutionFallbackRateLimiter.remaining(user.user_id);
     const fetchable = missing.slice(0, budget);
     if (fetchable.length < missing.length) {

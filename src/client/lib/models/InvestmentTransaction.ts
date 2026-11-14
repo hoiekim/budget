@@ -1,4 +1,4 @@
-import { InvestmentTransactionSubtype, InvestmentTransactionType } from "plaid";
+import { InvestmentTransactionSubtype, InvestmentTransactionType } from "common/lib/plaid-enums";
 
 import { getRandomId, getDateTimeString, assign, JSONInvestmentTransaction } from "common";
 import { TransactionLabel } from "./Transaction";
@@ -21,8 +21,11 @@ export class InvestmentTransaction implements JSONInvestmentTransaction {
   amount: number = 0;
   price: number = 0;
   fees: number | null = null;
-  type = InvestmentTransactionType.Buy;
-  subtype = InvestmentTransactionSubtype.Buy;
+  // Explicit annotations: without them the fields infer the literal types
+  // of the defaults (`"buy"`), and every comparison against another member
+  // reads as a no-overlap error.
+  type: InvestmentTransactionType = InvestmentTransactionType.Buy;
+  subtype: InvestmentTransactionSubtype = InvestmentTransactionSubtype.Buy;
   iso_currency_code: string | null = null;
   unofficial_currency_code: string | null = null;
   /**

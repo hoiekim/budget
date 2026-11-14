@@ -1,4 +1,4 @@
-FROM oven/bun:1 AS builder
+FROM oven/bun:1.4.4 AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN bun run typecheck
 RUN bun run test
 RUN bun run build
 
-FROM oven/bun:1
+FROM oven/bun:1.4.4
 
 WORKDIR /app
 
@@ -28,4 +28,4 @@ USER bun
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD bun ./healthcheck.js
 
-CMD ["bun", "./build/server/bundle.js"]
+CMD ["bun", "--no-install", "./build/server/bundle.js"]

@@ -33,8 +33,10 @@ export const getData = async (item: JSONItem, options: GetSimpleFinDataOptions) 
   params.append("pending", "1");
   if (accountId) params.append("account", accountId);
 
+  // A redirect would carry the credentials to a host the allowlist never checked.
   const response = await fetch(`${url}/accounts?${params.toString()}`, {
     headers: { Authorization: `Basic ${credentials}` },
+    redirect: "error",
   });
 
   if (!response.ok) {

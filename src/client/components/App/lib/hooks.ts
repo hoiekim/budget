@@ -1,6 +1,7 @@
 import {
   getBalanceData,
   getHoldingsValueData,
+  withDerivedHoldingSnapshots,
   ScreenType,
   useMemoryState,
   Calculations,
@@ -52,6 +53,11 @@ export const useData = () => {
 
       setCalculations((oldCalculations) => {
         const newCalculations = new Calculations(oldCalculations);
+        // The walk needs a holding's whole history; while a cold sync is still
+        // streaming it in, a partial walk would understate the position.
+        const allHoldingSnapshots = data.status.isColdSync
+          ? holdingSnapshots
+          : withDerivedHoldingSnapshots(holdingSnapshots, investmentTransactions);
 
         // Balance data intentionally does NOT receive `transfers`:
         // per-account historical balance must reflect the actual
@@ -62,7 +68,7 @@ export const useData = () => {
         const balanceData = getBalanceData(
           accounts,
           accountSnapshots,
-          holdingSnapshots,
+          allHoldingSnapshots,
           transactions,
           investmentTransactions,
         );
@@ -81,7 +87,7 @@ export const useData = () => {
         const capacityData = getCapacityData(budgets, sections, categories);
 
         const holdingsValueData = getHoldingsValueData({
-          holdingSnapshots,
+          holdingSnapshots: allHoldingSnapshots,
           securitySnapshots,
           securities,
           investmentTransactions,
@@ -93,6 +99,7 @@ export const useData = () => {
           budgetData,
           capacityData,
           holdingsValueData,
+          holdingSnapshots: allHoldingSnapshots,
         });
 
         newCalculations.status.isInit = true;

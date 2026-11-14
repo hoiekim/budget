@@ -11,3 +11,18 @@ div.ProjectionChartRow > table div.label {
   width: 5px;
   height: 15px;
 }
+
+div.ProjectionChartRow > table th.scenario,
+div.ProjectionChartRow > table td.scenario {
+  text-align: left;
+}
+
+div.ProjectionChartRow > table td.scenario div.label {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+div.ProjectionChartRow > table td.scenario span.scenarioName {
+  vertical-align: middle;
+}

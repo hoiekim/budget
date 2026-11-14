@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   getRemovedTransactions,
   getRemovedInvestmentTransactions,
+  preserveStoredLabels,
 } from "./sync-simple-fin";
 import type { JSONTransaction } from "common";
 import type { JSONInvestmentTransaction } from "common";
@@ -49,6 +50,18 @@ describe("getRemovedTransactions", () => {
     const result = getRemovedTransactions(incoming, stored, START_DATE);
     expect(result).toHaveLength(1);
     expect(result[0].transaction_id).toBe("tx-2");
+  });
+
+  it("does not flag manually-entered (source='manual') transactions as removed", () => {
+    // Manual cash txns never appear in SimpleFin's incoming list — they must not
+    // be soft-deleted by the hourly sync.
+    const incoming = [makeTx({ transaction_id: "tx-1" })];
+    const stored = [
+      makeTx({ transaction_id: "tx-1" }),
+      makeTx({ transaction_id: "manual-1", source: "manual" }),
+    ];
+    const result = getRemovedTransactions(incoming, stored, START_DATE);
+    expect(result).toHaveLength(0);
   });
 
   it("ignores stored transactions before startDate", () => {
@@ -104,6 +117,18 @@ describe("getRemovedInvestmentTransactions", () => {
     expect(result[0].investment_transaction_id).toBe("inv-2");
   });
 
+  it("does not flag manually-entered (source='manual') transactions as removed", () => {
+    // Manual investment txns never appear in SimpleFin's incoming list — they must
+    // not be soft-deleted by the hourly sync.
+    const incoming = [makeInvTx({ investment_transaction_id: "inv-1" })];
+    const stored = [
+      makeInvTx({ investment_transaction_id: "inv-1" }),
+      makeInvTx({ investment_transaction_id: "manual-1", source: "manual" }),
+    ];
+    const result = getRemovedInvestmentTransactions(incoming, stored, START_DATE);
+    expect(result).toHaveLength(0);
+  });
+
   it("ignores stored investment transactions before startDate", () => {
     const incoming: JSONInvestmentTransaction[] = [];
     const stored = [
@@ -145,5 +170,73 @@ describe("getRemovedInvestmentTransactions", () => {
     expect(
       getRemovedInvestmentTransactions(incoming, [], START_DATE),
     ).toEqual([]);
+  });
+});
+describe("preserveStoredLabels", () => {
+  it("keeps the stored label (incl. user-edited memo) on re-sync instead of the provider memo", () => {
+    const incoming = [
+      makeTx({ transaction_id: "tx-1", label: { memo: "PROVIDER MEMO" } }),
+    ];
+    const stored = [
+      makeTx({ transaction_id: "tx-1", label: { memo: "my edited memo" } }),
+    ];
+    const [modeled] = preserveStoredLabels(incoming, stored);
+    expect(modeled.label.memo).toBe("my edited memo");
+  });
+
+  it("keeps the provider memo as the initial label for brand-new rows", () => {
+    const incoming = [
+      makeTx({ transaction_id: "tx-new", label: { memo: "PROVIDER MEMO" } }),
+    ];
+    const [modeled] = preserveStoredLabels(incoming, []);
+    expect(modeled.label.memo).toBe("PROVIDER MEMO");
+  });
+
+  it("carries the whole stored label forward, not just the memo", () => {
+    const incoming = [
+      makeTx({
+        transaction_id: "tx-1",
+        label: { memo: "PROVIDER MEMO" },
+      }),
+    ];
+    const stored = [
+      makeTx({
+        transaction_id: "tx-1",
+        label: { memo: "mine", category_id: "cat-9", category_confidence: 1.0 },
+      }),
+    ];
+    const [modeled] = preserveStoredLabels(incoming, stored);
+    expect(modeled.label).toEqual({
+      memo: "mine",
+      category_id: "cat-9",
+      category_confidence: 1.0,
+    });
+  });
+
+  it("follows the pending->posted id transition to the stored pending row's label", () => {
+    const incoming = [
+      makeTx({
+        transaction_id: "POST-1",
+        pending_transaction_id: "P-1",
+        label: { memo: "PROVIDER MEMO" },
+      }),
+    ];
+    const stored = [
+      makeTx({ transaction_id: "P-1", label: { memo: "labeled while pending" } }),
+    ];
+    const [modeled] = preserveStoredLabels(incoming, stored);
+    expect(modeled.label.memo).toBe("labeled while pending");
+  });
+
+  it("leaves non-label fields from the fresh provider row in place", () => {
+    const incoming = [
+      makeTx({ transaction_id: "tx-1", amount: 42, label: { memo: "PROVIDER" } }),
+    ];
+    const stored = [
+      makeTx({ transaction_id: "tx-1", amount: 10, label: { memo: "mine" } }),
+    ];
+    const [modeled] = preserveStoredLabels(incoming, stored);
+    expect(modeled.amount).toBe(42);
+    expect(modeled.label.memo).toBe("mine");
   });
 });

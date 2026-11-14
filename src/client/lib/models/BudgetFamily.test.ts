@@ -6,6 +6,8 @@ import { MAX_FLOAT } from "common";
 // import TDZ ("Cannot access 'BudgetFamily' before initialization").
 import "./Data";
 import { Budget } from "./Budget";
+import { Section } from "./Section";
+import { Category } from "./Category";
 import { Capacity } from "./Capacity";
 
 // ---------------------------------------------------------------------------
@@ -86,5 +88,46 @@ describe("BudgetFamily.getActiveAmount('year')", () => {
     expect(b.getActiveAmount(new Date(2026, 2, 15), "month")).toBe(3000);
     // January 2026 → still the $4000 default.
     expect(b.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(4000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Null capacities (#830)
+//
+// The server models declare capacities nullable, and rows with
+// capacities = NULL reach the client. The throw used to happen inside
+// fromJSON and abort the whole hydration pass, so one bad row hid every
+// account, connection, and item. Null degrades to the default capacity
+// in every subclass — Budget, Section, and Category share fromJSON.
+// ---------------------------------------------------------------------------
+
+describe("BudgetFamily null capacities", () => {
+  const NULL_CAPACITIES = null as unknown as Capacity[];
+
+  test("a Budget with capacities = NULL constructs with the default capacity", () => {
+    const b = new Budget({ capacities: NULL_CAPACITIES });
+    expect(b.capacities).toHaveLength(1);
+    expect(b.capacities[0]).toBeInstanceOf(Capacity);
+    expect(b.getActiveAmount(IN_2026, "month")).toBe(0);
+    expect(() => b.toJSON()).not.toThrow();
+  });
+
+  test("a Section with capacities = NULL constructs with the default capacity", () => {
+    const s = new Section({ budget_id: "b1", capacities: NULL_CAPACITIES });
+    expect(s.capacities).toHaveLength(1);
+    expect(s.capacities[0]).toBeInstanceOf(Capacity);
+    expect(() => s.toJSON()).not.toThrow();
+  });
+
+  test("a Category with capacities = NULL constructs with the default capacity", () => {
+    const c = new Category({ section_id: "s1", capacities: NULL_CAPACITIES });
+    expect(c.capacities).toHaveLength(1);
+    expect(c.capacities[0]).toBeInstanceOf(Capacity);
+    expect(() => c.toJSON()).not.toThrow();
+  });
+
+  test("capacities = undefined degrades the same way", () => {
+    const b = new Budget({ capacities: undefined });
+    expect(b.capacities).toHaveLength(1);
   });
 });

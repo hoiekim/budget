@@ -1,9 +1,9 @@
 // Run with: bun test --preload ./scripts/test-preload.ts lib.test.ts
 import { describe, test, expect } from "bun:test";
-import { InvestmentTransactionType, InvestmentTransactionSubtype } from "plaid";
+import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/lib/plaid-enums";
 
 import { LocalDate, ViewDate } from "common";
-import { getSankeyData, SankeyColumn } from "./lib";
+import { getSankeyData, getVerticalLines, SankeyColumn } from "./lib";
 import {
   BudgetDictionary,
   SectionDictionary,
@@ -197,6 +197,86 @@ describe("getSankeyData — split re-labeling", () => {
     } finally {
       globalData.transactions = new TransactionDictionary();
     }
+  });
+});
+
+describe("getSankeyData — a section links only to its own budget", () => {
+  type Row = { labelBudget?: "A" | "B"; category?: "A" | "B"; confidence?: number; amount: number };
+  const run = (rows: Row[]) => {
+    const w = makeWorld();
+    const transactions = new TransactionDictionary();
+    rows.forEach(({ labelBudget, category = "A", confidence = 1, amount }, i) => {
+      const tx = new Transaction({
+        account_id: w.account.id,
+        transaction_id: `tx-${i}`,
+        amount,
+        date: DATE,
+        label: {
+          budget_id: labelBudget && (labelBudget === "A" ? w.budgetA.id : w.budgetB.id),
+          category_id: category === "A" ? w.categoryA.id : w.categoryB.id,
+          category_confidence: confidence,
+        },
+      });
+      transactions.set(tx.id, tx);
+    });
+    const { graphData } = getSankeyData(
+      [w.account],
+      transactions,
+      emptyInvestments,
+      new SplitTransactionDictionary(),
+      w.budgets,
+      w.sections,
+      w.categories,
+      viewDate,
+      noTransfers,
+    );
+    return { w, graphData };
+  };
+
+  const linkedAmounts = (budgetColumn: SankeyColumn, sectionColumn: SankeyColumn) =>
+    budgetColumn.map((budget) => ({
+      id: budget.id,
+      amount: budget.amount,
+      linked: sectionColumn
+        .filter((section) => section.next === budget.id)
+        .reduce((sum, section) => sum + section.amount, 0),
+    }));
+
+  test("an expense labeled with another budget still flows through its category's budget", () => {
+    const { w, graphData } = run([
+      { labelBudget: "A", amount: 80 },
+      { labelBudget: "B", amount: 20 },
+    ]);
+    expect(graphData[4].map(({ id, next, amount }) => ({ id, next, amount }))).toEqual([
+      { id: w.sectionA.id, next: w.budgetA.id, amount: 100 },
+    ]);
+    expect(linkedAmounts(graphData[3], graphData[4])).toEqual([
+      { id: w.budgetA.id, amount: 100, linked: 100 },
+    ]);
+  });
+
+  test("an income labeled with another budget still flows through its category's budget", () => {
+    const { w, graphData } = run([
+      { labelBudget: "A", amount: -80 },
+      { labelBudget: "B", amount: -20 },
+    ]);
+    expect(graphData[0].map(({ id, next, amount }) => ({ id, next, amount }))).toEqual([
+      { id: w.sectionA.id, next: w.budgetA.id, amount: 100 },
+    ]);
+    expect(linkedAmounts(graphData[1], graphData[0])).toEqual([
+      { id: w.budgetA.id, amount: 100, linked: 100 },
+    ]);
+  });
+
+  test("an unconfirmed suggestion from another budget flows through the suggested section's budget", () => {
+    // The account's fallback budget is A; the suggested category belongs to B.
+    const { w, graphData } = run([{ category: "B", confidence: 0.99, amount: 50 }]);
+    expect(graphData[4].map(({ id, next, amount }) => ({ id, next, amount }))).toEqual([
+      { id: w.sectionB.id, next: w.budgetB.id, amount: 50 },
+    ]);
+    expect(linkedAmounts(graphData[3], graphData[4])).toEqual([
+      { id: w.budgetB.id, amount: 50, linked: 50 },
+    ]);
   });
 });
 
@@ -441,5 +521,58 @@ describe("getSankeyData — budget_ids whitelist filter", () => {
       ["Unknown"],
     );
     expect(tableData.expense).toBe(42);
+  });
+});
+
+describe("getVerticalLines — the gap share is capped (#826)", () => {
+  const col = (n: number, amount = 10): SankeyColumn =>
+    Array.from({ length: n }, (_, i) => ({ id: `r${i}`, name: `Row ${i}`, amount }));
+
+  const barCoverage = (lines: { start: number; end: number }[]) =>
+    lines.reduce((sum, { start, end }) => sum + (start - end), 0);
+
+  const gapTotal = (lines: { start: number; end: number }[]) =>
+    lines.slice(1).reduce((sum, line, i) => sum + (lines[i]!.end - line.start), 0);
+
+  const assertNoInversions = (lines: { start: number; end: number }[]) => {
+    for (const { start, end } of lines) {
+      expect(start).toBeGreaterThanOrEqual(end);
+      expect(end).toBeGreaterThanOrEqual(0);
+    }
+    expect(lines[0]!.start).toBeLessThanOrEqual(1);
+  };
+
+  test("up to 10 gaps the layout is unchanged (3% per gap)", () => {
+    const lines = getVerticalLines(col(11), 10);
+    expect(lines).toHaveLength(11);
+    expect(lines[0]!.end - lines[1]!.start).toBeCloseTo(0.03, 10);
+    expect(barCoverage(lines)).toBeCloseTo(0.7, 10);
+    assertNoInversions(lines);
+  });
+
+  test("23 gaps leave the bars 70% of the height instead of 31%", () => {
+    // The issue's measured case: 24 rows on the Year interval.
+    const lines = getVerticalLines(col(24), 23);
+    expect(lines).toHaveLength(24);
+    assertNoInversions(lines);
+    expect(barCoverage(lines)).toBeCloseTo(0.7, 6);
+    expect(gapTotal(lines)).toBeCloseTo(0.3, 6);
+  });
+
+  test("40 gaps cannot invert a line, with uneven amounts", () => {
+    const uneven: SankeyColumn = Array.from({ length: 41 }, (_, i) => ({
+      id: `r${i}`,
+      name: `Row ${i}`,
+      amount: 41 - i,
+    }));
+    const lines = getVerticalLines(uneven, 40);
+    expect(lines).toHaveLength(41);
+    assertNoInversions(lines);
+    expect(barCoverage(lines)).toBeCloseTo(0.7, 6);
+    expect(gapTotal(lines)).toBeCloseTo(0.3, 6);
+  });
+
+  test("a single row takes the full height", () => {
+    expect(getVerticalLines(col(1), 0)).toEqual([{ start: 1, end: 0 }]);
   });
 });

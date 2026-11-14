@@ -1,6 +1,6 @@
 import { assign, getYearMonthString, isDate, isUndefined, LocalDate, ViewDate } from "common";
 import { Status } from "./miscellaneous";
-import { SplitTransactionDictionary } from "./Data";
+import { HoldingSnapshotDictionary, SplitTransactionDictionary } from "./Data";
 import { SplitTransaction } from "./SplitTransaction";
 import type { BudgetFamily } from "./BudgetFamily";
 
@@ -12,6 +12,8 @@ export class Calculations {
   capacityData = new CapacityData();
   transactionFamilies = new TransactionFamilies();
   holdingsValueData = new HoldingsValueData();
+  /** Holding snapshots with the positions derived from transactions; read these, not `data.holdingSnapshots`, to value holdings. */
+  holdingSnapshots = new HoldingSnapshotDictionary();
 
   constructor(init?: Partial<Calculations>) {
     assign(this, init);

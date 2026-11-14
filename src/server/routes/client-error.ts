@@ -20,7 +20,12 @@ export type ClientErrorPostBody = {
 export const postClientErrorRoute = new Route("POST", "/client-error", async (req) => {
   clientErrorRateLimiter.consume(req.ip);
 
-  const body = req.body as ClientErrorPostBody;
+  // req.body is absent when the request has no JSON content-type, the JSON
+  // is unparseable, or the payload is a literal null (start.ts) — default
+  // to {} so the report goes through the dedicated cooldown bucket below
+  // instead of the missing-body TypeError landing a 500 in the default
+  // alarm bucket.
+  const body = (req.body ?? {}) as ClientErrorPostBody;
 
   const message = typeof body.message === "string" ? body.message : "(no message)";
   const stack = typeof body.stack === "string" ? body.stack : "";

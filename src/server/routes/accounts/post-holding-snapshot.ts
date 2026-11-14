@@ -4,18 +4,22 @@ import {
   requireBodyObject,
   requireTickerSymbol,
   optionalDateField,
+  validateFields,
   validationError,
   upsertHoldingSnapshots,
   upsertHoldings,
   searchSecurities,
   upsertSecurities,
+  getSecurity,
   getAccount,
-  getHoldingSnapshots,
+  getHoldingSnapshotById,
   polygon,
+  marketData,
   polygonLookupRateLimiter,
   POLYGON_LOOKUP_SHED_MESSAGE,
   backfillMonthlySecuritySnapshotsForward,
 } from "server";
+import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
 import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositories";
 
@@ -23,6 +27,37 @@ export interface HoldingSnapshotPostResponse {
   snapshot_id: string;
   security_id: string;
 }
+
+/**
+ * The numeric fields a holding-snapshot edit can set, mirroring their
+ * DECIMAL columns in `models/snapshot.ts` (QUANTITY DECIMAL(15, 6),
+ * COST_BASIS / INSTITUTION_VALUE DECIMAL(15, 2), INSTITUTION_PRICE
+ * DECIMAL(15, 6)). All four columns are nullable, so an explicit null
+ * clears the column rather than failing — the specs say so instead of
+ * letting the write decide.
+ *
+ * Both specs run BEFORE the ownership lookup, matching #776: a client type
+ * error is a `failed` answer with the field named, never a 22P02 at the
+ * write that `Route.execute` turns into a 500 plus an alarm.
+ *
+ * Overflow stays out of scope here: `validateFields`'s `number` pins
+ * finiteness only, so a 1e300 still reaches the column — that range bound
+ * belongs to #880, which adds it to `FieldSpec` for all eight swept routes
+ * at once.
+ */
+const HOLDING_SNAPSHOT_PATCH_SPEC: FieldSpec[] = [
+  { path: "quantity", type: "number", nullable: true },
+  { path: "cost_basis", type: "number", nullable: true },
+  { path: "institution_price", type: "number", nullable: true },
+  { path: "institution_value", type: "number", nullable: true },
+];
+
+const HOLDING_SNAPSHOT_CREATE_SPEC: FieldSpec[] = [
+  { path: "quantity", type: "number", required: true },
+  { path: "cost_basis", type: "number", nullable: true },
+  { path: "institution_price", type: "number", nullable: true },
+  { path: "institution_value", type: "number", nullable: true },
+];
 
 /**
  * Resolve an already-validated ticker symbol to a security_id, creating the
@@ -44,7 +79,9 @@ const resolveSecurityId = async (
   }
   polygonLookupRateLimiter.consume(user_id);
 
-  const detailResult = await polygon.getTickerDetail(upperTicker, {
+  // Resolve via Polygon, falling back to Yahoo for symbols Polygon does not
+  // carry (e.g. mutual funds).
+  const detailResult = await marketData.getTickerDetailWithFallback(upperTicker, {
     maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
   });
   if (!detailResult.success) {
@@ -109,8 +146,10 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     // only the fields included in the body are written. Powers the on-blur
     // edit flow on the Holding Detail page.
     if (provided_snapshot_id) {
-      const userSnapshots = await getHoldingSnapshots(user);
-      const existing = userSnapshots.find((s) => s.snapshot_id === provided_snapshot_id);
+      const patchFieldsResult = validateFields(body, HOLDING_SNAPSHOT_PATCH_SPEC);
+      if (!patchFieldsResult.success) return validationError(patchFieldsResult.error!);
+
+      const existing = await getHoldingSnapshotById(user, provided_snapshot_id);
       if (!existing) {
         return { status: "failed", message: "Snapshot not found or access denied." };
       }
@@ -145,9 +184,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
         // Re-sync the current-holdings row from the latest snapshot state so
         // portfolio value calculations stay consistent with the edit.
-        const refreshed = (await getHoldingSnapshots(user)).find(
-          (s) => s.snapshot_id === provided_snapshot_id,
-        );
+        const refreshed = await getHoldingSnapshotById(user, provided_snapshot_id);
         if (refreshed) {
           const security_id = refreshed.holding_security_id;
           const holding: JSONHolding = {
@@ -186,13 +223,27 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
 
     // ── Create mode ─────────────────────────────────────────────────────────
     const account_id = body.account_id as string | undefined;
-    const quantity = body.quantity as number | undefined;
 
     if (!account_id) return validationError("account_id is required");
     if (typeof account_id !== "string") return validationError("account_id must be a string");
-    const tickerResult = requireTickerSymbol(body, "ticker_symbol");
-    if (!tickerResult.success) return validationError(tickerResult.error!);
-    if (quantity === undefined || quantity === null) return validationError("quantity is required");
+    // A known security can be named by id, so a ticker two security rows share
+    // can't send the snapshot to the other one.
+    const given_security_id = body.security_id;
+    if (given_security_id !== undefined && typeof given_security_id !== "string") {
+      return validationError("security_id must be a string");
+    }
+    const tickerResult = given_security_id ? null : requireTickerSymbol(body, "ticker_symbol");
+    if (tickerResult && !tickerResult.success) return validationError(tickerResult.error!);
+    // `quantity` is the only required number; the other three are optional
+    // and nullable (see HOLDING_SNAPSHOT_CREATE_SPEC). Replaces the old
+    // presence-only check, which let a string or boolean through to the
+    // DECIMAL column. Runs before the ownership lookup, so the refusal
+    // issues no SQL and no alarm.
+    const createFieldsResult = validateFields(body, HOLDING_SNAPSHOT_CREATE_SPEC);
+    if (!createFieldsResult.success) return validationError(createFieldsResult.error!);
+    // The spec just proved `quantity` is a finite number — the cast below
+    // is the same narrowing the old presence check used to give.
+    const quantity = body.quantity as number;
 
     const parsedDate = optionalDateField(body, "snapshot_date");
     if (!parsedDate.success) return validationError(parsedDate.error!);
@@ -208,9 +259,15 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const date: Date = parsedDate.data ?? new Date();
     const dateString = getSquashedDateString(date);
 
-    const resolved = await resolveSecurityId(tickerResult.data!, user.user_id);
-    if (!resolved.ok) return { status: "failed", message: resolved.message };
-    const security_id = resolved.security_id;
+    let security_id: string;
+    if (given_security_id) {
+      if (!(await getSecurity(given_security_id))) return { status: "failed", message: "Security not found." };
+      security_id = given_security_id;
+    } else {
+      const resolved = await resolveSecurityId(tickerResult!.data!, user.user_id);
+      if (!resolved.ok) return { status: "failed", message: resolved.message };
+      security_id = resolved.security_id;
+    }
 
     // Deterministic snapshot ID so a duplicate (account, security, date) tuple
     // updates in place rather than producing duplicate rows.

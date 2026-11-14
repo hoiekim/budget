@@ -42,6 +42,16 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
         : getLimitedBudgetsToSync(original, updated, capacityData)
       : getNonSyncedBudgetsToUpdate(original, updated, isIncome, isInfinite);
 
+    // Aggregate the entities whose POSTs succeeded, then write them to the
+    // store in ONE setData call: each setData re-renders the data consumers
+    // and schedules the debounced full recalculation (Utility), so one
+    // call per entity in the loop repeats that work for every entity in
+    // the family. The single write still happens even when a later POST
+    // fails — the entities that already committed stay visible instead of
+    // vanishing until the next full /api/budgets sync (fixes #810) — and
+    // the throw still surfaces the failure for the remainder.
+    const committed: BudgetFamily[] = [];
+    let failure: Error | undefined;
     const iterator = toUpdateList.values();
     let current = iterator.next();
     while (!current.done) {
@@ -49,29 +59,28 @@ export const useSave = (isSynced: boolean, isIncome: boolean, isInfinite: boolea
       const { id, type } = budgetLike;
       const { status, message } = await call.post(`/api/${type}`, budgetLike);
       if (status !== "success") {
-        throw new Error(message || `Failed to update ${type}: ${id}`);
+        failure = new Error(message || `Failed to update ${type}: ${id}`);
+        break;
       }
+      committed.push(budgetLike);
       current = iterator.next();
     }
 
-    setData((oldData) => {
-      const newData = new Data(oldData);
-
-      const iterator = toUpdateList.values();
-      let current = iterator.next();
-      while (!current.done) {
-        const budgetLike = current.value;
-        const { id, type, dictionaryKey } = budgetLike;
-        if (!oldData[dictionaryKey].has(id)) return oldData;
-        const DynamicBudgetFamily = getBudgetClass(type);
-        const newBudgetLike = new DynamicBudgetFamily(budgetLike);
-        indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
-        newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
-        current = iterator.next();
-      }
-
-      return newData;
-    });
+    if (committed.length > 0) {
+      setData((oldData) => {
+        const newData = new Data(oldData);
+        for (const budgetLike of committed) {
+          const { id, type, dictionaryKey } = budgetLike;
+          if (!oldData[dictionaryKey].has(id)) continue;
+          const DynamicBudgetFamily = getBudgetClass(type);
+          const newBudgetLike = new DynamicBudgetFamily(budgetLike);
+          indexedDb.save(newBudgetLike as Budget | Section | Category).catch(console.error);
+          newData[dictionaryKey].set(id, newBudgetLike as Budget & Section & Category);
+        }
+        return newData;
+      });
+    }
+    if (failure) throw failure;
   };
 
   return save;
@@ -192,24 +201,44 @@ const getBudgetsToUpdatePeriod = <T extends BudgetFamily>(
 
   const updatedOriginal = original.clone(updated);
 
-  const updateCapacities = (budgetLike: BudgetFamily) => {
-    return updatedOriginal.capacities.map(({ active_from }) => {
-      const date = active_from && new LocalDate(active_from);
-      const activeCapacity = budgetLike.getActiveCapacity(new LocalDate(date || 0));
-      const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
-      delete clonedCapacity.capacity_id;
-      const newCapacity = new Capacity(clonedCapacity);
-      newCapacity.active_from = date;
-      return newCapacity;
-    });
-  };
-
   const budget =
     updatedOriginal?.type === "budget"
       ? (updatedOriginal as unknown as Budget)
       : updatedOriginal.type === "section"
         ? (updatedOriginal.getParent()! as Budget)
         : (updatedOriginal.getParent()?.getParent()! as Budget);
+
+  // The period list belongs to the family, not to the entity being edited.
+  // Editing the budget itself redefines the periods, so the edited list
+  // rules; saving a child re-derives against the family's existing
+  // boundaries instead. Deriving from the edited child collapsed the
+  // whole family to the child's periods — a newly added section or
+  // category always has exactly one capacity — deleting every other
+  // period on the budget and every sibling with it.
+  const periodDates =
+    updatedOriginal.type === "budget"
+      ? updatedOriginal.capacities.map((c) => c.active_from)
+      : budget.capacities.map((c) => c.active_from);
+
+  const updateCapacities = (budgetLike: BudgetFamily) => {
+    return periodDates.map((active_from) => {
+      const date = active_from && new LocalDate(active_from);
+      const activeCapacity = budgetLike.getActiveCapacity(new LocalDate(date || 0));
+      const clonedCapacity: Partial<Capacity> = new Capacity(activeCapacity);
+      // Keep the stored row's id when this period already has a row for
+      // this entity: a child save must not churn the family's capacity
+      // ids. A period the entity doesn't have yet mints a fresh id — the
+      // stored row only covers it by roll-forward, so the period's row is
+      // new.
+      const samePeriod =
+        new LocalDate(activeCapacity.active_from || 0).getTime() ===
+        new LocalDate(date || 0).getTime();
+      if (!samePeriod) delete clonedCapacity.capacity_id;
+      const newCapacity = new Capacity(clonedCapacity);
+      newCapacity.active_from = date;
+      return newCapacity;
+    });
+  };
 
   budget.capacities = updateCapacities(budget);
   budget.getChildren().forEach((c) => {

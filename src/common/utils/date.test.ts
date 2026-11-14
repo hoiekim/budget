@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  formatDate,
   getDateString,
   getSquashedDateString,
   getDateTimeString,
@@ -8,6 +9,7 @@ import {
   LocalDate,
   ViewDate,
   IsDate,
+  isCalendarDate,
 } from "./date";
 
 describe("getDateString", () => {
@@ -73,6 +75,36 @@ describe("getLocaleDateString", () => {
     expect(result).toContain("Jun");
     expect(result).toContain("15");
     expect(result).toContain("2024");
+  });
+});
+
+describe("formatDate", () => {
+  it("should format a date-only string the way the detail panels do", () => {
+    // A bare YYYY-MM-DD reads as local midnight, so the day is exact in any timezone.
+    expect(formatDate("2026-01-19")).toBe("Jan 19, 2026");
+  });
+
+  it("should format a full timestamp", () => {
+    // The rendered day follows the runtime timezone for an offset timestamp,
+    // so pin the month and year, not the day.
+    const result = formatDate("2026-01-19T16:22:32.431-08:00");
+    expect(result).toContain("Jan");
+    expect(result).toContain("2026");
+  });
+
+  it("should fall back to Unknown for a missing value", () => {
+    expect(formatDate(null)).toBe("Unknown");
+    expect(formatDate(undefined)).toBe("Unknown");
+    expect(formatDate("")).toBe("Unknown");
+  });
+
+  it("should fall back to Unknown, never Invalid Date, for an unparseable value", () => {
+    expect(formatDate("garbage")).toBe("Unknown");
+  });
+
+  it("should use a caller-supplied fallback", () => {
+    expect(formatDate(null, "Never")).toBe("Never");
+    expect(formatDate("garbage", "Never")).toBe("Never");
   });
 });
 
@@ -283,5 +315,16 @@ describe("IsDate", () => {
     expect(checker.within("year").from(new Date(2024, 0, 1))).toBe(true);
     expect(checker.within("year").from(new Date(2024, 11, 31))).toBe(true);
     expect(checker.within("year").from(new Date(2023, 5, 15))).toBe(false);
+  });
+});
+
+describe("isCalendarDate", () => {
+  it("accepts a day that exists, leap days included", () => {
+    expect(["2026-03-02", "2024-02-29", "2026-12-31"].map(isCalendarDate)).toEqual([true, true, true]);
+  });
+
+  it("refuses impossible days and other shapes without throwing", () => {
+    const bad = ["2026-02-30", "2025-02-29", "2026-13-01", "2026-00-10", "2026-03-32", "2026-3-2", "20260302", "", null, 20260302];
+    expect(bad.map((v) => isCalendarDate(v))).toEqual(bad.map(() => false));
   });
 });

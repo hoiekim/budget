@@ -1,6 +1,5 @@
-import { PoolClient } from "pg";
 import { isUndefined } from "common";
-import { pool } from "../client";
+import { pool, type SqlClient, type SqlPool } from "../client";
 import {
   buildSelectWithFilters,
   buildInsert,
@@ -15,7 +14,16 @@ import {
 } from "../database";
 
 /** Query executor - either pool or a transaction client */
-export type QueryExecutor = typeof pool | PoolClient;
+export type QueryExecutor = SqlPool | SqlClient;
+
+/** Rows per database read when a result is streamed rather than returned whole. */
+export const STREAM_BATCH_SIZE = 500;
+
+export async function* toJSONBatches<TJSON>(
+  batches: AsyncIterable<{ toJSON(): TJSON }[]>,
+): AsyncGenerator<TJSON[]> {
+  for await (const models of batches) yield models.map((m) => m.toJSON());
+}
 
 export class ModelValidationError extends Error {
   public readonly errors: string[];
@@ -125,6 +133,7 @@ export abstract class Table<
   async query(
     filters: Record<string, ParamValue | unknown> = {},
     options: Omit<SearchFilters, "filters"> = {},
+    client?: QueryExecutor,
   ): Promise<TModel[]> {
     const { sql, values } = buildSelectWithFilters(this.name, "*", {
       filters,
@@ -135,12 +144,46 @@ export abstract class Table<
       primaryKey: options.primaryKey,
       inFilters: options.inFilters,
       dateRange: options.dateRange,
+      after: options.after,
       orderBy: options.orderBy,
       limit: options.limit,
       offset: options.offset,
     });
-    const result = await pool.query(sql, values);
+    const result = await (client ?? pool).query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
+  }
+
+  /**
+   * `query` in primary-key order, `batchSize` rows at a time, so a caller
+   * streaming a large result never holds more than one batch.
+   */
+  async *queryInBatches(
+    filters: Record<string, ParamValue | unknown>,
+    options: Omit<SearchFilters, "filters" | "after" | "orderBy" | "limit" | "offset">,
+    batchSize = STREAM_BATCH_SIZE,
+  ): AsyncGenerator<TModel[]> {
+    this._assertSimplePrimaryKey("queryInBatches");
+    let after: SearchFilters["after"];
+    while (true) {
+      const { sql, values } = buildSelectWithFilters(this.name, "*", {
+        ...options,
+        filters,
+        excludeDeleted: options.excludeDeleted ?? this.supportsSoftDelete,
+        after,
+        orderBy: this.primaryKey,
+        limit: batchSize,
+      });
+      const { rows } = await pool.query(sql, values);
+      if (rows.length === 0) return;
+      yield rows.map((row: unknown) => new this.ModelClass(row));
+      if (rows.length < batchSize) return;
+      // The keyset value comes back from the database for the PK column;
+      // pg's any-rows let it flow untyped, the Record rows need the cast.
+      after = {
+        column: this.primaryKey,
+        value: rows[rows.length - 1][this.primaryKey] as ParamValue,
+      };
+    }
   }
 
   async queryOne(filters: Record<string, ParamValue | unknown>): Promise<TModel | null> {
@@ -174,8 +217,12 @@ export abstract class Table<
    * anything else → `column = $N`.
    *
    * `excludeDeleted` opts into the live-row predicate `query` applies by
-   * default. Opt-in rather than default here because an update is also how a
-   * soft-deleted row would be restored.
+   * default, and defaults to it: omitting the flag excludes soft-deleted
+   * rows (on tables that have `is_deleted`; tables without one are
+   * unaffected). Pass `false` explicitly to write to a soft-deleted row.
+   * No caller restores a row through `update` today — the one deliberate
+   * write to a tombstoned row, the recurring-revival upsert in
+   * `detect-recurrings.ts`, is raw SQL, not this path.
    */
   async update(
     primaryKeyValue: ParamValue,
@@ -193,7 +240,7 @@ export abstract class Table<
     const query = buildUpdate(this.name, this.primaryKey, primaryKeyValue, data, {
       returning: returning ?? [this.primaryKey],
       additionalWhere: additionalWhere.length > 0 ? additionalWhere : undefined,
-      excludeDeleted: excludeDeleted && this.supportsSoftDelete,
+      excludeDeleted: (excludeDeleted ?? true) && this.supportsSoftDelete,
     });
     if (!query) return null;
     const executor = client ?? pool;

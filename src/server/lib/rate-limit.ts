@@ -92,8 +92,15 @@ export interface RateLimiter {
    */
   consume(subject: string, slots?: number): void;
   /**
-   * Clear the subject's slots so earlier attempts don't accumulate against
-   * them for the rest of the window.
+   * Give back slots consumed in the active window, never below zero. A caller
+   * that charges a slot before its outcome is known, so concurrent requests
+   * can't all pass the check, refunds it once the outcome turns out free.
+   */
+  refund(subject: string, slots?: number): void;
+  /**
+   * Forget the subject's slots: a seam for isolating tests. Clearing a counter
+   * on success is unsafe when one subject covers several accounts, as an IP
+   * does: one valid login would erase the failures charged against the rest.
    */
   reset(subject: string): void;
 }
@@ -134,6 +141,10 @@ export const createRateLimiter = (
       } else {
         attempts.set(key, { count: slots, resetAt: now + windowMs });
       }
+    },
+    refund: (subject, slots = 1) => {
+      const record = attempts.get(keyFor(subject));
+      if (record && Date.now() < record.resetAt) record.count = Math.max(0, record.count - slots);
     },
     reset: (subject) => {
       attempts.delete(keyFor(subject));
@@ -183,6 +194,23 @@ export const POLYGON_LOOKUP_SHED_MESSAGE =
 export const institutionFallbackRateLimiter = createRateLimiter("institution-fallback", {
   maxAttempts: 20,
   windowMs: 60 * 1000,
+});
+
+// One bucket for the whole process, not per caller: what it protects is the
+// production Plaid credential's quota, which a caller rotating addresses would
+// otherwise spend freely. Only key_ids that haven't verified since start are
+// charged; a key Plaid signs with skips the cap when its hour-long cache expires.
+export const plaidKeyFetchRateLimiter = createRateLimiter("plaid-key-fetch", {
+  maxAttempts: 10,
+  windowMs: 60 * 1000,
+});
+
+// Keyed by item id. When the cap above is full, a webhook naming a real item may
+// still fetch its key, so a flood of made-up key_ids can't hold genuine webhooks
+// off; this bounds what anyone who knows an item id can spend that way.
+export const plaidItemKeyFetchRateLimiter = createRateLimiter("plaid-item-key-fetch", {
+  maxAttempts: 6,
+  windowMs: 60 * 60 * 1000,
 });
 
 const PRE_SESSION_RATE_LIMITS: {

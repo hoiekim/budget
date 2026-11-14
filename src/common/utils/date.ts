@@ -269,6 +269,21 @@ export const getLocaleDateString = (date: Date) => {
 };
 
 /**
+ * Format an ISO timestamp the way the detail panels do ("Jan 19, 2026").
+ * One shared call so the panels can't drift apart again; `fallback` covers a
+ * missing or unparseable value. Takes the stored string (not a Date) because
+ * that is what the detail panels hold — the parse goes through LocalDate, as
+ * the sibling panels' inline calls do, so a bare YYYY-MM-DD stays on the
+ * local day instead of rendering as the previous day in US timezones
+ * (#1031, #1035).
+ */
+export const formatDate = (iso?: string | null, fallback = "Unknown") => {
+  if (!iso) return fallback;
+  const date = new LocalDate(iso);
+  return Number.isNaN(date.getTime()) ? fallback : getLocaleDateString(date);
+};
+
+/**
  * @param yearMonthString YYYY-MM
  * @returns Date
  */
@@ -277,4 +292,18 @@ export const parseYearMonthString = (yearMonthString: string) => {
   const month = parseInt(yearMonthString.substring(5, 7));
   if (!year || !month) return null;
   return new Date(year, month - 1);
+};
+
+/**
+ * Whether `value` is a `YYYY-MM-DD` day that exists on the calendar
+ * (`2026-02-30` and `2026-13-01` aren't). Never throws, unlike parsing an
+ * impossible date and formatting it back.
+ */
+export const isCalendarDate = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [year, month, day] = match.slice(1).map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 };

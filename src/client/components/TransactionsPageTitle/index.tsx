@@ -1,4 +1,4 @@
-import { AccountType } from "plaid";
+import { AccountType } from "common/lib/plaid-enums";
 import { useCallback } from "react";
 import { JSONInvestmentTransaction, JSONTransaction, toTitleCase } from "common";
 import {
@@ -23,6 +23,7 @@ export type TransactionsPageType =
   | "unsorted"
   | "suggested"
   | "transfers"
+  | "recurring"
   | "manual";
 
 interface TransactionsPageFilters {
@@ -45,6 +46,7 @@ const TYPE_LABELS: Record<TransactionsPageType, string> = {
   deposits: "Deposits",
   expenses: "Expenses",
   transfers: "Transfers",
+  recurring: "Recurring",
   manual: "Manual",
 };
 

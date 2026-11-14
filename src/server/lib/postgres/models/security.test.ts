@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg } = createFakePg();
+const { driver } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { SecurityModel } = await import("./security");
 

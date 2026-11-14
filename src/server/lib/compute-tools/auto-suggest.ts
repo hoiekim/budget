@@ -66,8 +66,30 @@ const W_DAY = 1;
  *  weak feature trio (amount + channel + day = 7, account-only = 1)
  *  are coincidences, not signal, and would otherwise drown out real
  *  matches by volume. Tuned against the prod-clone evaluation sweep:
- *  raising from 8 → 15 nearly doubled recall without losing precision. */
-const ROW_SCORE_THRESHOLD = 15;
+ *  raising from 8 → 15 nearly doubled recall without losing precision.
+ *
+ *  NOTE: 15 does NOT exclude every weak-only row. A row matching all
+ *  five non-identity features — amount band (5) + Plaid PFC (10) +
+ *  payment channel (1) + account (1) + day band (1) — scores 18 and
+ *  clears this threshold. That is deliberate: the PFC fallback is how
+ *  unseen merchants get suggestions at all. The cost is that those
+ *  weak rows also count toward the winning category's `count_matched`
+ *  and dilute the quality average — see IDENTITY_SCORE_THRESHOLD,
+ *  which is what keeps merchant-driven suggestions from being
+ *  drowned by them (budget#1018). */
+export const ROW_SCORE_THRESHOLD = 15;
+
+/** Per-row score floor for the identity tier: only rows matching
+ *  `merchant_name` (100) or `name` (50) count. A row matching only
+ *  the five non-identity features scores at most
+ *  W_AMOUNT (5) + W_PFC (10) + W_PAYMENT_CHANNEL (1) + W_ACCOUNT (1) +
+ *  W_DAY (1) = 18, so 19 is the tightest separator — any threshold in
+ *  (18, 50] works, and 19 keeps the most identity signal. The engine
+ *  tries this tier first and falls back to ROW_SCORE_THRESHOLD only
+ *  when it yields no suggestion, so the PFC fallback for unseen
+ *  merchants is preserved while a merchant with confirmed history
+ *  is judged on its identity matches alone (budget#1018). */
+export const IDENTITY_SCORE_THRESHOLD = 19;
 
 /** Minimum quality (avg per-row score / max-possible-per-row) before
  *  the engine writes a suggestion. Quality measures HOW STRONG the
@@ -297,6 +319,15 @@ const applyLabelToSplit = async (
  * - Only rows whose score clears `ROW_SCORE_THRESHOLD` contribute —
  *   filters out coincidental weak-only matches. SUM(score) per category
  *   picks the winner.
+ * - Two tiers per target (budget#1018): the identity tier
+ *   (`IDENTITY_SCORE_THRESHOLD` = 19) counts only rows matching
+ *   `merchant_name` or `name`, so a merchant with confirmed history is
+ *   judged on its identity matches alone — weak-only rows (at most 18)
+ *   cannot dilute its quality below `MIN_QUALITY`. Only when the
+ *   identity tier yields no suggestion does the engine fall back to
+ *   the standard tier (`ROW_SCORE_THRESHOLD` = 15), which admits the
+ *   Plaid-PFC fallback for merchants with no history. Anything the
+ *   standard tier suggests today, it still suggests.
  * - Apply the suggestion if all three gates pass: `count_matched >= 3`
  *   (sample size), `rejected / (accepted + rejected) <= 0.1` (reject
  *   rate), `accepted / (count_matched × max_per_row) >= MIN_QUALITY`
@@ -367,35 +398,19 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
   // Pass 1: top-level transactions.
   const unlabeled = await fetchUnlabeled(userId);
   for (const { transaction_id, features } of unlabeled) {
-    const signal = await getFeatureSignal(userId, features);
-    if (!signal) continue;
-    const cappedConfidence = evaluateSignal(signal);
-    if (cappedConfidence === null) continue;
-    await applyLabel(
-      transaction_id,
-      userId,
-      signal.label_category_id,
-      signal.label_budget_id,
-      cappedConfidence,
+    const applied = await trySuggest(userId, features, (categoryId, budgetId, confidence) =>
+      applyLabel(transaction_id, userId, categoryId, budgetId, confidence),
     );
-    suggested++;
+    if (applied) suggested++;
   }
 
   // Pass 2: split transactions.
   const unlabeledSplits = await fetchUnlabeledSplits(userId);
   for (const { split_transaction_id, features } of unlabeledSplits) {
-    const signal = await getFeatureSignal(userId, features);
-    if (!signal) continue;
-    const cappedConfidence = evaluateSignal(signal);
-    if (cappedConfidence === null) continue;
-    await applyLabelToSplit(
-      split_transaction_id,
-      userId,
-      signal.label_category_id,
-      signal.label_budget_id,
-      cappedConfidence,
+    const applied = await trySuggest(userId, features, (categoryId, budgetId, confidence) =>
+      applyLabelToSplit(split_transaction_id, userId, categoryId, budgetId, confidence),
     );
-    suggested++;
+    if (applied) suggested++;
   }
 
   if (suggested > 0) {
@@ -403,6 +418,35 @@ const processUserSuggestions = async (userId: string): Promise<number> => {
   }
 
   return suggested;
+};
+
+/**
+ * Try to suggest a category for one unlabeled target, identity tier
+ * first, standard tier as fallback. Returns true when a suggestion
+ * was applied.
+ *
+ * Identity tier (`IDENTITY_SCORE_THRESHOLD`): only merchant/name
+ * matches count, so weak-only rows cannot dilute the quality gate
+ * (budget#1018). Standard tier (`ROW_SCORE_THRESHOLD`): today's
+ * behavior, including the Plaid-PFC fallback for merchants with no
+ * confirmed history. The fallback runs whenever the identity tier
+ * yields no applicable suggestion — no signal, or a signal that fails
+ * a gate — so anything the engine suggests today, it still suggests.
+ */
+const trySuggest = async (
+  userId: string,
+  features: TargetFeatures,
+  apply: (labelCategoryId: string, labelBudgetId: string, confidence: number) => Promise<void>,
+): Promise<boolean> => {
+  for (const threshold of [IDENTITY_SCORE_THRESHOLD, ROW_SCORE_THRESHOLD]) {
+    const signal = await getFeatureSignal(userId, features, threshold);
+    if (!signal) continue;
+    const cappedConfidence = evaluateSignal(signal);
+    if (cappedConfidence === null) continue;
+    await apply(signal.label_category_id, signal.label_budget_id, cappedConfidence);
+    return true;
+  }
+  return false;
 };
 
 /**
@@ -454,6 +498,7 @@ const SCORE_EXPR = (t: string) => `(
 const getFeatureSignal = async (
   userId: string,
   f: TargetFeatures,
+  rowScoreThreshold: number,
 ): Promise<FeatureSignal | null> => {
   // Per-row score = weighted sum of feature matches; SUM(score) per category,
   // winner = highest total. Weights are set so a single merchant+name match
@@ -473,7 +518,7 @@ const getFeatureSignal = async (
     f.plaid_pfc_primary, //          $9 (or null)
     f.day_lo, //                     $10
     f.day_hi, //                     $11
-    ROW_SCORE_THRESHOLD, //          $12
+    rowScoreThreshold, //             $12 — per-row score floor for this tier
     f.amount, //                     $13 (sign source for the identity-feature gates in SCORE_EXPR)
   ];
 
@@ -513,8 +558,10 @@ const getFeatureSignal = async (
            AND ${SCORE_EXPR("t")} > $12
        ) AS rejected
      FROM winning w
-     JOIN categories ON categories.category_id = w.label_category_id
-     JOIN sections ON sections.section_id = categories.section_id
+     -- Scoped to the user: a label can name another user's category, and joining it unscoped
+     -- would read that user's section.
+     JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1
+     JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1
      LIMIT 1`,
     params,
   );

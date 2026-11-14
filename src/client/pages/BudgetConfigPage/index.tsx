@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from "react";
-import { BUDGET_NAME_REQUIRED_MESSAGE, getDateTimeString, LocalDate } from "common";
+import {
+  BUDGET_NAME_REQUIRED_MESSAGE,
+  CATEGORY_NAME_REQUIRED_MESSAGE,
+  SECTION_NAME_REQUIRED_MESSAGE,
+  getDateTimeString,
+  LocalDate,
+} from "common";
 import { Capacity, useAppContext, PATH } from "client";
 import { NameInput, Bar, ActionButtons, BudgetProperties } from "client/components";
 import { BudgetFamily } from "client/lib/models/BudgetFamily";
 import { useEventHandlers } from "./lib";
 
 import "./index.css";
+
+/** Empty-name alert per entity type: the rejection must name the thing being edited. */
+const NAME_REQUIRED_MESSAGES = {
+  budget: BUDGET_NAME_REQUIRED_MESSAGE,
+  section: SECTION_NAME_REQUIRED_MESSAGE,
+  category: CATEGORY_NAME_REQUIRED_MESSAGE,
+};
 
 const getAllCapaciyDates = (budgetLike: BudgetFamily) => {
   const uniqueDates = new Set<string | undefined>();
@@ -129,8 +142,8 @@ export const BudgetConfigPage = () => {
   const finishEditing = () => router.back();
 
   const onComplete = async () => {
-    if (budgetLike.type === "budget" && !nameInput?.trim()) {
-      window.alert(BUDGET_NAME_REQUIRED_MESSAGE);
+    if (!nameInput?.trim()) {
+      window.alert(NAME_REQUIRED_MESSAGES[budgetLike.type]);
       return;
     }
 
@@ -160,7 +173,11 @@ export const BudgetConfigPage = () => {
       return;
     }
 
-    if (removed) finishEditing();
+    // Delete must not reuse finishEditing(): router.back() lands on the
+    // detail page of the budget that was just deleted, which renders an
+    // empty body with no way back (#834). Return to the Budgets list,
+    // which still exists. Cancel and Save keep router.back().
+    if (removed) router.go(PATH.BUDGETS);
   };
 
   return (

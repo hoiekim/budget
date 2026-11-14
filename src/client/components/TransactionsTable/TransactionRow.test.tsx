@@ -2,13 +2,18 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import {
   Account,
+  Calculations,
+  ContextType,
   Data,
   PATH,
+  RecurringDictionary,
+  SplitTransaction,
   Transaction,
+  TransactionFamilies,
   TransactionLabel,
   TransferDictionary,
 } from "client";
-import type { TransferPair } from "server";
+import type { Recurring, TransferPair } from "server";
 import type { FetchStubRoute } from "test-render";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import TransactionRow from "./TransactionRow";
@@ -56,7 +61,7 @@ const rowTitle = (container: HTMLElement) => {
   return bigText?.textContent ?? "";
 };
 
-const render = (transaction: Transaction, data: Data) => {
+const render = (transaction: Transaction | SplitTransaction, data: Data) => {
   const { router } = buildRouter(PATH.TRANSACTIONS);
   return renderWithContext(<TransactionRow transaction={transaction} />, buildContext({ data, router }));
 };
@@ -183,6 +188,17 @@ describe("TransactionRow — suggested transfer pair", () => {
     expect(dialog()).toBeNull();
   });
 
+  it("lays the chip and checkmark out in the label controls' slots", () => {
+    const { container } = renderSuggestedRow();
+    const actions = container.querySelector(".budgetCategoryActions")!;
+
+    expect(actions.querySelector(":scope > .transferChip.suggested")).not.toBeNull();
+    expect(actions.lastElementChild?.className).toBe("confirmButtonBox");
+    expect(
+      actions.lastElementChild?.contains(screen.getByRole("button", { name: "Confirm transfer" })),
+    ).toBe(true);
+  });
+
   it("opens the dialog on a chip click and writes nothing", () => {
     const { calls } = renderSuggestedRow();
 
@@ -220,6 +236,19 @@ describe("TransactionRow — suggested transfer pair", () => {
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    });
+
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].method).toBe("POST");
+    expect(calls.requests[0].url).toBe("/api/transfers/pair");
+    expect(dialog()).toBeNull();
+  });
+
+  it("quick-confirm checkmark posts without opening the dialog", async () => {
+    const { calls } = renderSuggestedRow();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
     });
 
     expect(calls.requests).toHaveLength(1);
@@ -342,5 +371,357 @@ describe("TransactionRow — suggested transfer pair", () => {
       await hold;
     });
   });
+  it("refuses a conflicting write for the same pair from the other leg", async () => {
+    let release: () => void = () => {};
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const { data, transaction } = buildSuggestedPair();
+    const sibling = data.transactions.get(SIBLING_ID)!;
+    const stub = stubFetch([{ path: "/api/transfers", response: { status: "success" }, hold }]);
+    restoreFetch = stub.restore;
+    const { router } = buildRouter(PATH.TRANSACTIONS);
+    renderWithContext(
+      <>
+        <TransactionRow transaction={transaction} />
+        <TransactionRow transaction={sibling} />
+      </>,
+      buildContext({ data, router }),
+    );
+    const chips = screen.getAllByRole("button", { name: "Transfer" });
+    expect(chips).toHaveLength(2);
+    try {
+      // Leg A confirms; the POST is held open.
+      act(() => void fireEvent.click(chips[0]));
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole("button", { name: "Confirm" })[0]);
+      });
+      expect(stub.calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+
+      // Leg B's dialog opens on the same pair while A's write is in flight.
+      act(() => void fireEvent.click(chips[1]));
+      expect(document.querySelectorAll("div.TransferPairModal")).toHaveLength(2);
+
+      // Leg B rejects: the pair-keyed guard refuses it, so no second
+      // request issues and B's dialog stays open — the refusal is not a
+      // landed write.
+      await act(async () => {
+        fireEvent.click(screen.getAllByRole("button", { name: "Reject" })[1]);
+      });
+      expect(stub.calls.requests).toEqual([{ url: "/api/transfers/pair", method: "POST" }]);
+      expect(document.querySelectorAll("div.TransferPairModal")).toHaveLength(2);
+    } finally {
+      await act(async () => {
+        release();
+        await hold;
+      });
+    }
+  });
 });
 
+const RECURRING_ID = "recurring-1";
+
+const buildRecurring = (status: "suggested" | "confirmed") => {
+  const data = buildData();
+  const transaction = buildTransaction({ merchant_name: "Netflix" });
+  data.transactions.set(transaction.transaction_id, transaction);
+  const recurring: Recurring = {
+    recurring_id: RECURRING_ID,
+    merchant_key: "netflix",
+    merchant_name: "Netflix",
+    cadence: "monthly",
+    is_income: false,
+    status,
+    transactions: [
+      {
+        transaction_id: transaction.transaction_id,
+        account_id: ACCOUNT_ID,
+        amount: 15.99,
+        date: "2026-10-15",
+        merchant_name: "Netflix",
+        name: "Netflix",
+        pending: false,
+      } as never,
+    ],
+  };
+  data.recurrings = new RecurringDictionary([[RECURRING_ID, recurring]]);
+  return { data, transaction };
+};
+
+const renderRecurringRow = (
+  status: "suggested" | "confirmed",
+  route: Partial<FetchStubRoute> = {},
+) => {
+  const { data, transaction } = buildRecurring(status);
+  const stub = stubFetch([
+    { path: "/api/recurrings", response: { status: "success" }, ...route },
+  ]);
+  restoreFetch = stub.restore;
+  const rendered = render(transaction, data);
+  return { ...rendered, calls: stub.calls };
+};
+
+const renderRecurringSplitRow = (status: "suggested" | "confirmed") => {
+  const { data, transaction } = buildRecurring(status);
+  const split = new SplitTransaction({
+    split_transaction_id: "split-1",
+    transaction_id: transaction.transaction_id,
+    account_id: ACCOUNT_ID,
+    amount: 5,
+    label: new TransactionLabel(),
+  });
+  return render(split, data);
+};
+
+const recurringChip = () => screen.getByRole("button", { name: "Recurring" });
+const openRecurringDialog = () => act(() => void fireEvent.click(recurringChip()));
+const recurringDialog = () => document.querySelector("div.RecurringModal");
+const quickConfirm = () => screen.getByRole("button", { name: "Confirm recurring" });
+
+describe("TransactionRow — recurring", () => {
+  it("suggested: shows the chip and quick-confirm, and no modal until clicked", () => {
+    const { container } = renderRecurringRow("suggested");
+    expect(container.querySelector(".recurringChip.suggested")).not.toBeNull();
+    expect(quickConfirm()).not.toBeNull();
+    // Budget/category controls are replaced, like suggested transfers.
+    expect(container.querySelector(".labelControls")).toBeNull();
+    expect(recurringDialog()).toBeNull();
+  });
+
+  it("suggested: chip opens the modal with named Confirm/Dismiss", () => {
+    renderRecurringRow("suggested");
+    openRecurringDialog();
+    expect(recurringDialog()).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Confirm", hidden: false }),
+    ).not.toBeNull();
+  });
+
+  it("suggested: quick-confirm posts to /api/recurrings without a modal", async () => {
+    const { calls } = renderRecurringRow("suggested");
+    await act(async () => {
+      fireEvent.click(quickConfirm());
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].url).toBe("/api/recurrings");
+    expect(calls.requests[0].method).toBe("POST");
+    expect(recurringDialog()).toBeNull();
+  });
+
+  it("suggested: modal Confirm posts to /api/recurrings", async () => {
+    const { calls } = renderRecurringRow("suggested");
+    openRecurringDialog();
+    await act(async () => {
+      fireEvent.click(
+        recurringDialog()!.querySelector("button.confirmButton") as HTMLElement,
+      );
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].url).toBe("/api/recurrings");
+    expect(calls.requests[0].method).toBe("POST");
+  });
+
+  it("suggested: modal Dismiss issues a DELETE", async () => {
+    const { calls } = renderRecurringRow("suggested");
+    openRecurringDialog();
+    await act(async () => {
+      fireEvent.click(
+        recurringDialog()!.querySelector("button.rejectButton") as HTMLElement,
+      );
+    });
+    expect(calls.requests).toHaveLength(1);
+    expect(calls.requests[0].url).toBe(
+      `/api/recurrings?id=${RECURRING_ID}`,
+    );
+    expect(calls.requests[0].method).toBe("DELETE");
+  });
+
+  it("suggested: chip and checkmark take the label controls' slots", () => {
+    const { container } = renderRecurringRow("suggested");
+    const actions = container.querySelector(".budgetCategoryActions")!;
+    // Direct children, so the chip shares `.labelControls`' box and the
+    // checkmark sits in the fixed `.confirmButtonBox` slot — the chip's
+    // width can't depend on whether the checkmark is there.
+    expect(actions.querySelector(":scope > .recurringChip.suggested")).not.toBeNull();
+    expect(actions.lastElementChild?.className).toBe("confirmButtonBox");
+    expect(actions.lastElementChild?.contains(quickConfirm())).toBe(true);
+  });
+
+  it("confirmed: shows the label controls, with a neutral chip beside the title", () => {
+    const { container } = renderRecurringRow("confirmed");
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+    expect(container.querySelector(".budgetCategoryActions .recurringChip")).toBeNull();
+    const chip = container.querySelector(".merchant_name .titleLine .recurringChip");
+    expect(chip?.textContent).toBe("Recurring");
+    expect(chip?.classList.contains("suggested")).toBe(false);
+    // The title itself stays the merchant name — the chip is a sibling.
+    expect(rowTitle(container)).toBe("Netflix");
+    expect(screen.queryByRole("button", { name: "Confirm recurring" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Recurring" })).toBeNull();
+  });
+
+  it("a split of a confirmed recurring shows the chip beside its title", () => {
+    const { container } = renderRecurringSplitRow("confirmed");
+    const chip = container.querySelector(".merchant_name .titleLine .recurringChip");
+    expect(chip?.textContent).toBe("Recurring");
+    expect(chip?.classList.contains("suggested")).toBe(false);
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+  });
+
+  it("a split of a suggested recurring keeps its label controls; the parent row confirms", () => {
+    const { container } = renderRecurringSplitRow("suggested");
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+    expect(container.querySelector(".recurringChip")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm recurring" })).toBeNull();
+  });
+
+  it("confirming from the checkmark swaps the chip for the label controls", async () => {
+    const { data, transaction } = buildRecurring("suggested");
+    // `setData` is a `useState` setter in the app; keep what the row stores
+    // and re-render with it, as the app's state update would.
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const stub = stubFetch([{ path: "/api/recurrings", response: { status: "success" } }]);
+    restoreFetch = stub.restore;
+    const { router } = buildRouter(PATH.TRANSACTIONS);
+    const { container, rerenderWithContext } = renderWithContext(
+      <TransactionRow transaction={transaction} />,
+      buildContext({ data, setData, router }),
+    );
+
+    await act(async () => {
+      fireEvent.click(quickConfirm());
+    });
+    act(() => rerenderWithContext(buildContext({ data: store.data, setData, router })));
+
+    expect(store.data.recurrings.get(RECURRING_ID)?.status).toBe("confirmed");
+    expect(container.querySelector(".budgetCategoryActions .labelControls")).not.toBeNull();
+    expect(container.querySelector(".budgetCategoryActions .recurringChip")).toBeNull();
+    expect(container.querySelector(".titleLine .recurringChip")).not.toBeNull();
+  });
+
+  it("suggested transfer pair takes precedence over suggested recurring", () => {
+    const { data, transaction } = buildRecurring("suggested");
+    // Also put the transaction in a suggested transfer pair.
+    const sibling = buildTransaction({
+      transaction_id: "tx-sibling",
+      amount: -15.99,
+      name: "TRANSFER",
+      merchant_name: null,
+    });
+    data.transactions.set(sibling.transaction_id, sibling);
+    const pair: TransferPair = {
+      pair_id: "pair-1",
+      status: "suggested",
+      transactions: [transaction, sibling],
+    };
+    data.transfers = new TransferDictionary([["pair-1", pair]]);
+    const stub = stubFetch([
+      { path: "/api/transfers", response: { status: "success" } },
+    ]);
+    restoreFetch = stub.restore;
+    const { container } = render(transaction, data);
+    expect(container.querySelector(".transferChip")).not.toBeNull();
+    expect(container.querySelector(".recurringChip")).toBeNull();
+  });
+});
+
+/**
+ * A suggested pair whose leg carries a split: the row must render the
+ * amount the pair was matched on, and confirming must warn that the
+ * split leaves the budget rollups (#787).
+ */
+const SPLIT_AMOUNT = 30;
+
+const buildSplitPair = (splitParentId: string) => {
+  const data = buildData();
+  const transaction = buildTransaction({ amount: 100 });
+  const sibling = buildTransaction({
+    transaction_id: SIBLING_ID,
+    amount: -100,
+    name: "TRANSFER TO SAVINGS",
+    merchant_name: null,
+  });
+  data.transactions.set(transaction.transaction_id, transaction);
+  data.transactions.set(sibling.transaction_id, sibling);
+  const pair: TransferPair = {
+    pair_id: PAIR_ID,
+    status: "suggested",
+    transactions: [transaction, sibling],
+  };
+  data.transfers = new TransferDictionary([[PAIR_ID, pair]]);
+  const split = new SplitTransaction({
+    split_transaction_id: "split-1",
+    transaction_id: splitParentId,
+    account_id: ACCOUNT_ID,
+    amount: SPLIT_AMOUNT,
+    label: new TransactionLabel({
+      budget_id: "budget-1",
+      category_id: "category-1",
+      category_confidence: 1,
+    }),
+  });
+  const calculations = new Calculations();
+  const families = new TransactionFamilies();
+  families.add(splitParentId, split);
+  calculations.transactionFamilies = families;
+  return { data, transaction, calculations };
+};
+
+const renderSplitPairRow = (splitParentId: string) => {
+  const { data, transaction, calculations } = buildSplitPair(splitParentId);
+  const stub = stubFetch([{ path: "/api/transfers", response: { status: "success" } }]);
+  restoreFetch = stub.restore;
+  const { router } = buildRouter(PATH.TRANSACTIONS);
+  const rendered = renderWithContext(
+    <TransactionRow transaction={transaction} />,
+    buildContext({ data, router, calculations }),
+  );
+  return { ...rendered, calls: stub.calls };
+};
+
+const rowAmount = (container: HTMLElement) =>
+  container.querySelector(".transactionInfo .amount")?.textContent?.replace(/\u00a0/g, " ") ?? "";
+
+const splitWarningText = () =>
+  document.querySelector(".splitWarning")?.textContent?.replace(/\u00a0/g, " ") ?? "";
+
+describe("TransactionRow — suggested transfer pair with splits", () => {
+  it("renders the matched amount on a leg with splits, not the remainder", () => {
+    const { container } = renderSplitPairRow("tx-1");
+
+    // The pair was matched on 100; the remainder after the 30 split is 70.
+    expect(rowAmount(container)).toBe("$ 100.00");
+  });
+
+  it("warns in the dialog that confirming removes the split from the totals", () => {
+    renderSplitPairRow("tx-1");
+    openDialog();
+
+    expect(dialog()).not.toBeNull();
+    expect(splitWarningText()).toBe(
+      "Confirming also removes 1 split transaction ($ 30.00 total) from your budget totals.",
+    );
+  });
+
+  it("warns about splits on the sibling leg too", () => {
+    renderSplitPairRow(SIBLING_ID);
+    openDialog();
+
+    expect(splitWarningText()).toBe(
+      "Confirming also removes 1 split transaction ($ 30.00 total) from your budget totals.",
+    );
+  });
+
+  it("routes the quick-confirm checkmark through the dialog when splits are at stake", async () => {
+    const { calls } = renderSplitPairRow("tx-1");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Confirm transfer" }));
+    });
+
+    expect(calls.requests).toEqual([]);
+    expect(dialog()).not.toBeNull();
+    expect(splitWarningText()).toContain("1 split transaction");
+  });
+});

@@ -1,4 +1,4 @@
-import bcrypt from "bcrypt";
+import { hashPassword } from "../../password";
 import { MaskedUser, User, usersTable, USER_ID } from "../models";
 
 export type IndexUserInput = Omit<User, "user_id"> & { user_id?: string };
@@ -10,7 +10,7 @@ export const maskUser = (user: User): MaskedUser => {
 
 export const writeUser = async (user: IndexUserInput): Promise<{ _id: string } | undefined> => {
   const { user_id, username, password } = user;
-  const hashedPassword = password ? await bcrypt.hash(password, 10) : undefined;
+  const hashedPassword = password ? await hashPassword(password) : undefined;
 
   const row: Record<string, unknown> = { username, password: hashedPassword };
   if (user_id) row.user_id = user_id;

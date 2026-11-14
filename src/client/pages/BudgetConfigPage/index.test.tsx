@@ -1,11 +1,31 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { Budget, Calculations, Capacity, ContextType, Data, PATH } from "client";
-import { buildContext, buildRouter, renderWithContext, resetDom } from "test-render";
+import { useMemo, useState } from "react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  Budget,
+  BudgetDictionary,
+  Calculations,
+  Capacity,
+  CategoryDictionary,
+  Context,
+  ContextType,
+  Data,
+  PATH,
+  Section,
+  SectionDictionary,
+  globalData,
+} from "client";
+import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { BudgetConfigPage } from ".";
+
+let fetchStub: ReturnType<typeof stubFetch> | undefined;
+const originalConfirm = window.confirm;
 
 afterEach(() => {
   cleanup();
+  fetchStub?.restore();
+  fetchStub = undefined;
+  window.confirm = originalConfirm;
   resetDom();
 });
 
@@ -33,6 +53,36 @@ const nameField = () => screen.getByPlaceholderText("name") as HTMLInputElement;
 const rollOverToggle = () => {
   const row = screen.getByText("Rolls over to the next period").closest(".row");
   return row?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+};
+
+/**
+ * The default test context stubs `calculate.cache.capacityData` as a no-op,
+ * so a render-phase AppContext update would never fire under it. This
+ * harness wires the real cache updater — a setState on the context provider —
+ * so clicking Add New Period on the old code reproduces React's "Cannot
+ * update a component" warning instead of passing silently.
+ */
+const RealCacheHarness = ({ data }: { data: Data }) => {
+  const [calculations, setCalculations] = useState(new Calculations());
+  const calculate = useMemo(() => {
+    const fn = (() => {}) as unknown as ContextType["calculate"];
+    fn.cache = {
+      capacityData: (updater) => {
+        setCalculations((old) => {
+          const next = new Calculations(old);
+          next.update({ capacityData: updater(old.capacityData) });
+          return next;
+        });
+      },
+    };
+    return fn;
+  }, []);
+  const { router } = buildRouter(PATH.BUDGET_CONFIG, new URLSearchParams({ budget_id: BUDGET_ID }));
+  return (
+    <Context.Provider value={buildContext({ data, calculations, calculate, router })}>
+      <BudgetConfigPage />
+    </Context.Provider>
+  );
 };
 
 describe("BudgetConfigPage", () => {
@@ -95,5 +145,172 @@ describe("BudgetConfigPage", () => {
 
     expect(nameField().value).toBe("Utilities");
     expect(rollOverToggle().checked).toBe(false);
+  });
+
+  it("returns to the Budgets list after deleting a budget, not to its detail page", async () => {
+    const data = buildData();
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router, calls } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ budget_id: BUDGET_ID }),
+    );
+    window.confirm = () => true;
+    fetchStub = stubFetch([{ path: "/api/budget", response: { status: "success" } }]);
+
+    renderWithContext(
+      <BudgetConfigPage />,
+      buildContext({ data: store.data, setData, router }),
+    );
+
+    // The delete button arms on the first click and deletes on the second.
+    const deleteButton = screen.getByText("⌫").closest("button") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(deleteButton);
+    });
+    expect(screen.getByText("Delete")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(deleteButton);
+    });
+
+    expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+      `DELETE /api/budget?id=${BUDGET_ID}`,
+    ]);
+    expect(store.data.budgets.has(BUDGET_ID)).toBe(false);
+
+    // The deleted budget's detail page no longer exists — going back would
+    // strand the user on its empty body (#834). The list still exists.
+    expect(calls.back).toBe(0);
+    expect(calls.go).toHaveLength(1);
+    expect(calls.go[0].path).toBe(PATH.BUDGETS);
+  });
+
+  it("Add New Period adds a period without updating AppContext during render (#798)", () => {
+    const data = buildData();
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      render(<RealCacheHarness data={data} />);
+
+      // The single default capacity covers all past time, so no dated row yet.
+      expect(screen.queryAllByLabelText("Capacity active from date")).toHaveLength(0);
+
+      const addButton = screen.getByText(/Add\s+New\s+Period/).closest("button") as HTMLButtonElement;
+      act(() => {
+        fireEvent.click(addButton);
+      });
+
+      // The new period appears as a dated row — and the click must not have
+      // updated AppContext from inside a state updater (React logs "Cannot
+      // update a component" when it does).
+      expect(screen.getAllByLabelText("Capacity active from date")).toHaveLength(1);
+      expect(errors.filter((e) => e.includes("Cannot update a component"))).toEqual([]);
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  it("saving a newly added section keeps the family's capacity periods and ids (#872)", async () => {
+    const OCT_2026 = new Date(2026, 9, 1);
+    const SECTION_A_ID = "section-a";
+    const SECTION_B_ID = "section-b";
+    const data = new Data();
+    const budget = new Budget({
+      budget_id: BUDGET_ID,
+      name: "QA",
+      capacities: [
+        new Capacity({ month: 100, active_from: OCT_2026, capacity_id: "cap-oct" }),
+        new Capacity({ month: 500, capacity_id: "cap-base" }),
+      ],
+    });
+    const sectionA = new Section({
+      section_id: SECTION_A_ID,
+      budget_id: BUDGET_ID,
+      name: "A",
+      capacities: [
+        new Capacity({ month: 50, active_from: OCT_2026, capacity_id: "cap-a-oct" }),
+        new Capacity({ month: 50, capacity_id: "cap-a-base" }),
+      ],
+    });
+    // The newly added section has exactly one capacity — the trigger: the
+    // old code rebuilt the whole family from the edited entity's periods.
+    const sectionB = new Section({
+      section_id: SECTION_B_ID,
+      budget_id: BUDGET_ID,
+      name: "B",
+      capacities: [new Capacity({ month: 50, capacity_id: "cap-b-new" })],
+    });
+    data.budgets.set(BUDGET_ID, budget);
+    data.sections.set(SECTION_A_ID, sectionA);
+    data.sections.set(SECTION_B_ID, sectionB);
+    // `getChildren`/`getParent` traverse the `globalData` singleton, not
+    // the context data, so the family has to live in both for the save.
+    globalData.budgets.set(BUDGET_ID, budget);
+    globalData.sections.set(SECTION_A_ID, sectionA);
+    globalData.sections.set(SECTION_B_ID, sectionB);
+
+    const store = { data };
+    const setData: ContextType["setData"] = (action) => {
+      store.data = typeof action === "function" ? action(store.data) : action;
+    };
+    const { router } = buildRouter(
+      PATH.BUDGET_CONFIG,
+      new URLSearchParams({ section_id: SECTION_B_ID }),
+    );
+    fetchStub = stubFetch([
+      { path: "/api/budget", response: { status: "success" } },
+      { path: "/api/section", response: { status: "success" } },
+    ]);
+
+    try {
+      renderWithContext(
+        <BudgetConfigPage />,
+        buildContext({ data: store.data, setData, router }),
+      );
+
+      const saveButton = screen.getByRole("button", { name: /Save/ });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
+        "POST /api/budget",
+        "POST /api/section",
+        "POST /api/section",
+      ]);
+
+      // The budget keeps both periods, with the same rows — no silent
+      // deletion, no re-minted ids — and still reads 100 in October.
+      const storedBudget = store.data.budgets.get(BUDGET_ID);
+      expect(storedBudget?.capacities.map((c) => c.capacity_id)).toEqual([
+        "cap-oct",
+        "cap-base",
+      ]);
+      expect(storedBudget?.capacities.map((c) => c.month)).toEqual([100, 500]);
+      expect(storedBudget?.getActiveAmount(new Date(2026, 9, 15), "month")).toBe(100);
+      // The untouched sibling keeps its periods and ids too.
+      const storedA = store.data.sections.get(SECTION_A_ID);
+      expect(storedA?.capacities.map((c) => c.capacity_id)).toEqual([
+        "cap-a-oct",
+        "cap-a-base",
+      ]);
+      expect(storedA?.capacities.map((c) => c.month)).toEqual([50, 50]);
+      // The new section inherits the family's periods: its undated row
+      // keeps its id, and the October row is new (fresh id).
+      const storedB = store.data.sections.get(SECTION_B_ID);
+      expect(storedB?.capacities.map((c) => c.month)).toEqual([50, 50]);
+      expect(storedB?.capacities[1].capacity_id).toBe("cap-b-new");
+      expect(storedB?.capacities[0].capacity_id).not.toBe("cap-b-new");
+      expect(storedB?.capacities[0].capacity_id).toBeTruthy();
+    } finally {
+      globalData.budgets = new BudgetDictionary();
+      globalData.sections = new SectionDictionary();
+      globalData.categories = new CategoryDictionary();
+    }
   });
 });

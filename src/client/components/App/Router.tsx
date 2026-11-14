@@ -16,6 +16,7 @@ import {
   AccountDetailPage,
   HoldingDetailPage,
   SnapshotsPage,
+  PlanStatementImportPage,
   ApiKeyDetailPage,
 } from "client/pages";
 import { Spinner } from "./Spinner";
@@ -29,6 +30,7 @@ const getPage = (path: string) => {
   if (path === PATH.ACCOUNT_DETAIL) return <AccountDetailPage />;
   if (path === PATH.HOLDING_DETAIL) return <HoldingDetailPage />;
   if (path === PATH.SNAPSHOTS) return <SnapshotsPage />;
+  if (path === PATH.PLAN_STATEMENT_IMPORT) return <PlanStatementImportPage />;
   if (path === PATH.TRANSACTIONS) return <TransactionsPage />;
   if (path === PATH.TRANSACTION_DETAIL) return <TransactionDetailPage />;
   if (path === PATH.CONFIG) return <ConfigPage />;

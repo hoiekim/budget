@@ -13,10 +13,12 @@ const realSyncPlaid = { ...(await import("./sync-plaid")) };
 const realSyncSimpleFin = { ...(await import("./sync-simple-fin")) };
 const realAutoSuggest = { ...(await import("./auto-suggest")) };
 const realDetectTransfers = { ...(await import("./detect-transfers")) };
+const realDetectRecurrings = { ...(await import("./detect-recurrings")) };
 const realRefreshSecuritySnapshots = {
   ...(await import("./refresh-security-snapshots")),
 };
 const realRefreshCpiSnapshots = { ...(await import("./refresh-cpi-snapshots")) };
+const realPlaidUtil = { ...(await import("server/lib/plaid/util")) };
 
 const mockGetAllItems = mock(async () => [] as { item_id: string; provider: ItemProvider }[]);
 const mockUpdateItemSyncStatus = mock(async () => {});
@@ -39,6 +41,7 @@ const mockSyncSimpleFinData = mock(
 );
 const mockRunAutoSuggestions = mock(async () => {});
 const mockRunTransferDetection = mock(async () => {});
+const mockRunRecurringDetection = mock(async () => {});
 const mockRefreshActiveSecuritySnapshots = mock(async () => ({
   refreshed: 0,
   fresh: 0,
@@ -75,6 +78,13 @@ mock.module("./sync-plaid", () => ({
   syncPlaidTransactions: mockSyncPlaidTransactions,
 }));
 
+// These tests exercise the Plaid sync orchestration with mocked sync fns;
+// pretend Plaid is configured (the real flag is false in the test env).
+mock.module("server/lib/plaid/util", () => ({
+  ...realPlaidUtil,
+  isPlaidConfigured: true,
+}));
+
 mock.module("./sync-simple-fin", () => ({
   ...realSyncSimpleFin,
   syncSimpleFinData: mockSyncSimpleFinData,
@@ -88,6 +98,11 @@ mock.module("./auto-suggest", () => ({
 mock.module("./detect-transfers", () => ({
   ...realDetectTransfers,
   runTransferDetection: mockRunTransferDetection,
+}));
+
+mock.module("./detect-recurrings", () => ({
+  ...realDetectRecurrings,
+  runRecurringDetection: mockRunRecurringDetection,
 }));
 
 mock.module("./refresh-security-snapshots", () => ({
@@ -127,6 +142,8 @@ beforeEach(() => {
   mockRunAutoSuggestions.mockImplementation(async () => {});
   mockRunTransferDetection.mockReset();
   mockRunTransferDetection.mockImplementation(async () => {});
+  mockRunRecurringDetection.mockReset();
+  mockRunRecurringDetection.mockImplementation(async () => {});
   mockRefreshActiveSecuritySnapshots.mockReset();
   mockRefreshActiveSecuritySnapshots.mockImplementation(async () => ({
     refreshed: 0,
@@ -157,6 +174,7 @@ afterAll(() => {
     () => realRefreshSecuritySnapshots
   );
   mock.module("./refresh-cpi-snapshots", () => realRefreshCpiSnapshots);
+  mock.module("server/lib/plaid/util", () => realPlaidUtil);
   restoreLeaves();
 });
 
@@ -257,7 +275,7 @@ describe("scheduledSync / runSync", () => {
     });
   });
 
-  it("runs auto-suggestions, transfer detection, and security-snapshot refresh after provider sync", async () => {
+  it("runs auto-suggestions, transfer detection, recurring detection, and security-snapshot refresh after provider sync", async () => {
     mockGetAllItems.mockResolvedValueOnce([]);
 
     scheduledSync();
@@ -265,6 +283,7 @@ describe("scheduledSync / runSync", () => {
 
     expect(mockRunAutoSuggestions).toHaveBeenCalledTimes(1);
     expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
+    expect(mockRunRecurringDetection).toHaveBeenCalledTimes(1);
     expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
     expect(mockRefreshCpiSnapshots).toHaveBeenCalledTimes(1);
   });

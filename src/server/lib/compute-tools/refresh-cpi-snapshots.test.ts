@@ -1,15 +1,15 @@
 // The planner is pure; the runner reads and writes `cpi_snapshots` through
-// `pg` (leaf-mocked) and calls BLS through `globalThis.fetch` (mocked). No
+// the SQL driver (mocked) and calls BLS through `globalThis.fetch` (mocked). No
 // API key is set, so the keyless v1 tier applies: 10 years per request.
 const originalApiKey = process.env.BLS_API_KEY;
 delete process.env.BLS_API_KEY;
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import type { JSONCpiSnapshot } from "common";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
-mock.module("pg", () => pg);
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
+mock.module("../postgres/sql-driver", () => driver);
 
 const mockFetch = mock(
   async (_url: string | URL | Request, _init?: RequestInit): Promise<Response> =>
@@ -168,8 +168,8 @@ const echoRequestedYears = async (_url: string | URL | Request, init?: RequestIn
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(router);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(router);
   mockFetch.mockReset();
   mockFetch.mockImplementation(echoRequestedYears);
   resetBlsRequestBudget();

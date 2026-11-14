@@ -1,6 +1,8 @@
 import { ChangeEventHandler, useMemo, useState, useEffect } from "react";
 import {
   currencyCodeToSymbol,
+  getNextRecurringDate,
+  JSONRecurringSplit,
   LocalDate,
   numberToCommaString,
   TRANSFER_DATE_WINDOW_DAYS as PARTNER_DATE_WINDOW_DAYS,
@@ -13,9 +15,12 @@ import {
   Transaction,
   TransactionDictionary,
   TransactionLabel,
+  formatSplitImpact,
+  getPairSplitImpact,
   useAppContext,
   useBudgetCategorySelect,
   useMutate,
+  useRecurrings,
   useTransfers,
   call,
   indexedDb,
@@ -49,8 +54,9 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const { data, setData, calculations, router } = useAppContext();
   const transactionMutate = useMutate(Transaction);
   const transferActions = useTransfers();
+  const recurringActions = useRecurrings();
   const { transactionFamilies } = calculations;
-  const { accounts, sections, categories, transfers } = data;
+  const { accounts, budgets, sections, categories, transfers, recurrings } = data;
 
   const {
     transaction_id,
@@ -284,7 +290,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
       ? sections.get(categories.get(label.category_id)!.section_id)?.name
       : "";
 
-  const currencySymbol = currencyCodeToSymbol(iso_currency_code || "");
+  const currencySymbol = currencyCodeToSymbol(iso_currency_code);
 
   const isIncome = transaction.amount < 0;
 
@@ -295,6 +301,195 @@ export const TransactionProperties = ({ transaction }: Props) => {
   // the user can't double-bind a transaction.
   const [showPartnerPicker, setShowPartnerPicker] = useState(false);
   const [pendingPartnerId, setPendingPartnerId] = useState<string | null>(null);
+
+  // Recurring picker state — mirrors the transfer partner picker above.
+  const [showRecurringPicker, setShowRecurringPicker] = useState(false);
+  const [recurringName, setRecurringName] = useState("");
+  const [pendingRecurringId, setPendingRecurringId] = useState<string | null>(null);
+  const existingRecurring = recurrings.byTransactionId.get(transaction_id);
+  const isIncomeTx = amount < 0;
+  // Confirmed recurrings of the same direction that this transaction could
+  // join. Suggested ones are left out: joining one would leave the
+  // transaction in a recurring the user never confirmed. Each shows its
+  // latest charge as the amount that recurs.
+  const recurringCandidates = useMemo(() => {
+    const list: { recurring_id: string; merchant_name: string; amount: string }[] = [];
+    recurrings.forEach((r) => {
+      if (r.is_income !== isIncomeTx) return;
+      if (r.status !== "confirmed") return;
+      if (r.recurring_id === existingRecurring?.recurring_id) return;
+      const latest = r.transactions.reduce<(typeof r.transactions)[number] | undefined>(
+        (found, t) =>
+          !found || (t.authorized_date || t.date) > (found.authorized_date || found.date)
+            ? t
+            : found,
+        undefined,
+      );
+      const symbol = currencyCodeToSymbol(latest?.iso_currency_code);
+      list.push({
+        recurring_id: r.recurring_id,
+        merchant_name: r.merchant_name,
+        amount: latest
+          ? `${r.is_income ? "+\u00a0" : ""}${symbol}\u00a0${numberToCommaString(Math.abs(latest.amount))}`
+          : "",
+      });
+    });
+    return list.sort((a, b) => a.merchant_name.localeCompare(b.merchant_name));
+  }, [recurrings, isIncomeTx, existingRecurring]);
+
+  const onClickCreateRecurring = async () => {
+    const displayName = recurringName.trim() || merchant_name || name;
+    setPendingRecurringId("new");
+    try {
+      const id = await recurringActions.create([transaction_id], displayName);
+      if (id) setShowRecurringPicker(false);
+    } finally {
+      setPendingRecurringId(null);
+    }
+  };
+
+  const onClickRecurringCandidate = async (recurringId: string) => {
+    setPendingRecurringId(recurringId);
+    try {
+      const ok = await recurringActions.addTo(recurringId, [transaction_id]);
+      if (ok) setShowRecurringPicker(false);
+    } finally {
+      setPendingRecurringId(null);
+    }
+  };
+
+  // Summary of the recurring this transaction belongs to, derived from its
+  // member transactions. Dates follow the rest of the UI (authorized date
+  // first) so "From" matches what the transactions list shows.
+  const recurringSummary = useMemo(() => {
+    if (!existingRecurring?.transactions.length) return null;
+    const members = existingRecurring.transactions;
+    const dates = members
+      .map((t) => (t.authorized_date || t.date).slice(0, 10))
+      .sort();
+    const latest = new LocalDate(dates[dates.length - 1]);
+    const total = members.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const currency = members.find((t) => t.iso_currency_code)?.iso_currency_code;
+    return {
+      first: new LocalDate(dates[0]),
+      total,
+      currencySymbol: currencyCodeToSymbol(currency || iso_currency_code),
+      next: getNextRecurringDate(latest, existingRecurring.cadence),
+    };
+  }, [existingRecurring, iso_currency_code]);
+
+  // The recurring's default label, edited with the same selects as the
+  // transaction's own. The server relabels the recurring's transactions to
+  // follow it, apart from ones labeled differently (exceptions).
+  const recurringDefaultLabel = useMemo(
+    () =>
+      new TransactionLabel({
+        budget_id: existingRecurring?.label?.budget_id ?? null,
+        category_id: existingRecurring?.label?.category_id ?? null,
+      }),
+    [existingRecurring?.label?.budget_id, existingRecurring?.label?.category_id],
+  );
+  const recurringSelect = useBudgetCategorySelect(
+    recurringDefaultLabel,
+    undefined,
+    `recurring_${existingRecurring?.recurring_id ?? ""}`,
+  );
+
+  const saveRecurringLabel = async (budget_id: string, category_id: string) => {
+    if (!existingRecurring) return;
+    const previousBudget = recurringSelect.selectedBudgetIdLabel;
+    const previousCategory = recurringSelect.selectedCategoryIdLabel;
+    recurringSelect.setSelectedBudgetIdLabel(budget_id);
+    recurringSelect.setSelectedCategoryIdLabel(category_id);
+    const ok = await recurringActions.setLabel(existingRecurring.recurring_id, {
+      budget_id: budget_id || null,
+      category_id: category_id || null,
+    });
+    if (!ok) {
+      recurringSelect.setSelectedBudgetIdLabel(previousBudget);
+      recurringSelect.setSelectedCategoryIdLabel(previousCategory);
+    }
+  };
+
+  const onChangeRecurringBudget: ChangeEventHandler<HTMLSelectElement> = (e) => {
+    if (e.target.value === recurringSelect.selectedBudgetIdLabel) return;
+    void saveRecurringLabel(e.target.value, "");
+  };
+
+  const onChangeRecurringCategory: ChangeEventHandler<HTMLSelectElement> = (e) => {
+    if (e.target.value === recurringSelect.selectedCategoryIdLabel) return;
+    void saveRecurringLabel(recurringSelect.selectedBudgetIdLabel, e.target.value);
+  };
+
+  const recurringSplits = existingRecurring?.splits ?? [];
+  const ownSplits = useMemo(
+    (): JSONRecurringSplit[] =>
+      (transactionFamilies.get(transaction_id)?.toArray() ?? [])
+        .map((s) => ({
+          amount: Math.round(Math.abs(s.amount) * 100) / 100,
+          label: { budget_id: s.label.budget_id ?? null, category_id: s.label.category_id ?? null },
+        }))
+        .filter((s) => s.amount > 0),
+    [transactionFamilies, transaction_id],
+  );
+  const splitsKey = (splits: JSONRecurringSplit[]) =>
+    splits
+      .map(({ amount, label }) => `${amount}:${label.budget_id}:${label.category_id}`)
+      .sort()
+      .join();
+  const ownSplitsAreDefault = splitsKey(ownSplits) === splitsKey(recurringSplits);
+  // A default must leave a remainder, or a charge of the same amount never
+  // takes it.
+  const toCents = (n: number) => Math.round(Math.abs(n) * 100);
+  const ownSplitsLeaveRemainder =
+    ownSplits.reduce((sum, s) => sum + toCents(s.amount), 0) < toCents(amount);
+  const [savingSplits, setSavingSplits] = useState(false);
+  const saveRecurringSplits = async (splits: JSONRecurringSplit[]) => {
+    if (!existingRecurring || savingSplits) return;
+    setSavingSplits(true);
+    try {
+      await recurringActions.setSplits(existingRecurring.recurring_id, splits);
+    } finally {
+      setSavingSplits(false);
+    }
+  };
+  const splitLabelName = ({ budget_id, category_id }: JSONRecurringSplit["label"]) =>
+    (category_id && categories.get(category_id)?.name) ||
+    (budget_id && budgets.get(budget_id)?.name) ||
+    "Unlabeled";
+
+  // Editable recurring name, saved on blur like the memo above.
+  const [recurringNameValue, setRecurringNameValue] = useState(
+    existingRecurring?.merchant_name ?? "",
+  );
+  useEffect(() => {
+    setRecurringNameValue(existingRecurring?.merchant_name ?? "");
+  }, [existingRecurring?.recurring_id, existingRecurring?.merchant_name]);
+
+  const onBlurRecurringName = async () => {
+    if (!existingRecurring) return;
+    const trimmed = recurringNameValue.trim();
+    if (!trimmed || trimmed === existingRecurring.merchant_name) {
+      setRecurringNameValue(existingRecurring.merchant_name);
+      return;
+    }
+    const ok = await recurringActions.rename(existingRecurring.recurring_id, trimmed);
+    if (!ok) setRecurringNameValue(existingRecurring.merchant_name);
+  };
+
+  // Confirm / dismiss from the detail page. Dismissing a confirmed recurring
+  // is how it's cancelled: the server keeps it as `status='dismissed'` so the
+  // engine stops re-suggesting it, and "Mark as Recurring" un-dismisses it.
+  const [recurringAction, setRecurringAction] = useState<"confirm" | "dismiss" | null>(null);
+  const onClickRecurringAction = async (action: "confirm" | "dismiss") => {
+    if (!existingRecurring || recurringAction) return;
+    setRecurringAction(action);
+    try {
+      await recurringActions[action](existingRecurring.recurring_id);
+    } finally {
+      setRecurringAction(null);
+    }
+  };
 
   const txAmount = transaction.amount;
   const txDateMs = new LocalDate(authorized_date || date).getTime();
@@ -323,10 +518,41 @@ export const TransactionProperties = ({ transaction }: Props) => {
   const onClickPartnerCandidate = async (partnerId: string) => {
     setPendingPartnerId(partnerId);
     try {
-      await transferActions.pair(transaction_id, partnerId);
-      setShowPartnerPicker(false);
+      // Only close on a landed write — a refused pair stays open for retry.
+      if (await transferActions.pair(transaction_id, partnerId)) {
+        setShowPartnerPicker(false);
+      }
     } finally {
       setPendingPartnerId(null);
+    }
+  };
+
+  // A suggested pair is settled from here the way a suggested recurring is:
+  // show the other half, then Confirm / Reject. Confirmed pairs never reach
+  // this component — `TransactionDetailPage` renders `TransferProperties`.
+  const existingTransfer = transfers.byTransactionId.get(transaction_id);
+  const suggestedTransfer = existingTransfer?.status === "suggested" ? existingTransfer : undefined;
+  const suggestedPartner = suggestedTransfer
+    ? data.transactions
+        .resolveTransferSides(suggestedTransfer)
+        .find((t) => t.transaction_id !== transaction_id)
+    : undefined;
+  const suggestedPartnerAccount = suggestedPartner && accounts.get(suggestedPartner.account_id);
+
+  // Confirming the pair also drops every live split child of either leg
+  // from the budget rollups — say so above the Confirm button.
+  const splitImpact = suggestedTransfer
+    ? getPairSplitImpact(suggestedTransfer, data.transactions, transactionFamilies)
+    : undefined;
+
+  const [transferAction, setTransferAction] = useState<"confirm" | "reject" | null>(null);
+  const onClickTransferAction = async (action: "confirm" | "reject") => {
+    if (!suggestedTransfer || transferAction) return;
+    setTransferAction(action);
+    try {
+      await transferActions[action](suggestedTransfer.pair_id);
+    } finally {
+      setTransferAction(null);
     }
   };
 
@@ -462,13 +688,74 @@ export const TransactionProperties = ({ transaction }: Props) => {
       </Property>
       <PropertyLabel>Transfer</PropertyLabel>
       <Property>
-        {!showPartnerPicker && (
+        {suggestedTransfer && (
+          <>
+            <KeyValue name="Status">
+              <span>Suggested</span>
+            </KeyValue>
+            {suggestedPartner && (
+              <>
+                <KeyValue name="Paired&nbsp;With">
+                  <span>
+                    {suggestedPartnerAccount?.custom_name ||
+                      suggestedPartnerAccount?.name ||
+                      suggestedPartner.account_id}
+                  </span>
+                </KeyValue>
+                {suggestedPartnerAccount && (
+                  <KeyValue name="Institution">
+                    <InstitutionSpan institution_id={suggestedPartnerAccount.institution_id} />
+                  </KeyValue>
+                )}
+                <KeyValue name="Date">
+                  <span>
+                    {new LocalDate(
+                      suggestedPartner.authorized_date || suggestedPartner.date,
+                    ).toLocaleString("en-US", {
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                  </span>
+                </KeyValue>
+                <KeyValue name="Amount">
+                  <span>
+                    {suggestedPartner.amount < 0 && <>+&nbsp;</>}
+                    {currencyCodeToSymbol(
+                      suggestedPartner.iso_currency_code || iso_currency_code,
+                    )}
+                    &nbsp;
+                    {numberToCommaString(Math.abs(suggestedPartner.amount))}
+                  </span>
+                </KeyValue>
+              </>
+            )}
+            {splitImpact && (
+              <div className="splitWarning">
+                {formatSplitImpact(splitImpact, iso_currency_code || "")}
+              </div>
+            )}
+            <ButtonRow
+              disabled={!!transferAction}
+              onClick={() => onClickTransferAction("confirm")}
+            >
+              {transferAction === "confirm" ? "Confirming…" : <>Confirm&nbsp;Transfer</>}
+            </ButtonRow>
+            <ButtonRow
+              disabled={!!transferAction}
+              onClick={() => onClickTransferAction("reject")}
+            >
+              {transferAction === "reject" ? "Rejecting…" : <>Reject&nbsp;Suggestion</>}
+            </ButtonRow>
+          </>
+        )}
+        {!suggestedTransfer && !showPartnerPicker && (
           <ButtonRow onClick={() => setShowPartnerPicker(true)}>
             <TransferArrowIcon size={12} />
             &nbsp;Mark&nbsp;as&nbsp;Transfer
           </ButtonRow>
         )}
-        {showPartnerPicker && (
+        {!suggestedTransfer && showPartnerPicker && (
           <>
             <KeyValue name="Pair&nbsp;with"></KeyValue>
             {partnerCandidates.length === 0 && (
@@ -528,7 +815,7 @@ export const TransactionProperties = ({ transaction }: Props) => {
                       )}
                     </div>
                     <div className="amount">
-                      {currencyCodeToSymbol(candidate.iso_currency_code || "")}&nbsp;
+                      {currencyCodeToSymbol(candidate.iso_currency_code)}&nbsp;
                       {numberToCommaString(Math.abs(candidate.amount))}
                       {isPending && <>&nbsp;…</>}
                     </div>
@@ -539,6 +826,193 @@ export const TransactionProperties = ({ transaction }: Props) => {
             <ButtonRow disabled={!!pendingPartnerId} onClick={() => setShowPartnerPicker(false)}>
               Cancel
             </ButtonRow>
+          </>
+        )}
+      </Property>
+      <PropertyLabel>Recurring</PropertyLabel>
+      <Property>
+        {existingRecurring ? (
+          <>
+            <KeyValue name="Name">
+              <input
+                type="text"
+                value={recurringNameValue}
+                placeholder="Recurring name"
+                onChange={(e) => setRecurringNameValue(e.target.value)}
+                onBlur={onBlurRecurringName}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
+              />
+            </KeyValue>
+            <KeyValue name="Default&nbsp;Budget">
+              <div>
+                <select
+                  value={recurringSelect.selectedBudgetIdLabel}
+                  onChange={onChangeRecurringBudget}
+                >
+                  <option value="">Select Budget</option>
+                  {recurringSelect.budgetOptions}
+                </select>
+              </div>
+            </KeyValue>
+            <KeyValue name="Default&nbsp;Category">
+              <div>
+                <select
+                  value={recurringSelect.selectedCategoryIdLabel}
+                  onChange={onChangeRecurringCategory}
+                >
+                  <option value="">Select Category</option>
+                  {recurringSelect.categoryOptions}
+                </select>
+              </div>
+            </KeyValue>
+            {recurringSplits.map((split, i) => (
+              <KeyValue key={i} name="Default&nbsp;Split">
+                <span>
+                  {existingRecurring.is_income && <>+&nbsp;</>}
+                  {currencySymbol}&nbsp;{numberToCommaString(split.amount)}&nbsp;·&nbsp;
+                  {splitLabelName(split.label)}
+                </span>
+              </KeyValue>
+            ))}
+            {!!ownSplits.length && !ownSplitsAreDefault && ownSplitsLeaveRemainder && (
+              <ButtonRow disabled={savingSplits} onClick={() => saveRecurringSplits(ownSplits)}>
+                Use&nbsp;These&nbsp;Splits&nbsp;as&nbsp;Default
+              </ButtonRow>
+            )}
+            {!!recurringSplits.length && (
+              <ButtonRow disabled={savingSplits} onClick={() => saveRecurringSplits([])}>
+                Clear&nbsp;Default&nbsp;Splits
+              </ButtonRow>
+            )}
+            {recurringSummary && (
+              <>
+                <KeyValue name="From">
+                  <span>
+                    {recurringSummary.first.toLocaleString("en-US", {
+                      month: "long",
+                      year: "numeric",
+                    })}
+                  </span>
+                </KeyValue>
+                <KeyValue name="Total&nbsp;Amount">
+                  <span>
+                    {existingRecurring.is_income && <>+&nbsp;</>}
+                    {recurringSummary.currencySymbol}&nbsp;
+                    {numberToCommaString(recurringSummary.total)}
+                  </span>
+                </KeyValue>
+                {recurringSummary.next && (
+                  <KeyValue name="Next&nbsp;Due">
+                    <span>
+                      {recurringSummary.next.toLocaleString("en-US", {
+                        month: "long",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </span>
+                  </KeyValue>
+                )}
+              </>
+            )}
+            {existingRecurring.status === "suggested" ? (
+              <>
+                <ButtonRow
+                  disabled={!!recurringAction}
+                  onClick={() => onClickRecurringAction("confirm")}
+                >
+                  {recurringAction === "confirm" ? "Confirming…" : <>Confirm&nbsp;Recurring</>}
+                </ButtonRow>
+                <ButtonRow
+                  disabled={!!recurringAction}
+                  onClick={() => onClickRecurringAction("dismiss")}
+                >
+                  {recurringAction === "dismiss" ? "Dismissing…" : <>Dismiss&nbsp;Suggestion</>}
+                </ButtonRow>
+              </>
+            ) : (
+              <ButtonRow
+                disabled={!!recurringAction}
+                onClick={() => onClickRecurringAction("dismiss")}
+              >
+                {recurringAction === "dismiss" ? "Removing…" : <>Mark&nbsp;as&nbsp;Non-Recurring</>}
+              </ButtonRow>
+            )}
+          </>
+        ) : (
+          <>
+            {!showRecurringPicker && (
+              <ButtonRow
+                onClick={() => {
+                  setRecurringName(merchant_name || name || "");
+                  setShowRecurringPicker(true);
+                }}
+              >
+                Mark&nbsp;as&nbsp;Recurring
+              </ButtonRow>
+            )}
+            {showRecurringPicker && (
+              <>
+                <KeyValue name="Name">
+                  <input
+                    type="text"
+                    value={recurringName}
+                    onChange={(e) => setRecurringName(e.target.value)}
+                    placeholder={merchant_name || name || "Recurring name"}
+                    disabled={!!pendingRecurringId}
+                  />
+                </KeyValue>
+                <ButtonRow
+                  disabled={!!pendingRecurringId}
+                  onClick={onClickCreateRecurring}
+                >
+                  {pendingRecurringId === "new" ? "Creating…" : "Create new recurring"}
+                </ButtonRow>
+                {recurringCandidates.length > 0 && (
+                  <>
+                    <KeyValue name="Add&nbsp;to&nbsp;existing" />
+                    {recurringCandidates.map((candidate) => {
+                      const isPending = pendingRecurringId === candidate.recurring_id;
+                      const disabled = !!pendingRecurringId;
+                      const onClick = disabled
+                        ? undefined
+                        : () => onClickRecurringCandidate(candidate.recurring_id);
+                      return (
+                        <Row
+                          key={candidate.recurring_id}
+                          className={`partnerCandidate${disabled ? " disabled" : ""}`}
+                          role="button"
+                          tabIndex={disabled ? -1 : 0}
+                          aria-disabled={disabled}
+                          onClick={onClick}
+                          onKeyDown={(e) => {
+                            if (!disabled && (e.key === "Enter" || e.key === " ")) {
+                              e.preventDefault();
+                              onClick?.();
+                            }
+                          }}
+                        >
+                          <div className="recurringCandidateInfo">
+                            <div className="recurringCandidateName">{candidate.merchant_name}</div>
+                            <div className="recurringCandidateAmount">
+                              {candidate.amount}
+                              {isPending && <>&nbsp;…</>}
+                            </div>
+                          </div>
+                        </Row>
+                      );
+                    })}
+                  </>
+                )}
+                <ButtonRow
+                  disabled={!!pendingRecurringId}
+                  onClick={() => setShowRecurringPicker(false)}
+                >
+                  Cancel
+                </ButtonRow>
+              </>
+            )}
           </>
         )}
       </Property>

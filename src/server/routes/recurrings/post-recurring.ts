@@ -1,0 +1,261 @@
+import {
+  Route,
+  Recurring,
+  MaskedUser,
+  createRecurring,
+  addToRecurring,
+  confirmRecurring,
+  renameRecurring,
+  setRecurringLabel,
+  setRecurringSplits,
+  validateFields,
+  getRecurrings,
+  normalizeMerchantName,
+  transactionsTable,
+  USER_ID,
+  TRANSACTION_ID,
+  requireBodyObject,
+  validationError,
+} from "server";
+import type { JSONRecurringSplit, RecurringCadence } from "common";
+import type { ValidationResult } from "server/lib/validation";
+
+const CADENCE_BY_DAYS: { maxDays: number; cadence: RecurringCadence }[] = [
+  { maxDays: 10, cadence: "weekly" },
+  { maxDays: 21, cadence: "biweekly" },
+  { maxDays: 45, cadence: "monthly" },
+  { maxDays: 120, cadence: "quarterly" },
+  { maxDays: 270, cadence: "semiannual" },
+  { maxDays: Infinity, cadence: "annual" },
+];
+
+export interface RecurringPostResponse {
+  recurring_id: string;
+  /** The recurring as it stands after a confirm, create, add, or label
+   *  change, members' labels included — the writing tab applies it
+   *  directly, since it filters out its own realtime event. */
+  recurring?: Recurring;
+}
+
+const MAX_SPLITS = 20;
+
+const SPLIT_SPEC = [
+  { path: "amount", type: "number" as const, required: true },
+  { path: "label.budget_id", type: "uuid" as const, nullable: true },
+  { path: "label.category_id", type: "uuid" as const, nullable: true },
+];
+
+const parseSplits = (value: unknown): ValidationResult<JSONRecurringSplit[]> => {
+  if (!Array.isArray(value)) return { success: false, error: "splits must be an array" };
+  if (value.length > MAX_SPLITS) {
+    return { success: false, error: `A recurring can have at most ${MAX_SPLITS} splits` };
+  }
+  const splits: JSONRecurringSplit[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      return { success: false, error: "Each split must be an object" };
+    }
+    const fields = validateFields(item, SPLIT_SPEC);
+    if (!fields.success) return { success: false, error: fields.error };
+    const { amount, label } = item as {
+      amount: number;
+      label?: { budget_id?: string | null; category_id?: string | null };
+    };
+    const cents = Math.round(amount * 100) / 100;
+    if (cents <= 0) return { success: false, error: "Each split amount must be positive" };
+    splits.push({
+      amount: cents,
+      label: { budget_id: label?.budget_id ?? null, category_id: label?.category_id ?? null },
+    });
+  }
+  return { success: true, data: splits };
+};
+
+const readBack = async (user: MaskedUser, recurring_id: string) => {
+  const [recurring] = await getRecurrings(user, { recurringIds: [recurring_id] });
+  return recurring;
+};
+
+export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/recurrings", async (req) => {
+  const { user } = req.session;
+  if (!user) {
+    return { status: "failed", message: "Request user is not authenticated." };
+  }
+
+  const bodyResult = requireBodyObject(req);
+  if (!bodyResult.success) return validationError(bodyResult.error!);
+
+  const body = bodyResult.data as Record<string, unknown>;
+
+  // If recurring_id is provided with transaction_ids, add those
+  // transactions to the existing recurring (the detail page's "add to
+  // recurring" affordance); with merchant_name, rename it; with label, set
+  // its default budget/category; with splits, set the splits its joining
+  // charges take. With recurring_id alone, confirm a suggested recurring.
+  if (typeof body.recurring_id === "string") {
+    if (Array.isArray(body.transaction_ids)) {
+      const transactionIds = body.transaction_ids.filter(
+        (id): id is string => typeof id === "string",
+      );
+      const result = await addToRecurring(user, body.recurring_id, transactionIds);
+      if (!result.ok) return { status: "failed", message: result.error };
+      return {
+        status: "success",
+        body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+      };
+    }
+    if (body.merchant_name !== undefined) {
+      const name = typeof body.merchant_name === "string" ? body.merchant_name.trim() : "";
+      if (!name) return validationError("merchant_name must be a non-empty string");
+      const result = await renameRecurring(user, body.recurring_id, name);
+      if (!result.ok) return { status: "failed", message: result.error };
+      return { status: "success", body: { recurring_id: body.recurring_id } };
+    }
+    if (body.splits !== undefined) {
+      const splitsResult = parseSplits(body.splits);
+      if (!splitsResult.success) return validationError(splitsResult.error!);
+      const result = await setRecurringSplits(user, body.recurring_id, splitsResult.data!);
+      if (!result.ok) return { status: "failed", message: result.error };
+      return {
+        status: "success",
+        body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+      };
+    }
+    if (body.label !== undefined) {
+      const fieldsResult = validateFields(body, [
+        { path: "label.budget_id", type: "uuid", nullable: true },
+        { path: "label.category_id", type: "uuid", nullable: true },
+      ]);
+      if (!fieldsResult.success) return validationError(fieldsResult.error!);
+      if (!body.label || typeof body.label !== "object") {
+        return validationError("label must be an object");
+      }
+      const label = body.label as { budget_id?: string | null; category_id?: string | null };
+      const result = await setRecurringLabel(user, body.recurring_id, {
+        budget_id: label.budget_id ?? null,
+        category_id: label.category_id ?? null,
+      });
+      if (!result.ok) return { status: "failed", message: result.error };
+      return {
+        status: "success",
+        body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+      };
+    }
+    const result = await confirmRecurring(user, body.recurring_id);
+    if (!result.ok) return { status: "failed", message: result.error };
+    return {
+      status: "success",
+      body: { recurring_id: body.recurring_id, recurring: await readBack(user, body.recurring_id) },
+    };
+  }
+
+  // Otherwise create a new recurring from explicit transaction ids (the
+  // "mark as recurring" affordance). Manual creation is user intent, not a
+  // suggestion — the members just have to agree on one merchant group and
+  // one direction; the cadence is estimated from the median interval
+  // without the detection pass's tolerance gate.
+  if (!Array.isArray(body.transaction_ids)) {
+    return validationError(
+      "transaction_ids must be an array of transaction ids",
+    );
+  }
+  const transactionIds = body.transaction_ids.filter(
+    (id): id is string => typeof id === "string",
+  );
+  if (transactionIds.length < 1) {
+    return validationError("at least one transaction is required");
+  }
+
+  const txnModels = await transactionsTable.query(
+    { [USER_ID]: user.user_id },
+    { inFilters: { [TRANSACTION_ID]: transactionIds } },
+  );
+  const txns = txnModels
+    .map((m) => m.toJSON())
+    .filter((t) => !t.is_deleted && !t.pending && t.amount !== 0);
+  if (txns.length !== transactionIds.length) {
+    return {
+      status: "failed",
+      message:
+        "One or more transactions no longer exist (deleted or never belonged to this user).",
+    };
+  }
+
+  const keys = txns.map((t) =>
+    normalizeMerchantName(t.merchant_name || t.name || ""),
+  );
+  const directions = txns.map((t) => t.amount < 0);
+  const merchant_key = keys[0]!;
+  const is_income = directions[0]!;
+  if (
+    !merchant_key ||
+    !keys.every((k) => k === merchant_key) ||
+    !directions.every((d) => d === is_income)
+  ) {
+    return {
+      status: "failed",
+      message:
+        "Those transactions don't form a single recurring group (same merchant and direction).",
+    };
+  }
+
+  const dates = txns.map((t) => t.date.slice(0, 10)).sort();
+  const intervals: number[] = [];
+  for (let i = 1; i < dates.length; i++) {
+    intervals.push(
+      Math.round(
+        (new Date(dates[i]! + "T00:00:00").getTime() -
+          new Date(dates[i - 1]! + "T00:00:00").getTime()) /
+          86_400_000,
+      ),
+    );
+  }
+  // A single transaction has no interval to measure, so default to
+  // monthly. The detection job's auto-attach (selectConfirmedAttachments)
+  // doesn't trust it: until a recurring has two members it takes a charge
+  // one period of any cadence later, and from then on it measures the
+  // cadence from the members.
+  let cadence: RecurringCadence = "monthly";
+  if (intervals.length > 0) {
+    intervals.sort((a, b) => a - b);
+    const medianInterval = intervals[Math.floor(intervals.length / 2)]!;
+    cadence = CADENCE_BY_DAYS.find((c) => medianInterval <= c.maxDays)!.cadence;
+  }
+
+  // A caller-supplied name wins (the detail page's "name this
+  // recurring" input); otherwise fall back to the most common
+  // merchant_name among the members.
+  const customName =
+    typeof body.merchant_name === "string" && body.merchant_name.trim()
+      ? body.merchant_name.trim()
+      : null;
+  const nameCounts = new Map<string, number>();
+  let merchant_name = customName ?? txns[0]!.merchant_name ?? txns[0]!.name;
+  if (!customName) {
+    let best = 0;
+    for (const t of txns) {
+      const n = t.merchant_name || t.name;
+      const count = (nameCounts.get(n) || 0) + 1;
+      nameCounts.set(n, count);
+      if (count > best) {
+        best = count;
+        merchant_name = n;
+      }
+    }
+  }
+
+  const result = await createRecurring(user, {
+    transaction_ids: transactionIds,
+    merchant_key,
+    merchant_name,
+    name_is_custom: !!customName,
+    cadence,
+    is_income,
+  });
+  if (!result.ok) return { status: "failed", message: result.error };
+
+  return {
+    status: "success",
+    body: { recurring_id: result.recurring_id, recurring: await readBack(user, result.recurring_id) },
+  };
+});

@@ -1,4 +1,12 @@
-import { Route, searchTransactions, SearchTransactionsOptions, optionalQueryString, validationError } from "server";
+import {
+  Route,
+  JsonStream,
+  searchTransactions,
+  SearchTransactionsOptions,
+  optionalQueryString,
+  validateFields,
+  validationError,
+} from "server";
 import { JSONTransaction, JSONInvestmentTransaction } from "common";
 
 export interface TransactionsGetResponse {
@@ -23,6 +31,11 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
 
     const endResult = optionalQueryString(req, "end-date");
     if (!endResult.success) return validationError(endResult.error!);
+    // The parsed `start-date`/`end-date` become TIMESTAMPTZ predicates below:
+    // reject a malformed or non-calendar date here instead of
+    // letting Postgres raise 22007/22008 inside Route.execute.
+    const dateCheck = validateFields({ "start-date": startResult.data, "end-date": endResult.data }, [{ path: "start-date", type: "date" }, { path: "end-date", type: "date" }]);
+    if (!dateCheck.success) return validationError(dateCheck.error!);
 
     const accountResult = optionalQueryString(req, "account-id");
     if (!accountResult.success) return validationError(accountResult.error!);
@@ -39,16 +52,14 @@ export const getTransactionsRoute = new Route<TransactionsGetResponse>(
     if (endResult.data) options.endDate = endResult.data;
     if (accountResult.data) options.account_id = accountResult.data;
 
-    const response = await searchTransactions(user, options);
+    const { transactions, investment_transactions } = searchTransactions(user, options);
 
-    const { transactions, investment_transactions } = response;
-
-    return {
+    return new JsonStream<TransactionsGetResponse>({
       status: "success",
       body: {
         transactions,
         investmentTransactions: investment_transactions,
       },
-    };
+    });
   },
 );

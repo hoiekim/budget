@@ -13,6 +13,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
       - name: Cache bun dependencies
         uses: actions/cache@v4
         with:
@@ -25,6 +27,8 @@ jobs:
         run: bun run lint
       - name: Type check
         run: bun run typecheck
+      - name: Unused repository exports
+        run: bun scripts/check-unused-repository-exports.ts
       - name: Run tests with coverage
         run: bun run test:coverage
 
@@ -37,6 +41,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
       - name: Cache bun dependencies
         uses: actions/cache@v4
         with:

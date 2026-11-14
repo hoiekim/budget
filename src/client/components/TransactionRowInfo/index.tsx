@@ -11,8 +11,8 @@ interface Props {
   /** ISO 4217 code, or `""` for unknown. */
   isoCurrency: string;
   /** `"auto"` prepends "+ " when `amount < 0`; `"none"` renders the
-   *  absolute value with no sign prefix (transfer bundles). Defaults
-   *  to `"auto"`. */
+   *  absolute value with no sign prefix (transfer bundles, investment
+   *  trades). Defaults to `"auto"`. */
   amountSign?: "auto" | "none";
   /** Extra class on the `.amount` cell (e.g. `"transferAmount"`). */
   amountClassName?: string;
@@ -21,7 +21,7 @@ interface Props {
   onClickInfo?: () => void;
   /** Contents of the middle `.merchant_name` cell — each row type
    *  arranges its own bigText/smallText stack (merchant + account,
-   *  name + account + institution, "Transfer" + from→to, …). */
+   *  "Transfer" + from→to, "Buy" + cash→holding, …). */
   children: ReactNode;
 }
 

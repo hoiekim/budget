@@ -3,14 +3,14 @@ import fs from "fs";
 
 const root = path.resolve(import.meta.dir, "..");
 
+export const buildBundle = (entrypoint: string, outdir: string): Promise<Bun.BuildOutput> =>
+  Bun.build({ entrypoints: [entrypoint], outdir, target: "bun", minify: false });
+
 async function bundle() {
-  const result = await Bun.build({
-    entrypoints: [path.resolve(import.meta.dir, "start.ts")],
-    outdir: path.resolve(root, "..", "build", "server"),
-    target: "bun",
-    external: ["bcrypt", "pg", "plaid"],
-    minify: false,
-  });
+  const result = await buildBundle(
+    path.resolve(import.meta.dir, "start.ts"),
+    path.resolve(root, "..", "build", "server"),
+  );
 
   if (!result.success) {
     console.error("Build failed:");
@@ -34,4 +34,4 @@ async function bundle() {
   console.info("Bun build succeeded to compile server.");
 }
 
-bundle();
+if (import.meta.main) bundle();

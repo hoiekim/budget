@@ -157,10 +157,10 @@ setInterval(() => {
  * the URL and send the call out unauthenticated. `:` is left alone: it is a
  * legal path character and carries Polygon's crypto namespace (`X:BTCUSD`).
  */
-const encodeTicker = (ticker: string): string =>
+export const encodeTicker = (ticker: string): string =>
   encodeURIComponent(ticker).replace(/%3A/g, ":");
 
-const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
+export const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
   success: false,
   error: "rate_limited",
   message: `Market data is busy right now; retry the lookup for ${polygonTicker} in a moment.`,
@@ -175,7 +175,7 @@ const rateLimitedResult = (polygonTicker: string): PolygonResult<never> => ({
  * undefined when the empty answer is real and may be memoized — a 404 is how
  * Polygon says it does not carry the symbol, so it stays on that side.
  */
-const upstreamRefusal = (
+export const upstreamRefusal = (
   response: Response,
   json: { status?: unknown; message?: unknown; error?: unknown },
   subject: string,
@@ -204,7 +204,7 @@ const upstreamRefusal = (
 /**
  * Fetch with retry logic for transient failures
  */
-const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Promise<Response> => {
+export const fetchWithRetry = async (url: string, maxRetries = 2, delayMs = 1000): Promise<Response> => {
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -380,38 +380,22 @@ export const getTickerDetail = async (
 };
 
 /**
- * Resolve the closest trading-day close price at or before `date`. Walks
- * Polygon's daily aggregates over a 7-day window ending at `date` and
- * returns the latest entry — that's the actual trading-day price for
- * non-trading-day inputs (weekends, holidays). Used by the benchmark
- * snapshot resolver so a window-start like "2023-05-13 (Saturday)"
- * resolves to Friday's close instead of returning `no_data`.
+ * Every daily close Polygon has in `[from, to]`, oldest first, one range
+ * request. An empty range comes back as `no_data` and is remembered for a
+ * while, so a repeated ask doesn't spend a request.
  */
-export const getLatestClosePriceOnOrBefore = async (
+export const getDailyCloses = async (
   ticker_symbol: string,
-  dateOrString: Date | string,
-  options: FetchOptions & {
-    lookbackDays?: number;
-    securityType?: JSONSecurity["type"];
-  } = {},
-): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
-  const { lookbackDays = 7, securityType, maxWaitMs } = options;
+  from: string,
+  to: string,
+  options: FetchOptions & { securityType?: JSONSecurity["type"] } = {},
+): Promise<PolygonResult<Array<{ price: number; tradingDate: string }>>> => {
+  const { securityType, maxWaitMs } = options;
   if (!getApiKey()) {
     return { success: false, error: "no_api_key", message: "Polygon API key not configured" };
   }
 
   const polygonTicker = toPolygonTicker(ticker_symbol, securityType);
-
-  // Compute `to` and `from` as YYYY-MM-DD purely from the string, avoiding
-  // local-timezone shifts. (PST's `getDate()` on a UTC-midnight Date is one
-  // day behind, which silently turns a 2025-05-17 lookup into 2025-05-16.)
-  const to =
-    typeof dateOrString === "string"
-      ? dateOrString.slice(0, 10)
-      : getDateString(dateOrString);
-  const toAnchor = new Date(`${to}T12:00:00Z`);
-  toAnchor.setUTCDate(toAnchor.getUTCDate() - lookbackDays);
-  const from = toAnchor.toISOString().slice(0, 10);
 
   const missKey = `range:${polygonTicker}:${from}:${to}`;
   if (isRecentMiss(missKey)) {
@@ -438,10 +422,14 @@ export const getLatestClosePriceOnOrBefore = async (
         message: `No price data for ${polygonTicker} in [${from}, ${to}]`,
       };
     }
-    const last = results[results.length - 1];
-    const td = new Date(last.t);
-    const tradingDate = `${td.getUTCFullYear()}-${String(td.getUTCMonth() + 1).padStart(2, "0")}-${String(td.getUTCDate()).padStart(2, "0")}`;
-    return { success: true, data: { price: last.c, tradingDate } };
+    return {
+      success: true,
+      data: results.map(({ c, t }) => {
+        const td = new Date(t);
+        const tradingDate = `${td.getUTCFullYear()}-${String(td.getUTCMonth() + 1).padStart(2, "0")}-${String(td.getUTCDate()).padStart(2, "0")}`;
+        return { price: c, tradingDate };
+      }),
+    };
   } catch (err) {
     if (err instanceof QueueWaitTimeoutError) return rateLimitedResult(polygonTicker);
     const message = err instanceof Error ? err.message : String(err);
@@ -450,6 +438,39 @@ export const getLatestClosePriceOnOrBefore = async (
     });
     return { success: false, error: "api_error", message };
   }
+};
+
+/**
+ * Resolve the closest trading-day close price at or before `date`. Walks
+ * Polygon's daily aggregates over a 7-day window ending at `date` and
+ * returns the latest entry — that's the actual trading-day price for
+ * non-trading-day inputs (weekends, holidays), so a Saturday resolves to
+ * Friday's close instead of returning `no_data`.
+ */
+export const getLatestClosePriceOnOrBefore = async (
+  ticker_symbol: string,
+  dateOrString: Date | string,
+  options: FetchOptions & {
+    lookbackDays?: number;
+    securityType?: JSONSecurity["type"];
+  } = {},
+): Promise<PolygonResult<{ price: number; tradingDate: string }>> => {
+  const { lookbackDays = 7, ...rest } = options;
+
+  // Compute `to` and `from` as YYYY-MM-DD purely from the string, avoiding
+  // local-timezone shifts. (PST's `getDate()` on a UTC-midnight Date is one
+  // day behind, which silently turns a 2025-05-17 lookup into 2025-05-16.)
+  const to =
+    typeof dateOrString === "string"
+      ? dateOrString.slice(0, 10)
+      : getDateString(dateOrString);
+  const toAnchor = new Date(`${to}T12:00:00Z`);
+  toAnchor.setUTCDate(toAnchor.getUTCDate() - lookbackDays);
+  const from = toAnchor.toISOString().slice(0, 10);
+
+  const closes = await getDailyCloses(ticker_symbol, from, to, rest);
+  if (!closes.success) return closes;
+  return { success: true, data: closes.data[closes.data.length - 1] };
 };
 
 export const getSecurityForSymbol = async (

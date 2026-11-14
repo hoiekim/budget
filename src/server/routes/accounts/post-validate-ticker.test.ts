@@ -3,21 +3,18 @@
 // user-supplied string straight into the process-wide Polygon rate gate, so
 // these tests pin the three things that keep one caller off everybody else's
 // slots: the charset gate, the securities-table short-circuit, and the
-// per-user cap. Leaf-mock pg pattern — every DB call lands on `mockQuery`
-// via a FakePool, routed by table name. Polygon runs as real code with
+// per-user cap. Leaf-mock driver pattern — every DB call lands on `mockUnsafe`
+// via a FakeSQL, routed by table name. Polygon runs as real code with
 // `globalThis.fetch` mocked.
 process.env.POLYGON_API_KEY = "test-key";
 process.env.POLYGON_RATE_LIMIT_PER_MIN = "0";
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const originalApiKey = process.env.POLYGON_API_KEY;
-const originalRateLimit = process.env.POLYGON_RATE_LIMIT_PER_MIN;
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
-
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const mockFetch = mock(
   async (): Promise<Response> => new Response(JSON.stringify({}), { status: 200 }),
@@ -27,12 +24,9 @@ globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 const { postValidateTickerRoute } = await import("./post-validate-ticker");
 const { polygonLookupRateLimiter } = await import("server/lib/rate-limit");
 const { clearPriceCache, polygonQueue } = await import("server/lib/polygon");
+const { clearYahooCache, yahooQueue } = await import("server/lib/yahoo");
 
 afterAll(() => {
-  if (originalApiKey === undefined) delete process.env.POLYGON_API_KEY;
-  else process.env.POLYGON_API_KEY = originalApiKey;
-  if (originalRateLimit === undefined) delete process.env.POLYGON_RATE_LIMIT_PER_MIN;
-  else process.env.POLYGON_RATE_LIMIT_PER_MIN = originalRateLimit;
   restoreLeaves();
 });
 
@@ -51,11 +45,14 @@ const queryRouter = async (sql: string) => {
 };
 
 beforeEach(() => {
-  resetQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  resetSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   securitiesRows = [];
   clearPriceCache();
+  clearYahooCache();
   polygonQueue.reset();
+  yahooQueue.reset();
+  process.env.YAHOO_RATE_LIMIT_PER_MIN = "0";
   mockFetch.mockReset();
   // Empty `results` is Polygon's answer for a symbol it does not know.
   mockFetch.mockImplementation(
@@ -121,14 +118,14 @@ describe("POST /api/validate-ticker — auth and input gate", () => {
   test("rejects unauthenticated requests", async () => {
     const result = await post({ ticker_symbol: "AAPL" }, { authenticated: false });
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
   test("rejects a missing ticker_symbol before any lookup", async () => {
     const result = await post({});
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -146,7 +143,7 @@ describe("POST /api/validate-ticker — auth and input gate", () => {
 
     expect(result?.status).toBe("success");
     expect(result?.body?.valid).toBe(true);
-    const values = mockQuery.mock.calls[0]?.[1] as unknown[];
+    const values = mockUnsafe.mock.calls[0]?.[1] as unknown[];
     expect(values).toContain("AAPL");
   });
 });
@@ -192,14 +189,49 @@ describe("POST /api/validate-ticker — per-user cap on the shared Polygon gate"
     expect(polygonLookupRateLimiter.isLimited(bystander)).toBe(false);
   });
 
-  test("a repeated unknown symbol costs one Polygon call, not one per submission", async () => {
+  test("a repeated unknown symbol costs one lookup round, not one per submission", async () => {
     const userId = nextUser();
 
     for (let i = 0; i < 5; i++) await post({ ticker_symbol: "NOSUCHTICKER" }, { userId });
 
-    // Two endpoints — ticker detail and close price — on the first submission
-    // only; every repeat is answered from the empty-result memo.
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // Two endpoints on each provider — Polygon detail + price, then the
+    // Yahoo fallback's detail + price — on the first submission only; every
+    // repeat is answered from the empty-result memos.
+    expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+
+  test("a mutual fund unknown to Polygon validates via the Yahoo fallback", async () => {
+    const vfiaxChart = {
+      chart: {
+        result: [
+          {
+            meta: {
+              currency: "USD",
+              longName: "Vanguard 500 Index Admiral",
+              shortName: "Vanguard 500 Index Fd Admiral S",
+              instrumentType: "MUTUALFUND",
+            },
+            timestamp: [Math.floor(Date.UTC(2026, 9, 6) / 1000)],
+            indicators: { quote: [{ close: [720.06] }] },
+          },
+        ],
+        error: null,
+      },
+    };
+    mockFetch.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("query1.finance.yahoo.com")) {
+        return { ok: true, status: 200, json: async () => vfiaxChart } as unknown as Response;
+      }
+      // Polygon: empty answer, as for any symbol it does not carry.
+      return { ok: true, status: 200, json: async () => ({}) } as unknown as Response;
+    });
+
+    const result = await post({ ticker_symbol: "VFIAX", save: false });
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.valid).toBe(true);
+    expect(result?.body?.security?.name).toBe("Vanguard 500 Index Admiral");
+    expect(result?.body?.security?.iso_currency_code).toBe("USD");
   });
 });
 

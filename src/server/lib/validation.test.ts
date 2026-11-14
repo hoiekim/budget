@@ -9,6 +9,7 @@ import {
   requireTickerSymbol,
   requireNumberField,
   optionalDateField,
+  isUuid,
   validateFields,
   validationError,
 } from "./validation";
@@ -254,6 +255,20 @@ describe("requireBodyObject edge cases", () => {
   });
 });
 
+describe("isUuid", () => {
+  it("accepts a well-formed UUID in either case", () => {
+    const id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+    expect(isUuid(id)).toBe(true);
+    expect(isUuid(id.toUpperCase())).toBe(true);
+  });
+
+  it("rejects malformed ids and non-strings", () => {
+    for (const value of ["nope", "c-1", "", 123, null, undefined, {}, []]) {
+      expect(isUuid(value)).toBe(false);
+    }
+  });
+});
+
 describe("validationError", () => {
   it("should return failed status with message", () => {
     const result = validationError("Invalid input");
@@ -463,6 +478,33 @@ describe("validateFields", () => {
       expect(result.success).toBe(false);
       expect(result.error).toBe("Field capacities must be an array");
     }
+  });
+
+  it("rejects a string longer than the column's maxLength", () => {
+    const spec: FieldSpec[] = [{ path: "iso_currency_code", type: "string", maxLength: 10 }];
+    expect(validateFields({ iso_currency_code: "USD" }, spec).success).toBe(true);
+    expect(validateFields({ iso_currency_code: "USDOLLARSX" }, spec).success).toBe(true);
+    const result = validateFields({ iso_currency_code: "USDOLLARSXX" }, spec);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field iso_currency_code must be at most 10 characters");
+  });
+
+  it("rejects a number outside the column's min/max", () => {
+    const spec: FieldSpec[] = [{ path: "price", type: "number", min: 0, max: 999999999.999999 }];
+    expect(validateFields({ price: 0 }, spec).success).toBe(true);
+    expect(validateFields({ price: 999999999.999999 }, spec).success).toBe(true);
+    expect(validateFields({ price: -30 }, spec).error).toBe("Field price must be at least 0");
+    expect(validateFields({ price: 1e300 }, spec).error).toBe(
+      "Field price must be at most 999999999.999999",
+    );
+  });
+
+  it("ignores bounds a spec does not carry", () => {
+    expect(validateFields({ price: 1e300 }, [{ path: "price", type: "number" }]).success).toBe(true);
+    expect(
+      validateFields({ iso_currency_code: "USDOLLARSXX" }, [{ path: "iso_currency_code", type: "string" }])
+        .success,
+    ).toBe(true);
   });
 
   it("uses the article the type name takes, which its spelling does not decide", () => {

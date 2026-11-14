@@ -8,7 +8,7 @@ import {
   getSecuritySnapshots,
   searchSecuritiesById,
   upsertSnapshots,
-  polygon,
+  marketData,
   logger,
 } from "server";
 
@@ -132,7 +132,7 @@ export const backfillMonthlySecuritySnapshotsForward = async (
       // future/in-progress price with today's date.
       const dayInMonth =
         cursor === nowYearMonth ? getDateString(getYesterday()) : `${cursor}-15`;
-      const fetchResult = await polygon.getClosePrice(ticker_symbol, new Date(dayInMonth), {
+      const fetchResult = await marketData.getClosePriceWithFallback(ticker_symbol, new Date(dayInMonth), {
         securityType: meta.type,
       });
 

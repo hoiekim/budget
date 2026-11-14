@@ -5,7 +5,7 @@ import {
   TransactionPaymentChannelEnum,
   TransactionTransactionTypeEnum,
   PaymentMeta,
-} from "plaid";
+} from "common/lib/plaid-enums";
 
 import {
   getRandomId,

@@ -22,6 +22,7 @@ export enum TableName {
   InvestmentTransactions = "investment_transactions",
   SplitTransactions = "split_transactions",
   TransactionPairs = "transaction_pairs",
+  Recurrings = "recurrings",
   Budgets = "budgets",
   Sections = "sections",
   Categories = "categories",
@@ -43,6 +44,7 @@ export const TRANSACTIONS = TableName.Transactions;
 export const INVESTMENT_TRANSACTIONS = TableName.InvestmentTransactions;
 export const SPLIT_TRANSACTIONS = TableName.SplitTransactions;
 export const TRANSACTION_PAIRS = TableName.TransactionPairs;
+export const RECURRINGS = TableName.Recurrings;
 export const BUDGETS = TableName.Budgets;
 export const SECTIONS = TableName.Sections;
 export const CATEGORIES = TableName.Categories;
@@ -52,4 +54,35 @@ export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
 export const CPI_SNAPSHOTS = TableName.CpiSnapshots;
 
+/**
+ * Id prefix of the holding snapshots the client derives from a holding's
+ * transactions. They exist only in memory; every stored holding snapshot is a
+ * position someone entered.
+ */
+export const DERIVED_HOLDING_SNAPSHOT_PREFIX = "derived-holding-";
+
+/** Id prefix of investment transactions imported from a plan statement. */
+export const PLAN_STATEMENT_ID_PREFIX = "plan-";
+
+/**
+ * Key on an investment transaction's `raw` marking a row restated from a
+ * collective trust into shares of the public fund it tracks. Its value keeps
+ * the statement's own `{ investment, units, unit_price }`.
+ */
+export const RESTATED_FROM = "restated_from";
+
+/**
+ * Key on the `raw` of a reinvestment the plan-statement import inferred for a
+ * restated holding, recording `{ ex_date, cash_amount_per_share, shares_held }`.
+ */
+export const REINVESTED_DISTRIBUTION = "reinvested_distribution";
+
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";
+export const SECTION_NAME_REQUIRED_MESSAGE = "Section name cannot be empty.";
+export const CATEGORY_NAME_REQUIRED_MESSAGE = "Category name cannot be empty.";
+
+/** The index fund the Investment Performance widget compares returns against. */
+export const BENCHMARK_TICKER = "VOO";
+
+/** The last row of the benchmark's static daily history (`voo_price_history.csv`). */
+export const BENCHMARK_HISTORY_THROUGH = "2026-10-13";

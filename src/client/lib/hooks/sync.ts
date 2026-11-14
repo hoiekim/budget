@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { JSONSnapshotData, TableName } from "common";
 import {
+  ApiResponse,
   BudgetsGetResponse,
   TransactionsGetResponse,
   AccountsGetResponse,
@@ -9,6 +10,7 @@ import {
   SnapshotsGetResponse,
   SecuritiesGetResponse,
   TransfersGetResponse,
+  RecurringsGetResponse,
   InstitutionsGetResponse,
 } from "server";
 import {
@@ -48,8 +50,12 @@ import {
   SecurityDictionary,
   Security,
   TransferDictionary,
+  RecurringDictionary,
   globalData,
 } from "client";
+// Straight from the module rather than the barrel, so it is initialised when
+// this module's top level runs.
+import { indexedDbAccessor } from "client/lib/indexed-db/accessor";
 
 // Cursor key: ISO timestamp of the last successful sync's start, minus a
 // safety margin. Next sync's delta fetch sends this as `start-date`, so
@@ -101,6 +107,28 @@ const removeLastSyncedCursor = () => {
   }
 };
 
+// Stores an upgrade creates start empty, so no cursor from before it can seed
+// a delta for them. Set at load, before anything on the page opens the cache.
+indexedDbAccessor.onUpgradeExisting = removeLastSyncedCursor;
+
+/**
+ * What a finished sync does with the delta cursor. A failed fetch or save, or a
+ * write the unavailable cache dropped, keeps it so the next sync re-fetches the
+ * same delta. A failed cold-path purge clears it: hard-deleted rows never
+ * arrive as tombstones, so only another cold sync can evict what the failed
+ * purge left behind.
+ */
+export const cursorUpdateAfterSync = (outcome: {
+  purgeFailed: boolean;
+  fetchFailed: boolean;
+  idbFailed: boolean;
+  writesSkipped: boolean;
+}): "advance" | "clear" | "keep" => {
+  if (outcome.purgeFailed) return "clear";
+  if (outcome.fetchFailed || outcome.idbFailed || outcome.writesSkipped) return "keep";
+  return "advance";
+};
+
 // FE wall-clock minus a safety margin is the next-sync cursor. Sub-row
 // `updated` timestamps aren't on every JSON wire type today, so per-row
 // max(updated) can't drive the cursor without widening common/models.
@@ -134,6 +162,22 @@ interface FetchTransactionsResult {
   networkFailed: boolean;
 }
 
+/**
+ * Whether a sync fetch failed: no response (the `.catch(console.error)` path
+ * resolving to `undefined`), or any envelope that isn't `"success"`. The
+ * envelope has three states, not two — a `"failed"` one (expired session,
+ * validation rejection) must count as failed here, or the dispatcher reads
+ * the empty dictionary the fetcher built before the call as a successful
+ * fetch and overwrites the cached table with it.
+ *
+ * A type predicate, so after the guard the response is a success envelope
+ * with its body type intact.
+ */
+export const isFailedResponse = <T>(
+  response: ApiResponse<T> | void,
+): response is void | { status: "failed" | "error" | "loading" | "streaming" } =>
+  !response || response.status !== "success";
+
 const fetchTransactions = async (cursor: string | null): Promise<FetchTransactionsResult> => {
   const result: FetchTransactionsResult = {
     transactions: new TransactionDictionary(),
@@ -149,7 +193,7 @@ const fetchTransactions = async (cursor: string | null): Promise<FetchTransactio
   // as tombstones (is_deleted=true).
   const path = `/api/transactions${params.toString() ? "?" + params.toString() : ""}`;
   const response = await call.get<TransactionsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -194,7 +238,7 @@ const fetchSplitTransactions = async (
   const path = `/api/split-transactions${params.toString() ? "?" + params.toString() : ""}`;
 
   const response = await call.get<SplitTransactionsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -227,7 +271,7 @@ const fetchAccounts = async (): Promise<FetchAccountsResult> => {
   };
 
   const response = await call.get<AccountsGetResponse>("/api/accounts").catch(console.error);
-  if (response?.status === "error") return { ...result, networkFailed: true };
+  if (isFailedResponse(response)) return { ...result, networkFailed: true };
   if (!response?.body) return result;
 
   const { accounts, items, holdings } = response.body;
@@ -246,6 +290,9 @@ interface FetchBudgetsResult {
   networkFailed: boolean;
 }
 
+export const sortById = <T,>(rows: T[], id: (row: T) => string): T[] =>
+  [...rows].sort((a, b) => (id(a) < id(b) ? -1 : id(a) > id(b) ? 1 : 0));
+
 const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   const result: FetchBudgetsResult = {
     budgets: new BudgetDictionary(),
@@ -255,16 +302,25 @@ const fetchBudgets = async (): Promise<FetchBudgetsResult> => {
   };
 
   const response = await call.get<BudgetsGetResponse>("/api/budgets").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
   if (!response.body) return result;
 
+  // Id order is the order IndexedDB hands the cache back in. Matching it keeps
+  // every budget/category dropdown from being rebuilt when a warm load's
+  // cached paint is replaced by the network's.
   const { budgets, sections, categories } = response.body;
-  budgets.forEach((e) => result.budgets.set(e.budget_id, new Budget(e)));
-  sections.forEach((e) => result.sections.set(e.section_id, new Section(e)));
-  categories.forEach((e) => result.categories.set(e.category_id, new Category(e)));
+  sortById(budgets, (e) => e.budget_id).forEach((e) =>
+    result.budgets.set(e.budget_id, new Budget(e)),
+  );
+  sortById(sections, (e) => e.section_id).forEach((e) =>
+    result.sections.set(e.section_id, new Section(e)),
+  );
+  sortById(categories, (e) => e.category_id).forEach((e) =>
+    result.categories.set(e.category_id, new Category(e)),
+  );
 
   return result;
 };
@@ -313,7 +369,7 @@ const fetchTransfers = async (
   if (includeDeleted) params.append("include-deleted", "true");
   const path = `/api/transfers?${params.toString()}`;
   const response = await call.get<TransfersGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -325,6 +381,61 @@ const fetchTransfers = async (
       continue;
     }
     result.transfers.set(pair.pair_id, pair);
+  }
+
+  return result;
+};
+
+interface FetchRecurringsResult {
+  recurrings: RecurringDictionary;
+  /** Recurring ids the server sent as eviction signals — caller must
+   *  `delete` from the context dictionary AND `indexedDb.remove(...)`
+   *  per id. */
+  tombstoneRecurringIds: Set<string>;
+  networkFailed: boolean;
+}
+
+/**
+ * Delta fetch of recurrings. Same contract as `fetchTransfers`: consumers
+ * resolve transaction_id lookups via `recurrings.byTransactionId`, and
+ * `useRecurrings` mutates `data.recurrings` in-place via `setData` (no
+ * re-fetch on mutation).
+ *
+ * A recurring leaves the view by being soft-deleted, dismissed, or losing
+ * all of its transactions; the server collapses all three into the same
+ * wire shape — a recurring with no `transactions` — so the reducer here
+ * has one predicate rather than a mirror of the server's visibility rules.
+ * Cursor null = full fetch (cold).
+ */
+const fetchRecurrings = async (
+  cursor: string | null,
+  includeDeleted: boolean,
+): Promise<FetchRecurringsResult> => {
+  const result: FetchRecurringsResult = {
+    recurrings: new RecurringDictionary(),
+    tombstoneRecurringIds: new Set(),
+    networkFailed: false,
+  };
+
+  const params = new URLSearchParams();
+  if (cursor) params.append("start-date", cursor);
+  // Same eviction-signal rationale as fetchTransfers: only meaningful when
+  // there is a cache to reconcile.
+  if (includeDeleted) params.append("include-deleted", "true");
+  const path = `/api/recurrings?${params.toString()}`;
+  const response = await call.get<RecurringsGetResponse>(path).catch(console.error);
+  if (isFailedResponse(response)) {
+    result.networkFailed = true;
+    return result;
+  }
+  if (!response.body) return result;
+
+  for (const recurring of response.body) {
+    if (!recurring.transactions.length) {
+      result.tombstoneRecurringIds.add(recurring.recurring_id);
+      continue;
+    }
+    result.recurrings.set(recurring.recurring_id, recurring);
   }
 
   return result;
@@ -362,7 +473,7 @@ const fetchSnapshots = async (
   if (cursor) params.append("start-date", cursor);
   const path = `/api/snapshots${params.toString() ? "?" + params.toString() : ""}`;
   const response = await call.get<SnapshotsGetResponse>(path).catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -404,7 +515,7 @@ const fetchCharts = async (): Promise<FetchChartsResult> => {
     networkFailed: false,
   };
   const response = await call.get<ChartsGetResponse>("/api/charts").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -439,10 +550,7 @@ const fetchInstitutions = async (accounts: AccountDictionary): Promise<FetchInst
   const response = await call
     .get<InstitutionsGetResponse>(`/api/institutions?ids=${ids.map(encodeURIComponent).join(",")}`)
     .catch(console.error);
-  // Any non-success envelope, not just "error": a "failed" one — expired
-  // session, or an id list over the route's cap — would otherwise overwrite
-  // Data.institutions and the IndexedDB mirror with an empty dictionary.
-  if (!response || response.status !== "success") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -466,7 +574,7 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
     networkFailed: false,
   };
   const response = await call.get<SecuritiesGetResponse>("/api/securities").catch(console.error);
-  if (!response || response.status === "error") {
+  if (isFailedResponse(response)) {
     result.networkFailed = true;
     return result;
   }
@@ -474,6 +582,421 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
     if (s.security_id) result.securities.set(s.security_id, new Security(s));
   });
   return result;
+};
+
+// ---------------------------------------------------------------------------
+// Stage helpers (#839). `_sync` is a sequencer over these; each stage is a
+// module-scope function so the pure ones can be unit-tested without
+// mounting the hook (see sync.test.ts). Stage 5 and the two orchestrators
+// stay mount-tested through the #819 render harness.
+// ---------------------------------------------------------------------------
+
+/** Everything Stage 1's parallel fan-out returns. */
+export interface Stage1Fetched {
+  accounts: AccountDictionary;
+  items: ItemDictionary;
+  holdings: HoldingDictionary;
+  budgets: BudgetDictionary;
+  sections: SectionDictionary;
+  categories: CategoryDictionary;
+  charts: ChartDictionary;
+  institutions: InstitutionDictionary;
+  securities: SecurityDictionary;
+  transfers: TransferDictionary;
+  tombstonePairIds: Set<string>;
+  recurrings: RecurringDictionary;
+  tombstoneRecurringIds: Set<string>;
+  /** The accounts fetch failed — the orchestrator bails before painting. */
+  accountsFailed: boolean;
+  /** Any of the other Stage 1 fetches failed — the cursor stays put. */
+  fetchFailed: boolean;
+  /** Per-table failures, so the paint/apply steps can keep the old table
+   *  when its own fetch failed instead of painting the empty dictionary
+   *  the fetcher built (#845). */
+  budgetsFailed: boolean;
+  chartsFailed: boolean;
+  institutionsFailed: boolean;
+  securitiesFailed: boolean;
+  transfersFailed: boolean;
+  recurringsFailed: boolean;
+}
+
+/** The time-partitioned triple Stage 2 fetches over a recent window and
+ *  Stage 3 fetches over the cursor (or unbounded on cold). One shape for
+ *  both: Stage 2 is Stage 3 with a 2-months-ago cursor. */
+export interface PartitionedFetched {
+  transactions: FetchTransactionsResult;
+  splits: FetchSplitTransactionsResult;
+  snapshots: FetchSnapshotsResult;
+}
+
+/** Stage 1 fetch: every non-historical store in parallel. Only
+ *  `fetchInstitutions` depends on accounts (chained via the promise).
+ *  `includeDeleted` asks the transfers/recurrings routes for eviction
+ *  signals — meaningful only when there is a cache to reconcile (warm,
+ *  or a cold path whose purge failed). */
+export const fetchStage1 = async (
+  cursor: string | null,
+  includeDeleted: boolean,
+): Promise<Stage1Fetched> => {
+  const accountsPromise = fetchAccounts();
+  const budgetsPromise = fetchBudgets();
+  const chartsPromise = fetchCharts();
+  const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
+  const securitiesPromise = fetchSecurities();
+  const transfersPromise = fetchTransfers(cursor, includeDeleted);
+  const recurringsPromise = fetchRecurrings(cursor, includeDeleted);
+
+  const [
+    accountsResult,
+    budgetsResult,
+    chartsResult,
+    institutionsResult,
+    securitiesResult,
+    transfersResult,
+    recurringsResult,
+  ] = await Promise.all([
+    accountsPromise,
+    budgetsPromise,
+    chartsPromise,
+    institutionsPromise,
+    securitiesPromise,
+    transfersPromise,
+    recurringsPromise,
+  ]);
+
+  return {
+    accounts: accountsResult.accounts,
+    items: accountsResult.items,
+    holdings: accountsResult.holdings,
+    budgets: budgetsResult.budgets,
+    sections: budgetsResult.sections,
+    categories: budgetsResult.categories,
+    charts: chartsResult.charts,
+    institutions: institutionsResult.institutions,
+    securities: securitiesResult.securities,
+    transfers: transfersResult.transfers,
+    tombstonePairIds: transfersResult.tombstonePairIds,
+    recurrings: recurringsResult.recurrings,
+    tombstoneRecurringIds: recurringsResult.tombstoneRecurringIds,
+    accountsFailed: accountsResult.networkFailed,
+    fetchFailed:
+      budgetsResult.networkFailed ||
+      chartsResult.networkFailed ||
+      institutionsResult.networkFailed ||
+      securitiesResult.networkFailed ||
+      transfersResult.networkFailed ||
+      recurringsResult.networkFailed,
+    budgetsFailed: budgetsResult.networkFailed,
+    chartsFailed: chartsResult.networkFailed,
+    institutionsFailed: institutionsResult.networkFailed,
+    securitiesFailed: securitiesResult.networkFailed,
+    transfersFailed: transfersResult.networkFailed,
+    recurringsFailed: recurringsResult.networkFailed,
+  };
+};
+
+/** Warm paint: hand the cached `Data` to React with the loading flags set.
+ *  Mutates the cached object's status (it is the cache's own object, not
+ *  live state) and returns it for `setData`. */
+export const paintCachedWarm = (cached: Data): Data => {
+  cached.status.isInit = true;
+  cached.status.isLoading = true;
+  cached.status.isError = false;
+  return cached;
+};
+
+/** Cold paint of Stage 1: a fresh `Data` from the fetched non-historical
+ *  stores, still loading — the historical fetches haven't run yet. A failed
+ *  fetch returns the empty dictionary the fetcher built, so the paint keeps
+ *  the old table for that store (#845) — on cold with a failed purge the
+ *  old table is the retained cache. */
+export const paintStage1 = (oldData: Data, fetched: Stage1Fetched): Data => {
+  const stage1 = new Data({
+    accounts: fetched.accounts,
+    items: fetched.items,
+    holdings: fetched.holdings,
+    budgets: fetched.budgetsFailed ? oldData.budgets : fetched.budgets,
+    sections: fetched.budgetsFailed ? oldData.sections : fetched.sections,
+    categories: fetched.budgetsFailed ? oldData.categories : fetched.categories,
+    charts: fetched.chartsFailed ? oldData.charts : fetched.charts,
+    institutions: fetched.institutionsFailed ? oldData.institutions : fetched.institutions,
+    securities: fetched.securitiesFailed ? oldData.securities : fetched.securities,
+    transfers: fetched.transfersFailed ? oldData.transfers : fetched.transfers,
+    recurrings: fetched.recurringsFailed ? oldData.recurrings : fetched.recurrings,
+  });
+  stage1.status.isInit = true;
+  stage1.status.isLoading = true;
+  stage1.status.isError = false;
+  stage1.status.isColdSync = true;
+  return stage1;
+};
+
+/** The accounts fetch failed: keep whatever state is showing, clear the
+ *  loading flag, and report a real error only on cold — a warm load still
+ *  has the cached paint to show. */
+export const paintAccountsFailure = (oldData: Data, isWarm: boolean): Data => {
+  const next = new Data(oldData);
+  next.status.isInit = true;
+  next.status.isLoading = false;
+  next.status.isError = !isWarm;
+  return next;
+};
+
+/** Stage 2 fetch: the same partitioned triple as Stage 3, over a recent
+ *  window instead of the cursor. */
+export const fetchRecentWindow = async (
+  accounts: AccountDictionary,
+  startDate: string,
+): Promise<PartitionedFetched> => {
+  const [transactions, splits, snapshots] = await Promise.all([
+    fetchTransactions(startDate),
+    fetchSplitTransactions(startDate),
+    fetchSnapshots(accounts, startDate),
+  ]);
+  return { transactions, splits, snapshots };
+};
+
+/** Stage 3 fetch: the time-partitioned stores via delta (warm) or full
+ *  fetch (cold, cursor null). `accounts` feeds the account-snapshot
+ *  hydration path in `fetchSnapshots`. */
+export const fetchPartitioned = async (
+  accounts: AccountDictionary,
+  cursor: string | null,
+): Promise<PartitionedFetched> => {
+  const [transactions, splits, snapshots] = await Promise.all([
+    fetchTransactions(cursor),
+    fetchSplitTransactions(cursor),
+    fetchSnapshots(accounts, cursor),
+  ]);
+  return { transactions, splits, snapshots };
+};
+
+// Per-store delta merges. Each clones the draft's dictionary, sets the
+// added/modified rows, and deletes the tombstoned ids — the same merge
+// Stage 4 and `_syncDomain` both perform, so a fix to one can't drift
+// from the other. They mutate the passed draft (each touches a disjoint
+// set of dictionaries, so callers may compose them in any order); the
+// callers own the `new Data(oldData)` clone.
+const mergeTransactionsDelta = (next: Data, r: FetchTransactionsResult): void => {
+  next.transactions = new TransactionDictionary(next.transactions);
+  r.transactions.forEach((t, id) => next.transactions.set(id, t));
+  r.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
+  next.investmentTransactions = new InvestmentTransactionDictionary(next.investmentTransactions);
+  r.investmentTransactions.forEach((t, id) => next.investmentTransactions.set(id, t));
+  r.tombstoneInvIds.forEach((id) => next.investmentTransactions.delete(id));
+};
+
+const mergeSplitTransactionsDelta = (next: Data, r: FetchSplitTransactionsResult): void => {
+  next.splitTransactions = new SplitTransactionDictionary(next.splitTransactions);
+  r.splitTransactions.forEach((t, id) => next.splitTransactions.set(id, t));
+  r.tombstoneSplitIds.forEach((id) => next.splitTransactions.delete(id));
+};
+
+const mergeSnapshotsDelta = (next: Data, r: FetchSnapshotsResult): void => {
+  next.accountSnapshots = new AccountSnapshotDictionary(next.accountSnapshots);
+  r.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
+  r.tombstoneAccountSnapshotIds.forEach((id) => next.accountSnapshots.delete(id));
+  next.holdingSnapshots = new HoldingSnapshotDictionary(next.holdingSnapshots);
+  r.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
+  r.tombstoneHoldingSnapshotIds.forEach((id) => next.holdingSnapshots.delete(id));
+  next.securitySnapshots = new SecuritySnapshotDictionary(next.securitySnapshots);
+  r.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
+  r.tombstoneSecuritySnapshotIds.forEach((id) => next.securitySnapshots.delete(id));
+};
+
+const mergeTransfersDelta = (
+  next: Data,
+  r: Pick<FetchTransfersResult, "transfers" | "tombstonePairIds">,
+): void => {
+  next.transfers = new TransferDictionary(next.transfers);
+  r.transfers.forEach((p, id) => next.transfers.set(id, p));
+  r.tombstonePairIds.forEach((id) => next.transfers.delete(id));
+};
+
+const mergeRecurringsDelta = (
+  next: Data,
+  r: Pick<FetchRecurringsResult, "recurrings" | "tombstoneRecurringIds">,
+): void => {
+  next.recurrings = new RecurringDictionary(next.recurrings);
+  r.recurrings.forEach((rec, id) => next.recurrings.set(id, rec));
+  r.tombstoneRecurringIds.forEach((id) => next.recurrings.delete(id));
+};
+
+/** Stage 2 paint: merge the recent window over the Stage 1 paint. The
+ *  unbounded Stage 3 fetch hasn't run yet, so months older than the
+ *  window have no transactions in memory — rollover accrual clamps to
+ *  the loaded window while `isColdSync` is set. */
+export const paintRecentWindow = (oldData: Data, recent: PartitionedFetched): Data => {
+  const next = new Data(oldData);
+  mergeTransactionsDelta(next, recent.transactions);
+  mergeSplitTransactionsDelta(next, recent.splits);
+  mergeSnapshotsDelta(next, recent.snapshots);
+  next.status.isInit = true;
+  next.status.isLoading = true;
+  next.status.isError = false;
+  next.status.isColdSync = true;
+  return next;
+};
+
+/** Stage 4 apply: the Stage 1 stores replace wholesale; the partitioned
+ *  stores (and transfers/recurrings) merge as deltas over the previous
+ *  state. Identical on warm and cold — on cold the delta IS the whole
+ *  set, so the merge over Stage 1's paint is a no-op overlay. Either way
+ *  the unbounded fetch commits the full history, so the cold-streaming
+ *  window is over (`isColdSync` clears). */
+export const applyDelta = (
+  oldData: Data,
+  stage1: Stage1Fetched,
+  partitioned: PartitionedFetched,
+): Data => {
+  const next = new Data(oldData);
+  next.accounts = stage1.accounts;
+  next.holdings = stage1.holdings;
+  next.items = stage1.items;
+  // A failed fetch returns the empty dictionary the fetcher built before
+  // the call — assigning it would wipe the cached table. Keep the old
+  // table when its fetch failed; the cursor stays put (Stage 5) so the
+  // next sync re-fetches it (#845). Accounts are already gated by the
+  // early return above.
+  if (!stage1.budgetsFailed) {
+    next.budgets = stage1.budgets;
+    next.sections = stage1.sections;
+    next.categories = stage1.categories;
+  }
+  if (!stage1.chartsFailed) next.charts = stage1.charts;
+  if (!stage1.institutionsFailed) next.institutions = stage1.institutions;
+  if (!stage1.securitiesFailed) next.securities = stage1.securities;
+  mergeTransfersDelta(next, stage1);
+  mergeRecurringsDelta(next, stage1);
+  mergeTransactionsDelta(next, partitioned.transactions);
+  mergeSplitTransactionsDelta(next, partitioned.splits);
+  mergeSnapshotsDelta(next, partitioned.snapshots);
+  next.status.isInit = true;
+  next.status.isLoading = false;
+  next.status.isError = false;
+  next.status.isColdSync = false;
+  return next;
+};
+
+// Per-store persist: the `saveMany` writes for added/modified rows plus
+// per-row `remove` for tombstones — the same persist Stage 5 and
+// `_syncDomain` both perform. Returned as promise arrays so the caller
+// decides `all` vs `allSettled`.
+const persistTransactionsDelta = (r: FetchTransactionsResult): Promise<void>[] => [
+  indexedDb.saveTransactions(r.transactions),
+  indexedDb.saveInvestmentTransactions(r.investmentTransactions),
+  ...[...r.tombstoneTxIds].map((id) => indexedDb.remove(StoreName.transactions, id)),
+  ...[...r.tombstoneInvIds].map((id) => indexedDb.remove(StoreName.investmentTransactions, id)),
+];
+
+const persistSplitTransactionsDelta = (r: FetchSplitTransactionsResult): Promise<void>[] => [
+  indexedDb.saveSplitTransactions(r.splitTransactions),
+  ...[...r.tombstoneSplitIds].map((id) => indexedDb.remove(StoreName.splitTransactions, id)),
+];
+
+const persistSnapshotsDelta = (r: FetchSnapshotsResult): Promise<void>[] => [
+  indexedDb.saveAccountSnapshots(r.accountSnapshots),
+  indexedDb.saveHoldingSnapshots(r.holdingSnapshots),
+  indexedDb.saveSecuritySnapshots(r.securitySnapshots),
+  ...[...r.tombstoneAccountSnapshotIds].map((id) =>
+    indexedDb.remove(StoreName.accountSnapshots, id),
+  ),
+  ...[...r.tombstoneHoldingSnapshotIds].map((id) =>
+    indexedDb.remove(StoreName.holdingSnapshots, id),
+  ),
+  ...[...r.tombstoneSecuritySnapshotIds].map((id) =>
+    indexedDb.remove(StoreName.securitySnapshots, id),
+  ),
+];
+
+const persistTransfersDelta = (
+  r: Pick<FetchTransfersResult, "transfers" | "tombstonePairIds">,
+): Promise<void>[] => [
+  indexedDb.saveTransfers(r.transfers),
+  ...[...r.tombstonePairIds].map((id) => indexedDb.remove(StoreName.transfers, id)),
+];
+
+const persistRecurringsDelta = (
+  r: Pick<FetchRecurringsResult, "recurrings" | "tombstoneRecurringIds">,
+): Promise<void>[] => [
+  indexedDb.saveRecurrings(r.recurrings),
+  ...[...r.tombstoneRecurringIds].map((id) => indexedDb.remove(StoreName.recurrings, id)),
+];
+
+/** What Stage 5 decided: the cursor outcome, and whether anything
+ *  failed along the way. */
+export interface PersistOutcome {
+  cursorUpdate: "advance" | "clear" | "keep";
+  fetchFailed: boolean;
+  idbFailed: boolean;
+}
+
+/** Stage 5: persist the fetched delta to IDB, then advance (or clear)
+ *  the cursor. AWAITED by the orchestrator so the cursor write happens
+ *  AFTER IDB is durable — a page reload right after sync sees the same
+ *  state the cursor advertises. The cursor advances ONLY if every fetch
+ *  AND every IDB write succeeded: advancing on a swallowed IDB save error
+ *  would permanently lose the row (React state has it, IDB doesn't;
+ *  once the 60s cursor margin elapses the server stops re-emitting). */
+export const persistAndAdvance = async (args: {
+  stage1: Stage1Fetched;
+  partitioned: PartitionedFetched;
+  syncStartedAt: Date;
+  purgeFailed: boolean;
+  skippedWritesAtStart: number;
+}): Promise<PersistOutcome> => {
+  const { stage1, partitioned, syncStartedAt, purgeFailed, skippedWritesAtStart } = args;
+  const fetchFailed =
+    stage1.fetchFailed ||
+    partitioned.transactions.networkFailed ||
+    partitioned.splits.networkFailed ||
+    partitioned.snapshots.networkFailed;
+
+  // Non-time-partitioned stores: explicit per-store saves (avoids
+  // `saveAllData`'s 6 empty-dict transactions). Time-partitioned
+  // stores save the delta dict — the previous-sync state for any
+  // row that wasn't in this delta is already on disk from the
+  // sync that fetched it (idempotent per-id put).
+  const idbSaves: Promise<void>[] = [
+    indexedDb.saveAccounts(stage1.accounts),
+    indexedDb.saveHoldings(stage1.holdings),
+    indexedDb.saveItems(stage1.items),
+    indexedDb.saveBudgets(stage1.budgets),
+    indexedDb.saveSections(stage1.sections),
+    indexedDb.saveCategories(stage1.categories),
+    indexedDb.saveCharts(stage1.charts),
+    indexedDb.saveInstitutions(stage1.institutions),
+    indexedDb.saveSecurities(stage1.securities),
+    ...persistTransfersDelta(stage1),
+    ...persistRecurringsDelta(stage1),
+    ...persistTransactionsDelta(partitioned.transactions),
+    ...persistSplitTransactionsDelta(partitioned.splits),
+    ...persistSnapshotsDelta(partitioned.snapshots),
+  ];
+
+  // `allSettled` rather than `all`: a partial IDB failure
+  // shouldn't tear down the orchestrator (React state already has
+  // the data); we just need to detect the failure so the cursor
+  // stays put and the next sync re-fetches the delta.
+  const idbOutcomes = await Promise.allSettled(idbSaves);
+  const idbFailed = idbOutcomes.some((o) => {
+    if (o.status === "rejected") {
+      console.error("[useSync] IDB persist failed:", o.reason);
+      return true;
+    }
+    return false;
+  });
+
+  const cursorUpdate = cursorUpdateAfterSync({
+    purgeFailed,
+    fetchFailed,
+    idbFailed,
+    writesSkipped: indexedDbAccessor.skippedWrites !== skippedWritesAtStart,
+  });
+  if (cursorUpdate === "advance") writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
+  else if (cursorUpdate === "clear") removeLastSyncedCursor();
+  return { cursorUpdate, fetchFailed, idbFailed };
 };
 
 // Module-scoped so the timeout survives the originating component's
@@ -526,6 +1049,7 @@ export const useSync = () => {
       // next sync (which uses cursor = startedAt - safety margin).
       const syncStartedAt = new Date();
       dropLegacyKeys();
+      const skippedWritesAtStart = indexedDbAccessor.skippedWrites;
 
       const cached = await indexedDb.loadAllData().catch((err) => {
         console.error(err);
@@ -578,84 +1102,30 @@ export const useSync = () => {
       // time-partitioned. Refreshed on every sync (warm + cold).
       //
       // For warm load, we paint cached state first so the UI doesn't
-      // flicker between cache and the refreshed view of Stage 1.
-      if (isWarm && cached) {
-        cached.status.isInit = true;
-        cached.status.isLoading = true;
-        cached.status.isError = false;
-        setData(cached);
+      // flicker between cache and the refreshed view of Stage 1. A resync of
+      // a page already showing data skips it: the live state is at least as
+      // new as the cache, and swapping the cache in rebuilds every row.
+      if (isWarm && cached && !globalData.status.isInit) {
+        setData(paintCachedWarm(cached));
       }
 
-      // Kick off every Stage 1 fetch in parallel. Only `fetchInstitutions`
-      // depends on accounts (chained via the promise), the rest are
-      // independent and start as soon as the user is authenticated.
-      const accountsPromise = fetchAccounts();
-      const budgetsPromise = fetchBudgets();
-      const chartsPromise = fetchCharts();
-      const institutionsPromise = accountsPromise.then((r) => fetchInstitutions(r.accounts));
-      const securitiesPromise = fetchSecurities();
-      const transfersPromise = fetchTransfers(cursor, isWarm || purgeFailed);
+      const stage1 = await fetchStage1(cursor, isWarm || purgeFailed);
 
-      const [
-        accountsResult,
-        stage1Budgets,
-        stage1Charts,
-        stage1Institutions,
-        stage1Securities,
-        stage1Transfers,
-      ] = await Promise.all([
-        accountsPromise,
-        budgetsPromise,
-        chartsPromise,
-        institutionsPromise,
-        securitiesPromise,
-        transfersPromise,
-      ]);
-
-      if (accountsResult.networkFailed) {
+      if (stage1.accountsFailed) {
         // Setdata via the updater so React sees a distinct reference
         // and commits; the warm-path paint above already committed the
         // same `cached` ref, so `setData(cached)` would Object.is-bail
         // and strand the loading flag.
-        setData((oldData) => {
-          const newData = new Data(oldData);
-          newData.status.isInit = true;
-          newData.status.isLoading = false;
-          newData.status.isError = !isWarm; // online cache wins; cold = real error
-          return newData;
-        });
+        setData((oldData) => paintAccountsFailure(oldData, isWarm));
         return;
       }
-
-      const { accounts, items, holdings } = accountsResult;
-      const { budgets, sections, categories } = stage1Budgets;
-      const { charts } = stage1Charts;
-      const { institutions } = stage1Institutions;
-      const { securities } = stage1Securities;
-      const { transfers, tombstonePairIds: tombstoneTransferPairIds } = stage1Transfers;
 
       // On a cold load, paint Stage 1 immediately so the navigation +
       // summary widgets render before the historical fetches finish.
       // On warm load, the cached paint above already covered this; the
       // delta apply below replaces what changed.
       if (!isWarm) {
-        const stage1 = new Data({
-          accounts,
-          items,
-          holdings,
-          budgets,
-          sections,
-          categories,
-          charts,
-          institutions,
-          securities,
-          transfers,
-        });
-        stage1.status.isInit = true;
-        stage1.status.isLoading = true;
-        stage1.status.isError = false;
-        stage1.status.isColdSync = true;
-        setData(stage1);
+        setData((oldData) => paintStage1(oldData, stage1));
       }
 
       // ===== Stage 2: cold-only recent-window paint. =====
@@ -670,53 +1140,8 @@ export const useSync = () => {
         const twoMonthsAgo = new Date(
           syncStartedAt.getTime() - 60 * 24 * 60 * 60 * 1000,
         ).toISOString();
-        const [recentTx, recentSplits, recentSnaps] = await Promise.all([
-          fetchTransactions(twoMonthsAgo),
-          fetchSplitTransactions(twoMonthsAgo),
-          fetchSnapshots(accounts, twoMonthsAgo),
-        ]);
-        setData((oldData) => {
-          const next = new Data(oldData);
-          next.transactions = new TransactionDictionary(oldData.transactions);
-          recentTx.transactions.forEach((t, id) => next.transactions.set(id, t));
-          recentTx.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
-          next.investmentTransactions = new InvestmentTransactionDictionary(
-            oldData.investmentTransactions,
-          );
-          recentTx.investmentTransactions.forEach((t, id) =>
-            next.investmentTransactions.set(id, t),
-          );
-          recentTx.tombstoneInvIds.forEach((id) => next.investmentTransactions.delete(id));
-          next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
-          recentSplits.splitTransactions.forEach((t, id) =>
-            next.splitTransactions.set(id, t),
-          );
-          recentSplits.tombstoneSplitIds.forEach((id) => next.splitTransactions.delete(id));
-          next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
-          recentSnaps.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
-          recentSnaps.tombstoneAccountSnapshotIds.forEach((id) =>
-            next.accountSnapshots.delete(id),
-          );
-          next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
-          recentSnaps.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
-          recentSnaps.tombstoneHoldingSnapshotIds.forEach((id) =>
-            next.holdingSnapshots.delete(id),
-          );
-          next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
-          recentSnaps.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
-          recentSnaps.tombstoneSecuritySnapshotIds.forEach((id) =>
-            next.securitySnapshots.delete(id),
-          );
-          next.status.isInit = true;
-          next.status.isLoading = true;
-          next.status.isError = false;
-          // Still mid-cold: Stage 4's unbounded fetch hasn't run yet, so
-          // months older than the recent window have no transactions in
-          // memory. Rollover accrual clamps to the loaded window while
-          // this is true.
-          next.status.isColdSync = true;
-          return next;
-        });
+        const recent = await fetchRecentWindow(stage1.accounts, twoMonthsAgo);
+        setData((oldData) => paintRecentWindow(oldData, recent));
       }
 
       // ===== Stage 3: time-partitioned stores via delta/full fetch. =====
@@ -726,15 +1151,7 @@ export const useSync = () => {
       // filter is inclusive; cursor includes a safety margin so
       // borderline rows aren't missed at the cost of a small per-sync
       // re-fetch of the last minute's changes.
-      const [
-        transactionsResult,
-        splitTransactionsResult,
-        snapshotsResult,
-      ] = await Promise.all([
-        fetchTransactions(cursor),
-        fetchSplitTransactions(cursor),
-        fetchSnapshots(accounts, cursor),
-      ]);
+      const partitioned = await fetchPartitioned(stage1.accounts, cursor);
 
       // ===== Stage 4: apply (warm + cold: in-place merge on `oldData`). =====
       // Existing state stays — added/modified rows overwrite their ids in the
@@ -743,76 +1160,7 @@ export const useSync = () => {
       // `new Data(refreshed)`. On cold load, Stage 2's recent-window paint is
       // already in oldData; Stage 4's unbounded fetch overlays the same rows
       // (idempotent) and fills in the older months.
-      setData((oldData) => {
-        const next = new Data(oldData);
-        next.accounts = accounts;
-        next.holdings = holdings;
-        next.items = items;
-        next.budgets = budgets;
-        next.sections = sections;
-        next.categories = categories;
-        next.charts = charts;
-        next.institutions = institutions;
-        next.securities = securities;
-
-        // Apply transfers delta the same way as the time-partitioned
-        // stores below. On cold the delta IS the whole set, so the merge
-        // over Stage 1's paint is a no-op overlay.
-        next.transfers = new TransferDictionary(oldData.transfers);
-        transfers.forEach((p, id) => next.transfers.set(id, p));
-        tombstoneTransferPairIds.forEach((id) => next.transfers.delete(id));
-
-        // Apply transactions delta: clone the existing dict, set
-        // added/modified, delete tombstoned ids.
-        next.transactions = new TransactionDictionary(oldData.transactions);
-        transactionsResult.transactions.forEach((t, id) => next.transactions.set(id, t));
-        transactionsResult.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
-
-        next.investmentTransactions = new InvestmentTransactionDictionary(
-          oldData.investmentTransactions,
-        );
-        transactionsResult.investmentTransactions.forEach((t, id) =>
-          next.investmentTransactions.set(id, t),
-        );
-        transactionsResult.tombstoneInvIds.forEach((id) =>
-          next.investmentTransactions.delete(id),
-        );
-
-        next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
-        splitTransactionsResult.splitTransactions.forEach((t, id) =>
-          next.splitTransactions.set(id, t),
-        );
-        splitTransactionsResult.tombstoneSplitIds.forEach((id) =>
-          next.splitTransactions.delete(id),
-        );
-
-        next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
-        snapshotsResult.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
-        snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) =>
-          next.accountSnapshots.delete(id),
-        );
-
-        next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
-        snapshotsResult.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
-        snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) =>
-          next.holdingSnapshots.delete(id),
-        );
-
-        next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
-        snapshotsResult.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
-        snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) =>
-          next.securitySnapshots.delete(id),
-        );
-
-        next.status.isInit = true;
-        next.status.isLoading = false;
-        next.status.isError = false;
-        // Stage 4's unbounded fetch commits the full history (or, on warm,
-        // applies the delta on top of the cached full history). Either way
-        // the cold-streaming window is over.
-        next.status.isColdSync = false;
-        return next;
-      });
+      setData((oldData) => applyDelta(oldData, stage1, partitioned));
 
       // ===== Stage 5: persist + advance the cursor. =====
       // Per-store batched `saveMany` writes for added/modified entries and
@@ -822,77 +1170,13 @@ export const useSync = () => {
       // every IDB write succeeded: advancing on a swallowed IDB save error
       // would permanently lose the row (React state has it, IDB doesn't;
       // once the 60s cursor margin elapses the server stops re-emitting).
-      const fetchFailed =
-        stage1Budgets.networkFailed ||
-        stage1Charts.networkFailed ||
-        stage1Institutions.networkFailed ||
-        stage1Securities.networkFailed ||
-        stage1Transfers.networkFailed ||
-        transactionsResult.networkFailed ||
-        splitTransactionsResult.networkFailed ||
-        snapshotsResult.networkFailed;
-
-      // Non-time-partitioned stores: explicit per-store saves (avoids
-      // `saveAllData`'s 6 empty-dict transactions). Time-partitioned
-      // stores save the delta dict — the previous-sync state for any
-      // row that wasn't in this delta is already on disk from the
-      // sync that fetched it (idempotent per-id put).
-      const idbSaves: Promise<void>[] = [
-        indexedDb.saveAccounts(accounts),
-        indexedDb.saveHoldings(holdings),
-        indexedDb.saveItems(items),
-        indexedDb.saveBudgets(budgets),
-        indexedDb.saveSections(sections),
-        indexedDb.saveCategories(categories),
-        indexedDb.saveCharts(charts),
-        indexedDb.saveInstitutions(institutions),
-        indexedDb.saveSecurities(securities),
-        indexedDb.saveTransfers(transfers),
-        indexedDb.saveTransactions(transactionsResult.transactions),
-        indexedDb.saveInvestmentTransactions(transactionsResult.investmentTransactions),
-        indexedDb.saveSplitTransactions(splitTransactionsResult.splitTransactions),
-        indexedDb.saveAccountSnapshots(snapshotsResult.accountSnapshots),
-        indexedDb.saveHoldingSnapshots(snapshotsResult.holdingSnapshots),
-        indexedDb.saveSecuritySnapshots(snapshotsResult.securitySnapshots),
-      ];
-      transactionsResult.tombstoneTxIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.transactions, id));
+      await persistAndAdvance({
+        stage1,
+        partitioned,
+        syncStartedAt,
+        purgeFailed,
+        skippedWritesAtStart,
       });
-      transactionsResult.tombstoneInvIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.investmentTransactions, id));
-      });
-      splitTransactionsResult.tombstoneSplitIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.splitTransactions, id));
-      });
-      snapshotsResult.tombstoneAccountSnapshotIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.accountSnapshots, id));
-      });
-      snapshotsResult.tombstoneHoldingSnapshotIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.holdingSnapshots, id));
-      });
-      snapshotsResult.tombstoneSecuritySnapshotIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.securitySnapshots, id));
-      });
-      tombstoneTransferPairIds.forEach((id) => {
-        idbSaves.push(indexedDb.remove(StoreName.transfers, id));
-      });
-
-      // `allSettled` rather than `all`: a partial IDB failure
-      // shouldn't tear down the orchestrator (React state already has
-      // the data); we just need to detect the failure so the cursor
-      // stays put and the next sync re-fetches the delta.
-      const idbOutcomes = await Promise.allSettled(idbSaves);
-      const idbFailed = idbOutcomes.some((o) => {
-        if (o.status === "rejected") {
-          console.error("[useSync] IDB persist failed:", o.reason);
-          return true;
-        }
-        return false;
-      });
-
-      if (!fetchFailed && !idbFailed) {
-        writeLastSyncedCursor(cursorForNextSync(syncStartedAt));
-      }
     } catch (err) {
       console.error(err);
       setData((oldData) => {
@@ -924,28 +1208,10 @@ export const useSync = () => {
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
-              next.transactions = new TransactionDictionary(oldData.transactions);
-              r.transactions.forEach((t, id) => next.transactions.set(id, t));
-              r.tombstoneTxIds.forEach((id) => next.transactions.delete(id));
-              next.investmentTransactions = new InvestmentTransactionDictionary(
-                oldData.investmentTransactions,
-              );
-              r.investmentTransactions.forEach((t, id) =>
-                next.investmentTransactions.set(id, t),
-              );
-              r.tombstoneInvIds.forEach((id) => next.investmentTransactions.delete(id));
+              mergeTransactionsDelta(next, r);
               return next;
             });
-            await Promise.allSettled([
-              indexedDb.saveTransactions(r.transactions),
-              indexedDb.saveInvestmentTransactions(r.investmentTransactions),
-              ...[...r.tombstoneTxIds].map((id) =>
-                indexedDb.remove(StoreName.transactions, id),
-              ),
-              ...[...r.tombstoneInvIds].map((id) =>
-                indexedDb.remove(StoreName.investmentTransactions, id),
-              ),
-            ]);
+            await Promise.allSettled(persistTransactionsDelta(r));
             return;
           }
           case TableName.SplitTransactions: {
@@ -953,17 +1219,10 @@ export const useSync = () => {
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
-              next.splitTransactions = new SplitTransactionDictionary(oldData.splitTransactions);
-              r.splitTransactions.forEach((t, id) => next.splitTransactions.set(id, t));
-              r.tombstoneSplitIds.forEach((id) => next.splitTransactions.delete(id));
+              mergeSplitTransactionsDelta(next, r);
               return next;
             });
-            await Promise.allSettled([
-              indexedDb.saveSplitTransactions(r.splitTransactions),
-              ...[...r.tombstoneSplitIds].map((id) =>
-                indexedDb.remove(StoreName.splitTransactions, id),
-              ),
-            ]);
+            await Promise.allSettled(persistSplitTransactionsDelta(r));
             return;
           }
           case TableName.Snapshots: {
@@ -977,31 +1236,10 @@ export const useSync = () => {
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
-              next.accountSnapshots = new AccountSnapshotDictionary(oldData.accountSnapshots);
-              r.accountSnapshots.forEach((s, id) => next.accountSnapshots.set(id, s));
-              r.tombstoneAccountSnapshotIds.forEach((id) => next.accountSnapshots.delete(id));
-              next.holdingSnapshots = new HoldingSnapshotDictionary(oldData.holdingSnapshots);
-              r.holdingSnapshots.forEach((s, id) => next.holdingSnapshots.set(id, s));
-              r.tombstoneHoldingSnapshotIds.forEach((id) => next.holdingSnapshots.delete(id));
-              next.securitySnapshots = new SecuritySnapshotDictionary(oldData.securitySnapshots);
-              r.securitySnapshots.forEach((s, id) => next.securitySnapshots.set(id, s));
-              r.tombstoneSecuritySnapshotIds.forEach((id) => next.securitySnapshots.delete(id));
+              mergeSnapshotsDelta(next, r);
               return next;
             });
-            await Promise.allSettled([
-              indexedDb.saveAccountSnapshots(r.accountSnapshots),
-              indexedDb.saveHoldingSnapshots(r.holdingSnapshots),
-              indexedDb.saveSecuritySnapshots(r.securitySnapshots),
-              ...[...r.tombstoneAccountSnapshotIds].map((id) =>
-                indexedDb.remove(StoreName.accountSnapshots, id),
-              ),
-              ...[...r.tombstoneHoldingSnapshotIds].map((id) =>
-                indexedDb.remove(StoreName.holdingSnapshots, id),
-              ),
-              ...[...r.tombstoneSecuritySnapshotIds].map((id) =>
-                indexedDb.remove(StoreName.securitySnapshots, id),
-              ),
-            ]);
+            await Promise.allSettled(persistSnapshotsDelta(r));
             return;
           }
           case TableName.Accounts:
@@ -1067,15 +1305,24 @@ export const useSync = () => {
             if (r.networkFailed) return;
             setData((oldData) => {
               const next = new Data(oldData);
-              next.transfers = new TransferDictionary(oldData.transfers);
-              r.transfers.forEach((p, id) => next.transfers.set(id, p));
-              r.tombstonePairIds.forEach((id) => next.transfers.delete(id));
+              mergeTransfersDelta(next, r);
               return next;
             });
-            await Promise.allSettled([
-              indexedDb.saveTransfers(r.transfers),
-              ...[...r.tombstonePairIds].map((id) => indexedDb.remove(StoreName.transfers, id)),
-            ]);
+            await Promise.allSettled(persistTransfersDelta(r));
+            return;
+          }
+          case TableName.Recurrings: {
+            // Same merge-with-evictions contract as TransactionPairs: a
+            // dismissed recurring has to leave the screen even for a user
+            // whose cursor is missing.
+            const r = await fetchRecurrings(cursor, true);
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              mergeRecurringsDelta(next, r);
+              return next;
+            });
+            await Promise.allSettled(persistRecurringsDelta(r));
             return;
           }
           case TableName.Securities: {

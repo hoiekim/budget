@@ -1,58 +1,214 @@
+// Run with: bun test --preload ./scripts/test-preload.ts index.test.tsx
 import { afterEach, describe, expect, it } from "bun:test";
-import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import {
+  Account,
+  Budget,
+  Capacity,
+  Chart,
+  ContextType,
+  Data,
+  PATH,
+  ProjectionChartConfiguration,
+} from "client";
 import { ChartType } from "common";
-import { Budget, Capacity, Chart, Data, PATH, ProjectionChartConfiguration } from "client";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { ChartAccountsPage } from "./ChartAccountsPage";
 
 let fetchStub: ReturnType<typeof stubFetch> | undefined;
 
 afterEach(() => {
+  // `cleanup()` first: unmount effects run inside it, and a request one of
+  // them fires has to land on the stub rather than escape to a real one.
   cleanup();
-  resetDom();
   fetchStub?.restore();
   fetchStub = undefined;
+  resetDom();
 });
 
 const CHART_ID = "chart-1";
+const VISIBLE_ID = "acc-visible";
+const HIDDEN_ID = "acc-hidden";
+const DELETED_ID = "acc-deleted";
 
-const render = (budget_ids: string[]) => {
+/**
+ * A projection chart whose stored `account_ids` reference one visible
+ * account, one hidden account, and one account that no longer exists —
+ * the shape that used to brick the dashboard (#881).
+ */
+const buildData = () => {
   const data = new Data();
+  data.accounts.set(
+    VISIBLE_ID,
+    new Account({ account_id: VISIBLE_ID, name: "Checking", hide: false } as never),
+  );
+  data.accounts.set(
+    HIDDEN_ID,
+    new Account({ account_id: HIDDEN_ID, name: "Old savings", hide: true } as never),
+  );
   data.charts.set(
     CHART_ID,
     new Chart({
       chart_id: CHART_ID,
+      name: "Retirement",
       type: ChartType.PROJECTION,
-      configuration: new ProjectionChartConfiguration({ budget_ids }),
+      configuration: new ProjectionChartConfiguration({
+        account_ids: [VISIBLE_ID, HIDDEN_ID, DELETED_ID],
+      }),
     }),
   );
-  data.budgets.set(
-    "rent",
-    new Budget({ budget_id: "rent", name: "Rent", capacities: [new Capacity({ month: 2000 })] }),
-  );
-  const { router } = buildRouter(PATH.CHART_ACCOUNTS, new URLSearchParams({ chart_id: CHART_ID }));
-  renderWithContext(<ChartAccountsPage />, buildContext({ data, router }));
+  return data;
 };
 
-const rentToggle = () =>
-  screen.getByText("Rent").closest(".row")!.querySelector("input") as HTMLInputElement;
+/** `setData` in the running app is a `useState` setter — apply the updater and keep the result. */
+const buildStore = (data: Data) => {
+  const store = { data };
+  const setData: ContextType["setData"] = (action) => {
+    store.data = typeof action === "function" ? action(store.data) : action;
+  };
+  return { store, setData };
+};
 
-describe("ChartAccountsPage — projection chart", () => {
+const renderPage = (data: Data, setData: ContextType["setData"]) => {
+  const { router } = buildRouter(
+    PATH.CHART_ACCOUNTS,
+    new URLSearchParams({ chart_id: CHART_ID }),
+  );
+  fetchStub = stubFetch([{ path: "/api/chart", response: { status: "success" } }]);
+  renderWithContext(<ChartAccountsPage />, buildContext({ data, setData, router }));
+};
+
+const toggleInRow = (label: string) => {
+  const row = screen.getByText(label).closest(".row");
+  return row?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+};
+
+const storedAccountIds = (store: { data: Data }) =>
+  (
+    store.data.charts.get(CHART_ID)?.configuration as ProjectionChartConfiguration
+  ).account_ids;
+
+describe("ChartAccountsPage — stale account ids", () => {
+  it("surfaces a deleted account's id as a removable Missing account row", () => {
+    const { store, setData } = buildStore(buildData());
+    renderPage(store.data, setData);
+
+    const toggle = toggleInRow("Missing account");
+    expect(toggle).not.toBeNull();
+    // the row lists the system note where visible rows list the account type
+    expect(toggleInRow("Missing account")?.closest(".row")?.textContent).toContain(
+      "account not found",
+    );
+  });
+
+  it("surfaces a hidden account's stale id with its name so it can be removed", () => {
+    const { store, setData } = buildStore(buildData());
+    renderPage(store.data, setData);
+
+    const toggle = toggleInRow("Old savings");
+    expect(toggle).not.toBeNull();
+    expect(toggle?.closest(".row")?.textContent).toContain("hidden");
+    // the hidden account is not listed among the selectable accounts
+    expect(screen.getAllByText("Old savings")).toHaveLength(1);
+  });
+
+  it("keeps visible accounts' rows exactly as before", () => {
+    const { store, setData } = buildStore(buildData());
+    renderPage(store.data, setData);
+
+    const toggle = toggleInRow("Checking");
+    expect(toggle).not.toBeNull();
+    expect(toggle?.checked).toBe(true);
+    expect(toggle?.closest(".row")?.textContent).not.toContain("Missing account");
+  });
+
+  it("removes the stale id when its row is toggled off", async () => {
+    const { store, setData } = buildStore(buildData());
+    renderPage(store.data, setData);
+
+    await act(async () => {
+      fireEvent.click(toggleInRow("Missing account"));
+    });
+
+    expect(storedAccountIds(store)).toEqual([VISIBLE_ID, HIDDEN_ID]);
+    expect(fetchStub?.calls.requests.map((r) => r.url)).toEqual(["/api/chart"]);
+  });
+
+  it("removes the hidden account's stale id when its row is toggled off", async () => {
+    const { store, setData } = buildStore(buildData());
+    renderPage(store.data, setData);
+
+    await act(async () => {
+      fireEvent.click(toggleInRow("Old savings"));
+    });
+
+    expect(storedAccountIds(store)).toEqual([VISIBLE_ID, DELETED_ID]);
+  });
+
+  it("toggling a visible account off keeps the stale ids intact", async () => {
+    const { store, setData } = buildStore(buildData());
+    renderPage(store.data, setData);
+
+    await act(async () => {
+      fireEvent.click(toggleInRow("Checking"));
+    });
+
+    expect(storedAccountIds(store)).toEqual([HIDDEN_ID, DELETED_ID]);
+  });
+});
+
+describe("ChartAccountsPage — projection living-cost budgets", () => {
+  const withRentBudget = (budget_ids: string[]) => {
+    const data = buildData();
+    const chart = data.charts.get(CHART_ID)!;
+    data.charts.set(
+      CHART_ID,
+      new Chart({
+        ...chart,
+        configuration: new ProjectionChartConfiguration({
+          ...(chart.configuration as ProjectionChartConfiguration),
+          budget_ids,
+        }),
+      }),
+    );
+    data.budgets.set(
+      "rent",
+      new Budget({ budget_id: "rent", name: "Rent", capacities: [new Capacity({ month: 2000 })] }),
+    );
+    return data;
+  };
+
+  const storedBudgetIds = (store: { data: Data }) =>
+    (store.data.charts.get(CHART_ID)?.configuration as ProjectionChartConfiguration).budget_ids;
+
   it("offers the budgets that make up the inferred living cost", () => {
-    render(["rent"]);
+    const { store, setData } = buildStore(withRentBudget(["rent"]));
+    renderPage(store.data, setData);
+
     expect(screen.getByText("Select budgets for living cost")).toBeTruthy();
-    expect(rentToggle().checked).toBe(true);
+    expect(toggleInRow("Rent")?.checked).toBe(true);
   });
 
   it("saves a toggled budget into the projection configuration", async () => {
-    fetchStub = stubFetch([{ path: "/api/chart", response: { status: "success" } }]);
-    render([]);
+    const { store, setData } = buildStore(withRentBudget([]));
+    renderPage(store.data, setData);
 
-    act(() => {
-      fireEvent.click(rentToggle());
+    await act(async () => {
+      fireEvent.click(toggleInRow("Rent"));
     });
 
-    await waitFor(() => expect(fetchStub!.calls.requests).toHaveLength(1));
-    expect(fetchStub.calls.requests[0]).toMatchObject({ method: "POST" });
+    expect(storedBudgetIds(store)).toEqual(["rent"]);
+    expect(fetchStub?.calls.requests.map((r) => r.url)).toEqual(["/api/chart"]);
+  });
+
+  it("keeps the account selection when a budget is toggled", async () => {
+    const { store, setData } = buildStore(withRentBudget([]));
+    renderPage(store.data, setData);
+
+    await act(async () => {
+      fireEvent.click(toggleInRow("Rent"));
+    });
+
+    expect(storedAccountIds(store)).toEqual([VISIBLE_ID, HIDDEN_ID, DELETED_ID]);
   });
 });

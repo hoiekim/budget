@@ -13,6 +13,7 @@ export * from "./budgets";
 export * from "./snapshots";
 export * from "./charts";
 export * from "./transfers";
+export * from "./recurrings";
 export * from "./api_keys";
 export * from "./rejected-categories";
 export * from "./cpi_snapshots";

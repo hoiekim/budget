@@ -16,8 +16,10 @@ import {
   DATE,
   UPDATED,
   QueryExecutor,
+  toJSONBatches,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult, refusedResult } from "../database";
+import { getOwnedLabelIds } from "./budgets";
 import { logger } from "../../logger";
 
 export interface SearchTransactionsOptions {
@@ -26,8 +28,6 @@ export interface SearchTransactionsOptions {
   startDate?: string;
   endDate?: string;
   pending?: boolean;
-  limit?: number;
-  offset?: number;
   /** When true, soft-deleted (`is_deleted = TRUE`) rows are INCLUDED in
    *  the response so the client can treat them as tombstones and evict
    *  them from its local cache (IDB + in-memory dict). Defaults to
@@ -37,30 +37,6 @@ export interface SearchTransactionsOptions {
 }
 
 export type PartialTransaction = { transaction_id: string } & Partial<JSONTransaction>;
-
-export const getTransactions = async (
-  user: MaskedUser,
-  options: SearchTransactionsOptions = {},
-): Promise<JSONTransaction[]> => {
-  const models = await transactionsTable.query(
-    {
-      [USER_ID]: user.user_id,
-      [ACCOUNT_ID]: options.account_id,
-      pending: options.pending,
-    },
-    {
-      dateRange:
-        options.startDate || options.endDate
-          ? { column: UPDATED, start: options.startDate, end: options.endDate }
-          : undefined,
-      orderBy: `${DATE} DESC`,
-      limit: options.limit,
-      offset: options.offset,
-      excludeDeleted: !options.includeDeleted,
-    },
-  );
-  return models.map((m) => m.toJSON());
-};
 
 export const getTransaction = async (
   user: MaskedUser,
@@ -73,31 +49,37 @@ export const getTransaction = async (
   return model?.toJSON() ?? null;
 };
 
-export const searchTransactions = async (
+/**
+ * The user's transactions and investment transactions in primary-key order,
+ * read and yielded one batch at a time. Nothing is queried until the caller
+ * starts iterating.
+ */
+export const searchTransactions = (
   user: MaskedUser,
   options: SearchTransactionsOptions = {},
-): Promise<{
-  transactions: JSONTransaction[];
-  investment_transactions: JSONInvestmentTransaction[];
-}> => {
-  const transactions = await getTransactions(user, options);
-
-  const invModels = await investmentTransactionsTable.query(
-    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
-    {
-      dateRange:
-        options.startDate || options.endDate
-          ? { column: UPDATED, start: options.startDate, end: options.endDate }
-          : undefined,
-      orderBy: `${DATE} DESC`,
-      limit: options.limit,
-      offset: options.offset,
-      excludeDeleted: !options.includeDeleted,
-    },
+): {
+  transactions: AsyncGenerator<JSONTransaction[]>;
+  investment_transactions: AsyncGenerator<JSONInvestmentTransaction[]>;
+} => {
+  const queryOptions = {
+    dateRange:
+      options.startDate || options.endDate
+        ? { column: UPDATED, start: options.startDate, end: options.endDate }
+        : undefined,
+    excludeDeleted: !options.includeDeleted,
+  };
+  const transactions = transactionsTable.queryInBatches(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id, pending: options.pending },
+    queryOptions,
   );
-  const investment_transactions = invModels.map((m) => m.toJSON());
-
-  return { transactions, investment_transactions };
+  const investmentTransactions = investmentTransactionsTable.queryInBatches(
+    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
+    queryOptions,
+  );
+  return {
+    transactions: toJSONBatches(transactions),
+    investment_transactions: toJSONBatches(investmentTransactions),
+  };
 };
 
 export const searchTransactionsById = async (
@@ -137,13 +119,37 @@ export const updateTransactions = async (
   if (!transactions.length) return [];
   const results: UpsertResult[] = [];
 
+  const labelIds = (key: "budget_id" | "category_id") =>
+    transactions.map((tx) => tx.label?.[key]).filter((id): id is string => typeof id === "string" && !!id);
+  const owned = await getOwnedLabelIds(user, {
+    budget_ids: labelIds("budget_id"),
+    category_ids: labelIds("category_id"),
+  });
+
   for (const tx of transactions) {
+    const { budget_id, category_id } = tx.label ?? {};
+    if ((budget_id && !owned.budget_ids.has(budget_id)) || (category_id && !owned.category_ids.has(category_id))) {
+      results.push(refusedResult(tx.transaction_id));
+      continue;
+    }
     try {
       const row = TransactionModel.fromJSON(tx, user.user_id);
       delete row.transaction_id;
       delete row.user_id;
+      delete row.account_id;
 
-      const updated = await transactionsTable.update(tx.transaction_id, row, undefined, user.user_id);
+      // Soft-deleted rows keep their primary key but are invisible to every
+      // read. Updating one would report a change no user can see; excluding
+      // them here keeps "update" and "reachable" in agreement.
+      const updated = await transactionsTable.update(
+        tx.transaction_id,
+        row,
+        undefined,
+        user.user_id,
+        undefined,
+        undefined,
+        true,
+      );
       results.push(
         updated ? successResult(tx.transaction_id, 1) : noChangeResult(tx.transaction_id),
       );

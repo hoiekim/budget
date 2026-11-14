@@ -1,8 +1,8 @@
-import { JSONAccount, JSONHolding, JSONItem } from "common";
-import { Route, searchAccounts, searchItems, getHoldings } from "server";
+import { JSONAccount, JSONHolding, JSONClientItem } from "common";
+import { Route, searchAccounts, searchItems, getHoldings, toClientItem } from "server";
 
 export interface AccountsGetResponse {
-  items: JSONItem[];
+  items: JSONClientItem[];
   accounts: JSONAccount[];
   holdings: JSONHolding[];
 }
@@ -21,7 +21,9 @@ export const getAccountsRoute = new Route<AccountsGetResponse>("GET", "/accounts
     searchAccounts(user),
     getHoldings(user),
   ]);
-  const body = { items, accounts, holdings };
+  // Items carry the Plaid/SimpleFin credential server-side; the browser gets
+  // the credential-free projection (hoiekim/budget#807).
+  const body = { items: items.map(toClientItem), accounts, holdings };
 
   return { status: "success", body };
 });

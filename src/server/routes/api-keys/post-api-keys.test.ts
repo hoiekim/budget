@@ -1,16 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, resetQueryMocks } = createFakePg();
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postApiKeysRoute } = await import("./post\-api\-keys");
 
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
 });
 
 function makeReq(body: unknown, opts: { user?: { user_id: string; username: string } | null } = {}) {
@@ -47,7 +47,7 @@ const fakeRes = () =>
 
 /** Find the INSERT INTO api_keys SQL call and return its parameters. */
 const findInsertCall = (): { sql: string; values: unknown[] } | null => {
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (/INSERT\s+INTO\s+api_keys/i.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -59,7 +59,7 @@ describe("post-api-keys", () => {
     const result = await postApiKeysRoute.execute(makeReq({}, { user: null }), fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects missing body", async () => {
@@ -169,7 +169,7 @@ describe("post-api-keys", () => {
   });
 
   test("happy path returns key_id + prefix + plaintext, trimmed name", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-42" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ key_id: "k-42" }], rowCount: 1 });
 
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "  laptop  ", scopes: ["transactions:suggest"] }),
@@ -193,7 +193,7 @@ describe("post-api-keys", () => {
   });
 
   test("plaintext is generated each request and never persisted", async () => {
-    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "k", scopes: ["transactions:suggest"] }),
       fakeRes(),
@@ -211,7 +211,7 @@ describe("post-api-keys", () => {
 
   test("happy path normalizes a valid future expires_at to ISO", async () => {
     const future = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
-    mockQuery.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ key_id: "k-1" }], rowCount: 1 });
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "k", scopes: ["transactions:suggest"], expires_at: future }),
       fakeRes(),
@@ -225,7 +225,7 @@ describe("post-api-keys", () => {
   test("insert returning null surfaces as a Route-layer failure", async () => {
     // INSERT … RETURNING * with no row → `createApiKey` throws → Route
     // surfaces an error envelope rather than success.
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await postApiKeysRoute.execute(
       makeReq({ name: "k", scopes: ["transactions:suggest"] }),
       fakeRes(),

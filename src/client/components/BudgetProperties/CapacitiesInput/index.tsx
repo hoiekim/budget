@@ -27,7 +27,7 @@ const CapacitiesInput = ({
     defaultCapacities.current = budgetLike.capacities.map((c) => c.toInputs().capacityInput);
   }, [budgetLike]);
 
-  const rows = capacitiesInput.sort(sortCapacities.desc).map((capacity, i) => {
+  const rows = [...capacitiesInput].sort(sortCapacities.desc).map((capacity) => {
     defaultCapacities.current.sort(sortCapacities.desc);
 
     const { active_from } = capacity;
@@ -38,34 +38,36 @@ const CapacitiesInput = ({
       const dateHelper = new ViewDate(viewDate.getInterval(), inputDate);
       const newActiveFrom = dateHelper.getStartDate();
       newCapacity.active_from = newActiveFrom;
-      setCapacitiesInput((capacities) => {
-        const newCapacities = capacities.map((e) => new Capacity(e));
-        newCapacities.splice(i, 1, newCapacity);
-        defaultCapacities.current = newCapacities;
-        return newCapacities;
-      });
+      // Match by id: rows are display-sorted, so a row's index is not its index in state.
+      const newCapacities = capacitiesInput.map((c) =>
+        c.id === capacity.id ? newCapacity : new Capacity(c),
+      );
+      setCapacitiesInput(newCapacities);
+      defaultCapacities.current = newCapacities;
     };
 
+    // The capacity's sign is owned by the Expense/Income radio, not the
+    // field — so the input normalizes (floor + abs) on blur and this
+    // handler takes the payload as-is, instead of re-deriving the rule
+    // in a second place that could drift from the displayed string.
     const onChangeAmount: ChangeEventHandler<HTMLInputElement> = (e) => {
       const newCapacity = new Capacity(capacity);
-      const value = Math.floor(Math.abs(+e.target.value));
+      const value = +e.target.value;
       newCapacity.month = value;
-      setCapacitiesInput((capacities) => {
-        const newCapacities = capacities.map((e) => new Capacity(e));
-        newCapacities.splice(i, 1, newCapacity);
-        defaultCapacities.current = newCapacities;
-        return newCapacities;
-      });
+      const newCapacities = capacitiesInput.map((c) =>
+        c.id === capacity.id ? newCapacity : new Capacity(c),
+      );
+      setCapacitiesInput(newCapacities);
+      defaultCapacities.current = newCapacities;
     };
 
     const onDelete = () => {
       if (!active_from) return;
-      setCapacitiesInput((oldCapacities) => {
-        const newCapacities = oldCapacities.map((c) => new Capacity(c));
-        newCapacities.splice(i, 1);
-        defaultCapacities.current = newCapacities;
-        return newCapacities;
-      });
+      const newCapacities = capacitiesInput
+        .filter((c) => c.id !== capacity.id)
+        .map((c) => new Capacity(c));
+      setCapacitiesInput(newCapacities);
+      defaultCapacities.current = newCapacities;
     };
 
     const key = `capacity_${capacity.id}`;
@@ -103,6 +105,7 @@ const CapacitiesInput = ({
                 style={{ width: `${"000,000".length}ch` }}
                 disabled={isSyncedInput}
                 defaultValue={defaultCapacityValue}
+                normalize={(n) => Math.floor(Math.abs(n))}
                 onBlur={onChangeAmount}
               />
             </div>
@@ -113,6 +116,7 @@ const CapacitiesInput = ({
               isSyncedInput={isSyncedInput}
               capacityInput={capacity}
               defaultCapacityInput={capacity}
+              normalize={(n) => Math.floor(Math.abs(n))}
               onChangeAmount={onChangeAmount}
             />
           )}
@@ -122,35 +126,34 @@ const CapacitiesInput = ({
   });
 
   const onClickAdd = () => {
-    setCapacitiesInput((oldCapacities) => {
-      const newCapacities = oldCapacities.map((e) => new Capacity(e));
-      newCapacities.sort(sortCapacities.asc);
+    // Side effects hoisted out of the updater: it runs during render, and
+    // the cache write is an AppContext setState ("Cannot update a component").
+    const newCapacities = capacitiesInput.map((e) => new Capacity(e));
+    newCapacities.sort(sortCapacities.asc);
 
-      const latestCapacity = newCapacities[newCapacities.length - 1];
-      const dateHelper = new ViewDate(viewDate.getInterval(), latestCapacity.active_from);
-      dateHelper.next();
-      const active_from = dateHelper.getStartDate();
-      const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
-      delete newCapacityInit.capacity_id;
-      const newCapacity = new Capacity(newCapacityInit);
+    const latestCapacity = newCapacities[newCapacities.length - 1];
+    const dateHelper = new ViewDate(viewDate.getInterval(), latestCapacity.active_from);
+    dateHelper.next();
+    const active_from = dateHelper.getStartDate();
+    const newCapacityInit: Partial<Capacity> = { ...latestCapacity, active_from };
+    delete newCapacityInit.capacity_id;
+    const newCapacity = new Capacity(newCapacityInit);
 
-      // Directly update cached capacityData to trigger React re-render for other components.
-      // Uses calculate.cache.capacityData() to update the cache without re-running calculation.
-      calculate.cache.capacityData((data) => {
-        const newData = new CapacityData(data);
-        const newCapacitySummary = newData.get(newCapacity.id);
-        const latestCapacitySummary = data.get(latestCapacity.id);
-        if (latestCapacitySummary) {
-          newCapacitySummary.children_total = latestCapacitySummary.children_total;
-          newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
-        }
-        return newData;
-      });
+    newCapacities.push(newCapacity);
+    setCapacitiesInput(newCapacities);
+    defaultCapacities.current = newCapacities;
 
-      newCapacities.push(newCapacity);
-      defaultCapacities.current = newCapacities;
-
-      return newCapacities;
+    // Directly update cached capacityData to trigger React re-render for other components.
+    // Uses calculate.cache.capacityData() to update the cache without re-running calculation.
+    calculate.cache.capacityData((data) => {
+      const newData = new CapacityData(data);
+      const newCapacitySummary = newData.get(newCapacity.id);
+      const latestCapacitySummary = data.get(latestCapacity.id);
+      if (latestCapacitySummary) {
+        newCapacitySummary.children_total = latestCapacitySummary.children_total;
+        newCapacitySummary.grand_children_total = latestCapacitySummary.grand_children_total;
+      }
+      return newData;
     });
   };
 

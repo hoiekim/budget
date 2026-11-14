@@ -1,6 +1,6 @@
 import { TRANSFER_DATE_WINDOW_DAYS } from "common";
 import { pool, logger, usersTable } from "server";
-import type { PoolClient } from "pg";
+import type { SqlClient } from "../postgres/client";
 import { canonicalizePairIds, QueryExecutor } from "../postgres/models";
 
 const BASE_CONFIDENCE = 0.7;
@@ -64,8 +64,9 @@ const fetchCandidates = async (
       AND t1.account_id <> t2.account_id
       AND ABS(t1.date - t2.date) <= $2
       AND t1.transaction_id < t2.transaction_id
-     JOIN accounts a1 ON a1.account_id = t1.account_id
-     JOIN accounts a2 ON a2.account_id = t2.account_id
+     -- Scoped to the user: a transaction's account_id can name another user's account.
+     JOIN accounts a1 ON a1.account_id = t1.account_id AND a1.user_id = t1.user_id
+     JOIN accounts a2 ON a2.account_id = t2.account_id AND a2.user_id = t2.user_id
      WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
        AND (t2.is_deleted IS NULL OR t2.is_deleted = FALSE)
        AND COALESCE(a1.hide, FALSE) = FALSE
@@ -209,7 +210,7 @@ export const runTransferDetection = async (): Promise<void> => {
       // reads under READ COMMITTED and both INSERT pairs involving A — a
       // transaction in two simultaneous active pairs, violating the
       // one-active-pair-per-transaction invariant.
-      let client: PoolClient | undefined;
+      let client: SqlClient | undefined;
       try {
         client = await pool.connect();
         await client.query("BEGIN");

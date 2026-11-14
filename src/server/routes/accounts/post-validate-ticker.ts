@@ -9,6 +9,7 @@ import {
   polygonLookupRateLimiter,
   POLYGON_LOOKUP_SHED_MESSAGE,
   polygon,
+  marketData,
 } from "server";
 import { logger } from "server/lib/logger";
 
@@ -60,10 +61,11 @@ export const postValidateTickerRoute = new Route<ValidateTickerResponse>(
     }
     polygonLookupRateLimiter.consume(user.user_id);
 
-    // Validate against Polygon API
+    // Validate against Polygon, falling back to Yahoo for symbols Polygon
+    // does not carry (e.g. mutual funds).
     const [detailResult, priceResult] = await Promise.all([
-      polygon.getTickerDetail(upperTicker, { maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS }),
-      polygon.getClosePrice(upperTicker, new Date(), {
+      marketData.getTickerDetailWithFallback(upperTicker, { maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS }),
+      marketData.getClosePriceWithFallback(upperTicker, new Date(), {
         maxWaitMs: polygon.FOREGROUND_QUEUE_WAIT_MS,
       }),
     ]);

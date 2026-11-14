@@ -16,7 +16,22 @@ type DynamicCapacityInputProps = {
   maxValue?: number;
   minValue?: number;
   fixed?: number;
+  // Applied after the min/max clamps on blur, before both the rendered
+  // string and the onBlur payload are derived — so the two can never
+  // disagree the way a rounding display and a flooring consumer did.
+  // Defaults to identity: no normalization, no behavior change.
+  normalize?: (n: number) => number;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "defaultValue" | "value">;
+
+// Strip the input's own prefix (e.g. a non-USD currency code like "EUR") plus
+// the "$", whitespace and comma separators, so a prefixed display value
+// parses back to its number. Stripping only "$" left "EUR 1,234.56" as
+// "EUR1234.56", which parses to NaN on focus and posts 0 on blur.
+const stripPrefixAndSeparators = (value: string, prefix: string) => {
+  const withoutPrefix =
+    prefix && value.startsWith(prefix) ? value.slice(prefix.length) : value;
+  return withoutPrefix.replace(/[$\s,]/g, "");
+};
 
 export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
   const {
@@ -25,6 +40,7 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
     maxValue,
     minValue,
     fixed = 0,
+    normalize,
     prefix = "",
     className,
     onClick,
@@ -36,6 +52,10 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
   } = props;
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // Display shown when the current edit started. An unparseable blur
+  // restores to it instead of coercing to 0: the keystroke filter lets
+  // ".", "-", "1.2.3" through, and a 0 would delete the row downstream.
+  const editStartDisplay = useRef(value);
 
   return (
     <input
@@ -58,17 +78,25 @@ export const DynamicCapacityInput = (props: DynamicCapacityInputProps) => {
         if (onChange) onChange(e);
       }}
       onFocus={(e) => {
-        setValue((+e.target.value.replace(/[$\s,]/g, "")).toString());
+        editStartDisplay.current = e.target.value;
+        setValue((+stripPrefixAndSeparators(e.target.value, prefix)).toString());
         if (onFocus) onFocus(e);
       }}
       onBlur={(e) => {
-        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
-        const maxCappedValue = maxValue ? Math.min(maxValue, numberizedValue) : numberizedValue;
-        const minCappedValue = minValue ? Math.max(minValue, maxCappedValue) : maxCappedValue;
-        const commaString = numberToCommaString(minCappedValue, fixed);
+        const numberizedValue = +stripPrefixAndSeparators(e.target.value, prefix);
+        if (isNaN(numberizedValue)) {
+          // Unparseable, not zero: restore the display from when the edit
+          // started and swallow the blur, so no delete/update fires.
+          setValue(editStartDisplay.current);
+          return;
+        }
+        const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
+        const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
+        const normalized = normalize ? normalize(minCappedValue) : minCappedValue;
+        const commaString = numberToCommaString(normalized, fixed);
         if (prefix) setValue(prefix + " " + commaString);
         else setValue(commaString);
-        if (onBlur) onBlur({ ...e, target: { ...e.target, value: minCappedValue.toString() } });
+        if (onBlur) onBlur({ ...e, target: { ...e.target, value: normalized.toString() } });
       }}
     />
   );
@@ -133,6 +161,7 @@ export const CapacityNumberInput = (props: CapacityNumberInputProps) => {
     maxValue,
     minValue,
     fixed = 0,
+    normalize,
     prefix = "",
     className,
     onClick,
@@ -191,12 +220,19 @@ export const CapacityNumberInput = (props: CapacityNumberInputProps) => {
       }}
       onBlur={(e) => {
         isFocused.current = false;
-        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "") || 0;
-        const maxCappedValue = maxValue ? Math.min(maxValue, numberizedValue) : numberizedValue;
-        const minCappedValue = minValue ? Math.max(minValue, maxCappedValue) : maxCappedValue;
-        _setValue(toDisplayString(minCappedValue));
-        if (setValue) setValue(minCappedValue);
-        if (onBlur) onBlur(toNumberFocusEvent(e, minCappedValue));
+        const numberizedValue = +e.target.value.replace(/[$\s,]/g, "");
+        if (isNaN(numberizedValue)) {
+          // Unparseable, not zero: restore the current value's display
+          // and swallow the blur, as the onChange guard does mid-typing.
+          _setValue(toDisplayString(value));
+          return;
+        }
+        const maxCappedValue = maxValue != null ? Math.min(maxValue, numberizedValue) : numberizedValue;
+        const minCappedValue = minValue != null ? Math.max(minValue, maxCappedValue) : maxCappedValue;
+        const normalized = normalize ? normalize(minCappedValue) : minCappedValue;
+        _setValue(toDisplayString(normalized));
+        if (setValue) setValue(normalized);
+        if (onBlur) onBlur(toNumberFocusEvent(e, normalized));
       }}
     />
   );

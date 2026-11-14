@@ -1,13 +1,13 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import type { JSONCpiSnapshot } from "common";
 
 let storedRows: Array<Record<string, unknown>> = [];
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (sql: string) => {
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string) => {
   if (/FROM\s+cpi_snapshots/i.test(sql)) return { rows: storedRows, rowCount: storedRows.length };
   return { rows: [], rowCount: 0 };
 });
-mock.module("pg", () => pg);
+mock.module("./postgres/sql-driver", () => driver);
 
 const {
   computeAverageInflation,
@@ -20,7 +20,7 @@ const {
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  clearQueryMocks();
+  clearSqlMocks();
   storedRows = [];
 });
 
@@ -106,7 +106,7 @@ describe("getAverageInflation", () => {
     const result = await getAverageInflation();
 
     expect(result!.year_over_year_inflation).toBeCloseTo(Math.pow(1.3, 1 / 10), 12);
-    const [sql, values] = mockQuery.mock.calls[0] as [string, unknown[]];
+    const [sql, values] = mockUnsafe.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/FROM cpi_snapshots/);
     expect(sql).toMatch(/ORDER BY snapshot_date ASC/);
     expect(values).toContain("CUUR0000SA0");

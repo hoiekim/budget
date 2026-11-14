@@ -93,6 +93,14 @@ export const PAIR_ID = "pair_id";
 export const TRANSACTION_ID_A = "transaction_id_a";
 export const TRANSACTION_ID_B = "transaction_id_b";
 
+export const RECURRING_ID = "recurring_id";
+export const MERCHANT_KEY = "merchant_key";
+export const CADENCE = "cadence";
+export const IS_INCOME = "is_income";
+export const TRANSACTION_IDS = "transaction_ids";
+export const SPLITS = "splits";
+export const SPLITS_SINCE = "splits_since";
+
 export const INVESTMENT_TRANSACTION_ID = "investment_transaction_id";
 export const PRICE = "price";
 
@@ -127,5 +135,7 @@ export const SCOPES = "scopes";
 export const LAST_USED_AT = "last_used_at";
 export const REVOKED_AT = "revoked_at";
 export const EXPIRES_AT = "expires_at";
+
+export const PLAN_FUND_MAPPINGS = "plan_fund_mappings";
 
 export const NULL = "NULL";

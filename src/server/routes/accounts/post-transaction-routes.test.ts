@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 // Route-level coverage for the FE→DB label-write trio
 // (post-transaction / post-split-transaction / post-investment-transaction).
@@ -7,7 +7,7 @@ import { createFakePg, restoreLeaves } from "test-helpers";
 // what is uncovered is the *wiring* that ties them together — the route reads
 // the body, runs the confidence inference, and hands the result to the repo.
 //
-// Pins behavior at the SQL-param layer: a FakePool intercepts pg, the route is
+// Pins behavior at the SQL-param layer: a FakeSQL intercepts the driver, the route is
 // driven through `.execute`, and the UPDATE statement's bound values are
 // asserted — catching regressions in the route→repo handoff that a repo unit
 // test (which writes exactly what it's told) cannot.
@@ -15,15 +15,32 @@ import { createFakePg, restoreLeaves } from "test-helpers";
 // mock inside a test does not reliably replace the `beforeEach` default, so the
 // default impl itself branches on this flag — flip it to simulate a DB error.
 let failQueries = false;
-const { pg, mockQuery, clearQueryMocks } = createFakePg(async (_sql: string, _values?: unknown[]) => {
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql(async (sql: string, values: unknown[] = []) => {
   if (failQueries) throw new Error("db down");
+  // The label-ownership lookups answer like their WHERE: by id, and by owner only when the query
+  // filters on one. u-1 owns BUDGET_UUID and CATEGORY_UUID; SPLIT_UUID is a category u-2 owns.
+  const found = (id: string, owner: string) =>
+    values.includes(id) && (!/\buser_id\s*=/i.test(sql) || values.includes(owner));
+  const familyRow = { name: "x", roll_over: false, roll_over_start_date: null, capacities: [], updated: "2026-10-01T00:00:00.000Z", is_deleted: false };
+  if (/FROM\s+budgets\b/i.test(sql) && found(BUDGET_UUID, "u-1")) {
+    return { rows: [{ ...familyRow, user_id: "u-1", budget_id: BUDGET_UUID, iso_currency_code: "USD" }] as unknown[], rowCount: 1 };
+  }
+  if (/FROM\s+categories\b/i.test(sql)) {
+    const rows = [
+      [CATEGORY_UUID, "u-1"],
+      [SPLIT_UUID, "u-2"],
+    ]
+      .filter(([id, owner]) => found(id, owner))
+      .map(([category_id, user_id]) => ({ ...familyRow, user_id, category_id, section_id: "s-1" }));
+    return { rows: rows as unknown[], rowCount: rows.length };
+  }
   return { rows: [] as unknown[], rowCount: 0 as number | null };
 });
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // `mock.module` is process-global in Bun and `restoreLeaves` only restores the
-// `pg` / `bcrypt` leaves, so spread the real module rather than replacing it —
+// driver / `password` leaves, so spread the real module rather than replacing it —
 // `alarm.test.ts` drives `resetAlarmState` — and put it back in `afterAll`
 // (the post-plaid-hook.test.ts pattern) so sibling files sharing the process
 // exercise the real `sendAlarm`.
@@ -44,7 +61,7 @@ afterAll(() => {
 beforeEach(() => {
   // Clear the call log but keep the flag-driven implementation (mockReset would
   // wipe it, and re-setting an impl per test doesn't reliably stick in Bun).
-  clearQueryMocks();
+  clearSqlMocks();
   mockSendAlarm.mockClear();
   failQueries = false;
 });
@@ -88,7 +105,7 @@ const fakeRes = () =>
 /** Find the parameterized UPDATE against `table` in the mock call log. */
 const findUpdate = (table: string): { sql: string; values: unknown[] } | null => {
   const re = new RegExp(`UPDATE\\s+${table}\\b`, "i");
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (re.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -104,7 +121,7 @@ const BUDGET_UUID = "7c1d33b0-2d34-4e67-9fa0-1b2c3d4e5f6a";
 
 /**
  * A malformed typed field must be refused before any SQL and before the alarm
- * path. `failQueries` is armed so a missing guard reaches the FakePool, throws
+ * path. `failQueries` is armed so a missing guard reaches the FakeSQL, throws
  * the way Postgres throws on a bad value, and trips both assertions.
  */
 const rejects = async (route: AnyRoute, body: unknown, expectedError: string) => {
@@ -112,7 +129,7 @@ const rejects = async (route: AnyRoute, body: unknown, expectedError: string) =>
   const result = await route.execute(makeReq(route, body, "u-1"), fakeRes());
   expect(result?.status).toBe("failed");
   expect(result?.message).toBe(expectedError);
-  expect(mockQuery).not.toHaveBeenCalled();
+  expect(mockUnsafe).not.toHaveBeenCalled();
   expect(mockSendAlarm).not.toHaveBeenCalled();
 };
 
@@ -134,7 +151,7 @@ describe("post-transaction route", () => {
     const result = await postTransactionRoute.execute(req, fakeRes());
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a non-object body", async () => {
@@ -143,7 +160,7 @@ describe("post-transaction route", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing transaction_id", async () => {
@@ -153,7 +170,17 @@ describe("post-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/transaction_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("a label naming another user's category is refused before any write, without an alarm", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: SPLIT_UUID } }, "u-1"),
+      fakeRes(),
+    );
+    expect(result).toEqual({ status: "failed", message: "Failed to update transaction." });
+    expect(findUpdate("transactions")).toBeNull();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 
   test("set-category with confidence omitted → infers category_confidence = 1, scoped to user", async () => {
@@ -223,7 +250,7 @@ describe("post-transaction route", () => {
 
   test("a non-date date is refused before it reaches the DATE column", async () => {
     for (const value of ["hello", "", "2026-13-45"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       mockSendAlarm.mockClear();
       await rejects(
         postTransactionRoute,
@@ -296,6 +323,21 @@ describe("post-transaction route", () => {
     expect(upd).not.toBeNull();
     expect(boundValue(upd!, "label_budget_id")).toBeNull();
   });
+
+  test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: CATEGORY_UUID } }, "u-1"),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Against a real DB the predicate makes a tombstoned row match nothing,
+    // so the repo answers noChangeResult (304) instead of success — and the
+    // FakeSQL's zero-row UPDATE is that same no-match outcome. Without the
+    // predicate the tombstone still matches and the edit reports saved.
+    const upd = findUpdate("transactions");
+    expect(upd).not.toBeNull();
+    expect(upd!.sql).toMatch(/is_deleted/i);
+  });
 });
 
 describe("post-split-transaction route", () => {
@@ -305,7 +347,7 @@ describe("post-split-transaction route", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a non-object body", async () => {
@@ -314,7 +356,7 @@ describe("post-split-transaction route", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing split_transaction_id", async () => {
@@ -324,7 +366,7 @@ describe("post-split-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/split_transaction_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("set-category with confidence omitted → infers category_confidence = 1", async () => {
@@ -435,7 +477,7 @@ describe("post-split-transaction route", () => {
 
   test("a non-date date is refused before it reaches the DATE column", async () => {
     for (const value of ["bad", "2026-02-30"]) {
-      clearQueryMocks();
+      clearSqlMocks();
       mockSendAlarm.mockClear();
       await rejects(
         postSplitTransactionRoute,
@@ -478,6 +520,24 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "amount")).toBe(6.17);
     expect(mockSendAlarm).not.toHaveBeenCalled();
   });
+
+  test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
+    const result = await postSplitTransactionRoute.execute(
+      makeReq(
+        postSplitTransactionRoute,
+        { split_transaction_id: SPLIT_UUID, label: { category_id: CATEGORY_UUID } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Same shape as the transaction sibling: the predicate is what keeps a
+    // tombstoned row from matching, so the repo answers noChangeResult (304)
+    // instead of success.
+    const upd = findUpdate("split_transactions");
+    expect(upd).not.toBeNull();
+    expect(upd!.sql).toMatch(/is_deleted/i);
+  });
 });
 
 describe("post-investment-transaction route", () => {
@@ -487,7 +547,7 @@ describe("post-investment-transaction route", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a non-object body", async () => {
@@ -496,7 +556,7 @@ describe("post-investment-transaction route", () => {
       fakeRes(),
     );
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing investment_transaction_id", async () => {
@@ -506,7 +566,7 @@ describe("post-investment-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/investment_transaction_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("body passes through WITHOUT confidence inference (auto-suggest skips investments)", async () => {
@@ -610,5 +670,23 @@ describe("post-investment-transaction route", () => {
     expect(boundValue(upd!, "quantity")).toBe(2.5);
     expect(boundValue(upd!, "label_budget_id")).toBe(BUDGET_UUID);
     expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
+    const result = await postInvestmentTransactionRoute.execute(
+      makeReq(
+        postInvestmentTransactionRoute,
+        { investment_transaction_id: "i-1", label: { category_id: CATEGORY_UUID } },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    // Same shape as the transaction sibling: the predicate is what keeps a
+    // tombstoned row from matching, so the repo answers noChangeResult (304)
+    // instead of success.
+    const upd = findUpdate("investment_transactions");
+    expect(upd).not.toBeNull();
+    expect(upd!.sql).toMatch(/is_deleted/i);
   });
 });

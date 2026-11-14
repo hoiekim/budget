@@ -9,22 +9,10 @@ import {
   categoriesTable,
   BUDGET_ID,
   SECTION_ID,
+  CATEGORY_ID,
   USER_ID,
 } from "../models";
 import { withTransaction } from "../client";
-
-export const getBudgets = async (user: MaskedUser): Promise<JSONBudget[]> => {
-  const models = await budgetsTable.query({ [USER_ID]: user.user_id });
-  return models.map((m) => m.toJSON());
-};
-
-export const getBudget = async (
-  user: MaskedUser,
-  budget_id: string,
-): Promise<JSONBudget | null> => {
-  const model = await budgetsTable.queryOne({ [USER_ID]: user.user_id, [BUDGET_ID]: budget_id });
-  return model?.toJSON() ?? null;
-};
 
 export const searchBudgets = async (
   user: MaskedUser,
@@ -67,7 +55,7 @@ export const updateBudget = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
   const model = await budgetsTable.update(budget_id, updates, undefined, user.user_id);
@@ -92,6 +80,36 @@ export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise
   });
 };
 
+/**
+ * Of the given budget and category ids, the ones the user owns: one query per
+ * table, however many ids. Deleted ones count: deleting a budget leaves the
+ * labels that name it in place. A label naming anything outside these points
+ * at another user's row, or at nothing.
+ */
+export const getOwnedLabelIds = async (
+  user: MaskedUser,
+  ids: { budget_ids: string[]; category_ids: string[] },
+): Promise<{ budget_ids: Set<string>; category_ids: Set<string> }> => {
+  const [budgets, categories] = await Promise.all([
+    ids.budget_ids.length
+      ? budgetsTable.query(
+          { [USER_ID]: user.user_id },
+          { inFilters: { [BUDGET_ID]: ids.budget_ids }, excludeDeleted: false },
+        )
+      : [],
+    ids.category_ids.length
+      ? categoriesTable.query(
+          { [USER_ID]: user.user_id },
+          { inFilters: { [CATEGORY_ID]: ids.category_ids }, excludeDeleted: false },
+        )
+      : [],
+  ]);
+  return {
+    budget_ids: new Set(budgets.map((b) => b.budget_id)),
+    category_ids: new Set(categories.map((c) => c.category_id)),
+  };
+};
+
 export const getSections = async (user: MaskedUser, budget_id?: string): Promise<JSONSection[]> => {
   const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
   if (budget_id) filters[BUDGET_ID] = budget_id;
@@ -103,6 +121,11 @@ export const createSection = async (
   user: MaskedUser,
   data: Partial<JSONSection>,
 ): Promise<JSONSection | null> => {
+  // The foreign key proves only that the budget exists; it has to be the caller's. A budget that
+  // isn't theirs gets the same answer as one that doesn't exist, so the answer reveals neither.
+  if (!data.budget_id) return null;
+  const budget = await budgetsTable.queryOne({ [BUDGET_ID]: data.budget_id, [USER_ID]: user.user_id });
+  if (!budget) return null;
   const row = SectionModel.fromJSON(
     {
       budget_id: data.budget_id,
@@ -129,7 +152,7 @@ export const updateSection = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
   const model = await sectionsTable.update(section_id, updates, undefined, user.user_id);
@@ -158,6 +181,9 @@ export const createCategory = async (
   user: MaskedUser,
   data: Partial<JSONCategory>,
 ): Promise<JSONCategory | null> => {
+  if (!data.section_id) return null;
+  const section = await sectionsTable.queryOne({ [SECTION_ID]: data.section_id, [USER_ID]: user.user_id });
+  if (!section) return null;
   const row = CategoryModel.fromJSON(
     {
       section_id: data.section_id,
@@ -184,7 +210,7 @@ export const updateCategory = async (
   if (data.roll_over !== undefined) updates.roll_over = data.roll_over;
   if (data.roll_over_start_date !== undefined)
     updates.roll_over_start_date = data.roll_over_start_date;
-  if (data.capacities !== undefined) updates.capacities = JSON.stringify(data.capacities);
+  if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
   const model = await categoriesTable.update(category_id, updates, undefined, user.user_id);

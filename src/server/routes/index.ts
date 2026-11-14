@@ -6,5 +6,6 @@ export * from "./client-error";
 export * from "./events";
 export * from "./health";
 export * from "./transfers";
+export * from "./recurrings";
 export * from "./users";
 export * from "./webhooks";

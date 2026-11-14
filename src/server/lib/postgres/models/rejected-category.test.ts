@@ -1,9 +1,9 @@
 import { describe, test, expect, mock, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery } = createFakePg();
+const { driver, mockUnsafe } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../sql-driver", () => driver);
 
 const { rejectedCategoriesTable } = await import("./rejected-category");
 
@@ -69,7 +69,7 @@ describe("rejectedCategoriesTable — composite-PK Table guards", () => {
   });
 
   test("query() (the filter-based read) is unaffected — it doesn't use primaryKey", async () => {
-    mockQuery.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
+    mockUnsafe.mockImplementationOnce(async () => ({ rows: [], rowCount: 0 }));
     await expect(rejectedCategoriesTable.query({ user_id: "u-1" })).resolves.toEqual([]);
   });
 });

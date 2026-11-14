@@ -62,7 +62,7 @@ export const FlowChartProperties = ({ chart, children }: FlowChartPropertiesProp
       <PropertyLabel>Chart&nbsp;Profile</PropertyLabel>
       <Property>
         <KeyValue name="Chart&nbsp;Name">
-          <input value={nameInput} onChange={onChangeName} />
+          <input value={nameInput} onChange={onChangeName} aria-label="Chart name" />
         </KeyValue>
         <ChartTypeSelect chart={chart} />
       </Property>

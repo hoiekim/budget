@@ -64,3 +64,6 @@ export const isOptionalNumber = (v: unknown): v is number | undefined =>
 
 export const isOptionalBoolean = (v: unknown): v is boolean | undefined =>
   isUndefined(v) || isBoolean(v);
+
+export const isOptionalNullableObject = (v: unknown): v is Record<string, unknown> | null | undefined =>
+  isUndefined(v) || isNullableObject(v);

@@ -222,6 +222,52 @@ describe("getBudgetData — confidence-gate bucketing", () => {
     );
     expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(70);
   });
+
+  test("zero-amount row does not count toward number_of_unsorted_items", () => {
+    // The transaction list hides zero-amount non-manual rows, so the
+    // badge must not count them — otherwise it can never reach zero.
+    const w = makeWorld();
+    const { transactions } = makeTx(w, 0, {
+      budget_id: w.budget.id,
+      category_id: null,
+      category_confidence: null,
+    });
+    const { budgetData } = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      empty.transfers,
+    );
+    expect(budgetData.get(w.budget.id, readDate).unsorted_amount).toBe(0);
+    expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(0);
+  });
+
+  test("zero-amount manual row still counts (the list shows manual mints)", () => {
+    const w = makeWorld();
+    const { transactions } = makeTx(
+      w,
+      0,
+      {
+        budget_id: w.budget.id,
+        category_id: null,
+        category_confidence: null,
+      },
+      { source: "manual" },
+    );
+    const { budgetData } = getBudgetData(
+      transactions,
+      empty.splits,
+      w.accounts,
+      w.budgets,
+      w.sections,
+      w.categories,
+      empty.transfers,
+    );
+    expect(budgetData.get(w.budget.id, readDate).number_of_unsorted_items).toBe(1);
+  });
 });
 
 describe("getBudgetData — split transactions", () => {

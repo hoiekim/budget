@@ -3,22 +3,6 @@ import { InstitutionModel, institutionsTable, INSTITUTION_ID, QueryExecutor } fr
 import { UpsertResult, successResult, errorResult } from "../database";
 import { logger } from "../../logger";
 
-export const getInstitutions = async (): Promise<JSONInstitution[]> => {
-  const models = await institutionsTable.query({});
-  return models.map((m) => m.toJSON());
-};
-
-export const searchInstitutions = async (
-  options: { institution_id?: string; name?: string } = {},
-): Promise<JSONInstitution[]> => {
-  const filters: Record<string, unknown> = {};
-  if (options.institution_id) filters[INSTITUTION_ID] = options.institution_id;
-  if (options.name) filters.name = options.name;
-
-  const models = await institutionsTable.query(filters);
-  return models.map((m) => m.toJSON());
-};
-
 export const upsertInstitutions = async (
   institutions: JSONInstitution[],
   client?: QueryExecutor,

@@ -1,12 +1,12 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
 let storedRows: Array<Record<string, unknown>> = [];
-const { pg, mockQuery, resetQueryMocks } = createFakePg(async (sql: string) => {
+const { driver, mockUnsafe, resetSqlMocks } = createFakeSql(async (sql: string) => {
   if (/FROM\s+cpi_snapshots/i.test(sql)) return { rows: storedRows, rowCount: storedRows.length };
   return { rows: [], rowCount: 0 };
 });
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // The route must answer from the database alone. Any outbound request — BLS
 // or otherwise — would show up here.
@@ -18,7 +18,7 @@ const { getInflationRoute } = await import("./get-inflation");
 afterAll(restoreLeaves);
 
 beforeEach(() => {
-  resetQueryMocks();
+  resetSqlMocks();
   mockFetch.mockClear();
   storedRows = [];
 });
@@ -84,6 +84,6 @@ describe("GET /inflation", () => {
   test("refuses an unauthenticated request before touching the database", async () => {
     const result = await getInflationRoute.execute(makeReq(false), fakeRes());
     expect(result?.status).toBe("failed");
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });

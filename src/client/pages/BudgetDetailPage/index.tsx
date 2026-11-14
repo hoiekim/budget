@@ -117,7 +117,7 @@ export const BudgetDetailPage = () => {
 
   return (
     <div className="BudgetDetailPage">
-      {budget && (
+      {budget ? (
         <div className="BudgetDetail">
           <BudgetBar budget={budget} />
           <div className="unsortedButton sidePadding">
@@ -146,6 +146,14 @@ export const BudgetDetailPage = () => {
               <AddButton onClick={onClickAddSection}>Add&nbsp;Section</AddButton>
             </div>
           </div>
+        </div>
+      ) : (
+        // A deleted budget's detail route, a stale link, or a sync that
+        // removes the budget in another tab must not render an empty
+        // wrapper (#834) — name the missing budget and offer a way back.
+        <div className="BudgetDetailNotFound">
+          <p>This budget no longer exists.</p>
+          <button onClick={() => router.go(PATH.BUDGETS)}>Back to Budgets</button>
         </div>
       )}
     </div>

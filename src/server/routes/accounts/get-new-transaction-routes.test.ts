@@ -7,11 +7,11 @@
 // paths write `source='manual'` and a `manual-<uuid>` id.
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
-import { createFakePg, restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 
-const { pg, mockQuery, clearQueryMocks } = createFakePg();
+const { driver, mockUnsafe, clearSqlMocks } = createFakeSql();
 
-mock.module("pg", () => pg);
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { getNewTransactionRoute } = await import("./get-new-transaction");
 const { getNewInvestmentTransactionRoute } = await import("./get-new-investment-transaction");
@@ -117,7 +117,7 @@ function insertStub(table: "transactions" | "investment_transactions", values: u
  *  landed on some column). */
 const findInsert = (table: string): { sql: string; values: unknown[] } | null => {
   const re = new RegExp(`INSERT\\s+INTO\\s+${table}\\b`, "i");
-  for (const call of mockQuery.mock.calls) {
+  for (const call of mockUnsafe.mock.calls) {
     const sql = call[0] as string;
     if (re.test(sql)) return { sql, values: call[1] as unknown[] };
   }
@@ -158,8 +158,8 @@ const fakeRes = () =>
   }) as unknown as Parameters<typeof getNewTransactionRoute.execute>[1];
 
 beforeEach(() => {
-  clearQueryMocks();
-  mockQuery.mockImplementation(queryRouter);
+  clearSqlMocks();
+  mockUnsafe.mockImplementation(queryRouter);
   accountRow = null;
   itemRow = null;
   securityRow = null;
@@ -275,7 +275,7 @@ describe("get-new-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing account_id", async () => {
@@ -285,7 +285,7 @@ describe("get-new-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/account_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects when the account isn't found for the caller", async () => {
@@ -362,7 +362,7 @@ describe("get-new-investment-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not authenticated/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects a missing account_id", async () => {
@@ -372,7 +372,7 @@ describe("get-new-investment-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/account_id/i);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 
   test("rejects when the account isn't found for the caller", async () => {
@@ -411,6 +411,155 @@ describe("get-new-investment-transaction route", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/security not found/i);
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  // The shape of a minted row is decided by the caller and carried here. This
+  // route is the only hop between the two, so without these the whole
+  // arrangement can be reverted — discarding `type` outright — with nothing
+  // failing.
+  test("the caller's type reaches the INSERT, so a reconciliation sale is stored as one", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "-5", price: "30", type: "sell" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    const insert = findInsert("investment_transactions");
+    expect(insert!.values).toContain("sell");
+    expect(insert!.values).not.toContain("buy");
+    // The sign crosses this hop too. A sale of positive shares is a row the
+    // canonical form rejects outright, and nothing downstream repairs it —
+    // the readers take the magnitude and supply their own sign, so they do
+    // not disagree about it, they agree on a value the row never meant.
+    expect(insert!.values).toContain(-5);
+    expect(insert!.values).toContain(-150);
+  });
+
+  test("a caller naming no type gets a purchase", async () => {
+    accountRow = plaidInvestAccount();
+    await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "30" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    const insert = findInsert("investment_transactions");
+    expect(insert!.values).toContain("buy");
+    expect(insert!.values).not.toContain("sell");
+  });
+
+  // The mint creates a share movement, so only the two types that move
+  // shares are taken from the query; the rest are reached by editing the row
+  // afterwards. `cash` is one the editor really offers, so this covers the
+  // reachable case rather than an unrecognised string.
+  test("a share-neutral type is not taken from the query", async () => {
+    accountRow = plaidInvestAccount();
+    await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "30", type: "cash" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    const insert = findInsert("investment_transactions");
+    expect(insert!.values).not.toContain("cash");
+    expect(insert!.values).toContain("buy");
+  });
+
+  // A unit price has no direction, and nothing downstream re-clamps it: the
+  // 400 keeps a query string from becoming a stored row whose amount
+  // contradicts its own quantity. (Was a silent drop to the 0 default; the
+  // route now answers validationError before any query, like the other
+  // three mint values.)
+  test("a negative price is refused with a validation error and no INSERT", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "-30" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toMatch(/price/i);
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  // One per row of the issue's table: each value passes the old hand-rolled
+  // check but the destination column rejects it, so the mint used to 500 +
+  // alarm. Validation runs before the account lookup, so a bad value answers
+  // validationError and no query reaches any table.
+  test("a calendar-invalid date is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", date: "2026-02-30" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field date must be a date");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  test("an 11-char currency is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", iso_currency_code: "USDOLLARSXX" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field iso_currency_code must be at most 10 characters");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  test("a 1e300 price is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", price: "1e300" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field price must be at most 999999999.999999");
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+
+  test("a 1e300 quantity is refused before any query", async () => {
+    accountRow = plaidInvestAccount();
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "1e300" },
+        "u-1",
+      ),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe("Field quantity must be at most 999999999.999999");
+    expect(mockUnsafe).not.toHaveBeenCalled();
     expect(findInsert("investment_transactions")).toBeNull();
   });
 

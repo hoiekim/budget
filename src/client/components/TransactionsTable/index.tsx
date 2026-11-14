@@ -1,4 +1,5 @@
 import { InvestmentTransaction, SplitTransaction, Transaction, useAppContext } from "client";
+import { Placeholder } from "client/components";
 import TransactionRow from "./TransactionRow";
 import InvestmentTransactionRow from "./InvestmentTransactionRow";
 import TransferRow from "./TransferRow";
@@ -48,7 +49,11 @@ export const TransactionsTable = ({ transactions }: Props) => {
 
   return (
     <div className="TransactionsTable">
-      <div>{transactionRows}</div>
+      {transactionRows.length ? (
+        <div>{transactionRows}</div>
+      ) : (
+        <Placeholder>No transactions in this period.</Placeholder>
+      )}
     </div>
   );
 };

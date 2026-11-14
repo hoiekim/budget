@@ -12,6 +12,87 @@ export interface ApiResponse<T = undefined> {
 
 export type Stream<T = undefined> = (response: ApiResponse<T>) => void;
 
+/** `T` with any array inside it allowed to arrive as an async iterable of batches. */
+export type Batched<T> = {
+  [K in keyof T]: NonNullable<T[K]> extends (infer U)[] ? T[K] | AsyncIterable<U[]> : Batched<T[K]>;
+};
+
+const isAsyncIterable = (value: unknown): value is AsyncIterable<unknown[]> =>
+  typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" &&
+  value !== null &&
+  [Object.prototype, null].includes(Object.getPrototypeOf(value));
+
+async function* serializeJson(value: unknown): AsyncGenerator<string> {
+  if (isAsyncIterable(value)) {
+    yield "[";
+    let first = true;
+    for await (const batch of value) {
+      if (batch.length === 0) continue;
+      const items = batch.map((item) => JSON.stringify(item) ?? "null").join(",");
+      yield first ? items : "," + items;
+      first = false;
+    }
+    yield "]";
+  } else if (isPlainObject(value)) {
+    yield "{";
+    let first = true;
+    for (const [key, property] of Object.entries(value)) {
+      if (property === undefined) continue;
+      yield `${first ? "" : ","}${JSON.stringify(key)}:`;
+      first = false;
+      yield* serializeJson(property);
+    }
+    yield "}";
+  } else {
+    yield JSON.stringify(value) ?? "null";
+  }
+}
+
+/**
+ * A JSON response serialized while it is sent. Each async iterable inside the
+ * value is written as a JSON array one batch at a time, so a large result is
+ * never held whole, neither as rows nor as one string.
+ *
+ * @example
+ * return new JsonStream<TransactionsGetResponse>({
+ *   status: "success",
+ *   body: { transactions: searchTransactions(user).transactions, investmentTransactions: [] },
+ * });
+ */
+export class JsonStream<T = unknown> {
+  constructor(readonly value: Batched<ApiResponse<T>>) {}
+
+  /** `onError` fires if producing a batch throws after the response has started. */
+  toReadableStream(onError: (error: unknown) => void): ReadableStream<Uint8Array> {
+    const chunks = serializeJson(this.value);
+    const encoder = new TextEncoder();
+    // A client that disconnects cancels the stream while a batch may still be
+    // loading; whatever that batch then does is no longer an error to report.
+    let cancelled = false;
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const { done, value } = await chunks.next();
+          if (cancelled) return;
+          if (done) controller.close();
+          else controller.enqueue(encoder.encode(value));
+        } catch (error) {
+          if (cancelled) return;
+          onError(error);
+          controller.error(error);
+        }
+      },
+      async cancel() {
+        cancelled = true;
+        await chunks.return(undefined);
+      },
+    });
+  }
+}
+
 export interface ServerSession {
   user?: MaskedUser;
   id: string;
@@ -62,7 +143,7 @@ export type GetResponse<T = undefined> = (
   req: ServerRequest,
   res: ServerResponse,
   stream: Stream<T>,
-) => Promise<ApiResponse<T> | Response | void>;
+) => Promise<ApiResponse<T> | Response | JsonStream<T> | void>;
 
 export class Route<T> {
   path: string;
@@ -91,7 +172,7 @@ export class Route<T> {
   async execute(
     req: ServerRequest,
     res: ServerResponse,
-  ): Promise<ApiResponse<T> | Response | null> {
+  ): Promise<ApiResponse<T> | Response | JsonStream<T> | null> {
     try {
       const stream: Stream<T> = (response) => {
         res.write(JSON.stringify(response) + "\n");
