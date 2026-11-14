@@ -17,6 +17,7 @@ const realDetectRecurrings = { ...(await import("./detect-recurrings")) };
 const realRefreshSecuritySnapshots = {
   ...(await import("./refresh-security-snapshots")),
 };
+const realRefreshCpiSnapshots = { ...(await import("./refresh-cpi-snapshots")) };
 const realPlaidUtil = { ...(await import("server/lib/plaid/util")) };
 
 const mockGetAllItems = mock(async () => [] as { item_id: string; provider: ItemProvider }[]);
@@ -48,6 +49,16 @@ const mockRefreshActiveSecuritySnapshots = mock(async () => ({
   empty: 0,
   errors: 0,
 }));
+
+const cpiResult = () => ({
+  requests: 0,
+  upserted: 0,
+  fresh: true,
+  gated: false,
+  deferred: 0,
+  errors: 0,
+});
+const mockRefreshCpiSnapshots = mock(async () => cpiResult());
 
 mock.module("server", () => ({
   ...realServer,
@@ -99,6 +110,11 @@ mock.module("./refresh-security-snapshots", () => ({
   refreshActiveSecuritySnapshots: mockRefreshActiveSecuritySnapshots,
 }));
 
+mock.module("./refresh-cpi-snapshots", () => ({
+  ...realRefreshCpiSnapshots,
+  refreshCpiSnapshots: mockRefreshCpiSnapshots,
+}));
+
 const { scheduledSync, stopScheduledSync } = await import("./schedule");
 
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 50));
@@ -136,6 +152,8 @@ beforeEach(() => {
     empty: 0,
     errors: 0,
   }));
+  mockRefreshCpiSnapshots.mockReset();
+  mockRefreshCpiSnapshots.mockImplementation(async () => cpiResult());
 });
 
 afterEach(() => {
@@ -155,6 +173,7 @@ afterAll(() => {
     "./refresh-security-snapshots",
     () => realRefreshSecuritySnapshots
   );
+  mock.module("./refresh-cpi-snapshots", () => realRefreshCpiSnapshots);
   mock.module("server/lib/plaid/util", () => realPlaidUtil);
   restoreLeaves();
 });
@@ -266,6 +285,32 @@ describe("scheduledSync / runSync", () => {
     expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
     expect(mockRunRecurringDetection).toHaveBeenCalledTimes(1);
     expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
+    expect(mockRefreshCpiSnapshots).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes CPI snapshots even when the security-snapshot refresh fails", async () => {
+    mockGetAllItems.mockResolvedValueOnce([]);
+    mockRefreshActiveSecuritySnapshots.mockRejectedValueOnce(new Error("polygon down"));
+
+    scheduledSync();
+    await flushMicrotasks();
+
+    expect(mockRefreshCpiSnapshots).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs a CPI refresh failure without alarming the whole sync", async () => {
+    mockGetAllItems.mockResolvedValueOnce([]);
+    mockRefreshCpiSnapshots.mockRejectedValueOnce(new Error("bls down"));
+
+    scheduledSync();
+    await flushMicrotasks();
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      "Refresh CPI snapshots failed",
+      {},
+      expect.any(Error),
+    );
+    expect(mockSendAlarm).not.toHaveBeenCalled();
   });
 
   it("swallows auto-suggestion errors without blocking transfer detection", async () => {

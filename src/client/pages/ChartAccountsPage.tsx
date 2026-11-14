@@ -25,9 +25,15 @@ export const ChartAccountsPage = () => {
 
   const { type, configuration } = chart;
   const { account_ids } = configuration;
-  const showBudgetSelector = type === ChartType.BALANCE || type === ChartType.FLOW;
+  const showBudgetSelector =
+    type === ChartType.BALANCE || type === ChartType.FLOW || type === ChartType.PROJECTION;
   const budget_ids = showBudgetSelector
-    ? (configuration as BalanceChartConfiguration | FlowChartConfiguration).budget_ids
+    ? ((
+        configuration as
+          | BalanceChartConfiguration
+          | FlowChartConfiguration
+          | ProjectionChartConfiguration
+      ).budget_ids ?? [])
     : [];
   const { accounts, budgets } = data;
 
@@ -108,7 +114,9 @@ export const ChartAccountsPage = () => {
       const updatedConfiguration =
         type === ChartType.BALANCE
           ? new BalanceChartConfiguration(updatedFields)
-          : new FlowChartConfiguration(updatedFields);
+          : type === ChartType.PROJECTION
+            ? new ProjectionChartConfiguration(updatedFields as Partial<ProjectionChartConfiguration>)
+            : new FlowChartConfiguration(updatedFields);
       await chartMutate.update(new Chart({ ...chart, configuration: updatedConfiguration }));
     };
 
@@ -174,7 +182,9 @@ export const ChartAccountsPage = () => {
         </Property>
         {showBudgetSelector && (
           <>
-            <PropertyLabel>Select budgets</PropertyLabel>
+            <PropertyLabel>
+              {type === ChartType.PROJECTION ? "Select budgets for living cost" : "Select budgets"}
+            </PropertyLabel>
             <Property>
               {othersRow}
               {budgetRows}

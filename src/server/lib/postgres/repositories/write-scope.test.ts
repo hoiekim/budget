@@ -84,6 +84,7 @@ const TABLE_OWNERS = new Map(
 const SHARED_TABLES: Record<string, string> = {
   institutionsTable: "reference data about banks, shared by every user who links one",
   securitiesTable: "reference data about tradable securities, shared across users",
+  cpiSnapshotsTable: "BLS Consumer Price Index history, written only by the scheduled refresh and read by every user's projection chart",
 };
 
 /** Model constants whose value is the owner column, whatever they are called. */

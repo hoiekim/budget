@@ -4,6 +4,8 @@ export * from "./route";
 export * as plaid from "./plaid";
 export * as simpleFin from "./simple-fin";
 export * as polygon from "./polygon";
+export * as bls from "./bls";
+export * from "./inflation";
 export * as yahoo from "./yahoo";
 export * as marketData from "./market-data";
 export * from "./daily-closes";

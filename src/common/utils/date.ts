@@ -1,6 +1,7 @@
 import { Interval, isDate, isString, isUndefined } from "common";
 
 export const ONE_HOUR = 1000 * 60 * 60;
+export const ONE_DAY = 1000 * 60 * 60 * 24;
 export const TWO_WEEKS = 1000 * 60 * 60 * 24 * 14;
 export const THIRTY_DAYS = 1000 * 60 * 60 * 24 * 30;
 

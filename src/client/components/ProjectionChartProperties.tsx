@@ -1,8 +1,7 @@
-import { getDateString, LocalDate, ViewDate } from "common";
+import { getDateString, LocalDate, US_STATE_NAMES, ViewDate } from "common";
 import {
   Chart,
   ProjectionChart,
-  CapacityInput,
   PATH,
   useAppContext,
   useDebounce,
@@ -19,10 +18,10 @@ import {
   ProjectionChartConfiguration,
   CapacityNumberInput,
   inferSavingConfig,
+  useGoalConfig,
 } from "client";
 import {
   ChangeEventHandler,
-  FocusEventHandler,
   MouseEventHandler,
   ReactNode,
   useEffect,
@@ -39,7 +38,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { chart_id, name, configuration } = chart;
 
   const { data, calculations } = useAppContext();
-  const { accounts } = data;
+  const { accounts, budgets, inflation } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
@@ -59,7 +58,15 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     living_cost,
     anual_percentage_yield,
     year_over_year_inflation,
+    auto_goal_config,
+    budget_ids,
   } = configInput;
+
+  const goalConfig = useGoalConfig(configInput);
+  const shownLivingCost = auto_goal_config ? goalConfig.living_cost : living_cost;
+  const shownInflation = auto_goal_config
+    ? goalConfig.year_over_year_inflation
+    : year_over_year_inflation;
 
   const updateDebouncer = useDebounce();
   const mutate = useMutate(Chart);
@@ -98,41 +105,46 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     updateChart({ configuration: { ...configInput, anual_percentage_yield: e.target.value / 100 + 1 } });
   };
 
-  const onBlurLivingCostAmount: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newAmount = +e.target.value;
-    const newConfiguration = {
-      ...configuration,
-      living_cost: { ...living_cost, amount: newAmount },
-    };
-    updateChart({ configuration: newConfiguration });
+  const onChangeAutoGoalConfig: ChangeEventHandler<HTMLInputElement> = (e) => {
+    e.stopPropagation();
+    const { checked } = e.target;
+    const newConfig = { ...configInput, auto_goal_config: checked };
+    setPartialConfigInput(newConfig);
+    updateChart({ configuration: newConfig });
   };
 
-  const onBlurLivingCostDate: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newDate = new LocalDate(e.target.value);
-    const newConfiguration = {
-      ...configuration,
-      living_cost: { ...living_cost, amountAsOf: newDate },
-    };
-    updateChart({ configuration: newConfiguration });
+  // Blur fires before `setValue` lands in `configInput`, so save the event's clamped value.
+  const onBlurLivingCostAmount = (e: { target: { value: number } }) => {
+    updateChart({
+      configuration: { ...configInput, living_cost: { ...living_cost, amount: e.target.value } },
+    });
   };
 
-  const onBlurTaxRate: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newRate = +e.target.value / 100;
-    const newConfiguration = {
-      ...configuration,
-      living_cost: { ...living_cost, taxRate: newRate },
-    };
-    updateChart({ configuration: newConfiguration });
+  const onBlurTaxRate = (e: { target: { value: number } }) => {
+    updateChart({
+      configuration: {
+        ...configInput,
+        living_cost: { ...living_cost, taxRate: e.target.value / 100 },
+      },
+    });
   };
 
-  const onBlurYoyInflation: FocusEventHandler<HTMLInputElement> = (e) => {
-    const newRate = +e.target.value / 100 + 1;
-    const newConfiguration = {
-      ...configuration,
-      year_over_year_inflation: newRate,
-    };
-    updateChart({ configuration: newConfiguration });
+  const onBlurYoyInflation = (e: { target: { value: number } }) => {
+    updateChart({
+      configuration: { ...configInput, year_over_year_inflation: e.target.value / 100 + 1 },
+    });
   };
+
+  const numberOfSelectedBudgets = budgets.filter((b) => budget_ids.includes(b.id)).length;
+
+  const stateName = goalConfig.state && US_STATE_NAMES[goalConfig.state];
+  const taxResidenceLabel = stateName || "Unknown (federal only)";
+
+  const inflationDataLabel = inflation
+    ? `CPI ${inflation.from} – ${inflation.to}`
+    : inflation === null
+      ? "Not collected yet"
+      : "Unavailable";
 
   const numberOfSelectedAccounts = accounts.filter((a) => {
     return !a.hide && account_ids.includes(a.account_id);
@@ -243,14 +255,34 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
           </div>
         </KeyValue>
       </Property>
-      <PropertyLabel>Goal&nbsp;Configuration</PropertyLabel>
+      <PropertyLabel>
+        Goal&nbsp;Configuration
+        <KeyValue name="Auto">
+          <ToggleInput
+            compact={true}
+            checked={auto_goal_config}
+            onChange={onChangeAutoGoalConfig}
+            aria-label="Infer goal configuration automatically"
+          />
+        </KeyValue>
+      </PropertyLabel>
       <Property>
+        {auto_goal_config && (
+          <ButtonRow onClick={onClickAccounts}>
+            {numberOfSelectedBudgets
+              ? `Living cost from ${numberOfSelectedBudgets} budget${numberOfSelectedBudgets > 1 ? "s" : ""}`
+              : "Select budgets for living cost"}
+          </ButtonRow>
+        )}
         <KeyValue name="Living&nbsp;Cost">
           <div>
-            <CapacityInput
+            <CapacityNumberInput
               style={{ width: 100 }}
-              defaultValue={living_cost.amount}
+              disabled={auto_goal_config}
+              value={shownLivingCost.amount}
+              setValue={(v) => setPartialConfigInput({ living_cost: { ...living_cost, amount: v } })}
               onBlur={onBlurLivingCostAmount}
+              aria-label="Living cost"
             />
             <span className="small">&nbsp;$</span>
           </div>
@@ -258,37 +290,61 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         <KeyValue name="Living&nbsp;Cost&nbsp;as&nbsp;of">
           <input
             type="date"
-            defaultValue={getDateString(living_cost.amountAsOf)}
-            onBlur={onBlurLivingCostDate}
+            disabled={auto_goal_config}
+            value={getDateString(shownLivingCost.amountAsOf)}
+            onChange={(e) =>
+              setPartialConfigInput({
+                living_cost: { ...living_cost, amountAsOf: new LocalDate(e.target.value) },
+              })
+            }
+            onBlur={onBlurConfigInput}
             aria-label="Living cost as of date"
           />
         </KeyValue>
         <KeyValue name="Tax&nbsp;Rate">
           <div>
-            <CapacityInput
+            <CapacityNumberInput
               style={{ width: 100 }}
-              defaultValue={(living_cost.taxRate || 0) * 100}
+              disabled={auto_goal_config}
+              value={(shownLivingCost.taxRate || 0) * 100}
+              setValue={(v) =>
+                setPartialConfigInput({ living_cost: { ...living_cost, taxRate: v / 100 } })
+              }
               maxValue={100}
               minValue={0}
               fixed={2}
               onBlur={onBlurTaxRate}
+              aria-label="Tax rate"
             />
             <span className="small">&nbsp;%</span>
           </div>
         </KeyValue>
+        {auto_goal_config && (
+          <KeyValue name="Tax&nbsp;Residence">
+            <span>{taxResidenceLabel}</span>
+          </KeyValue>
+        )}
         <KeyValue name="YoY&nbsp;Inflation">
           <div>
-            <CapacityInput
+            <CapacityNumberInput
               style={{ width: 100 }}
-              defaultValue={(year_over_year_inflation - 1) * 100}
+              disabled={auto_goal_config}
+              value={(shownInflation - 1) * 100}
+              setValue={(v) => setPartialConfigInput({ year_over_year_inflation: v / 100 + 1 })}
               maxValue={1000}
               minValue={0}
               fixed={2}
               onBlur={onBlurYoyInflation}
+              aria-label="Year over year inflation"
             />
             <span className="small">&nbsp;%</span>
           </div>
         </KeyValue>
+        {auto_goal_config && (
+          <KeyValue name="Inflation&nbsp;Data">
+            <span>{inflationDataLabel}</span>
+          </KeyValue>
+        )}
       </Property>
 
       <PropertyLabel>&nbsp;</PropertyLabel>

@@ -14,3 +14,4 @@ export * from "./useMultiSelectQueryFilter";
 export * from "./useMutate";
 export * from "./useServerEvents";
 export * from "./viewDate";
+export * from "./useGoalConfig";

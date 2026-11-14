@@ -30,6 +30,7 @@ export enum TableName {
   Charts = "charts",
   ApiKeys = "api_keys",
   RejectedCategories = "rejected_categories",
+  CpiSnapshots = "cpi_snapshots",
 }
 
 export const USERS = TableName.Users;
@@ -51,6 +52,7 @@ export const SNAPSHOTS = TableName.Snapshots;
 export const CHARTS = TableName.Charts;
 export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
+export const CPI_SNAPSHOTS = TableName.CpiSnapshots;
 
 /**
  * Id prefix of the holding snapshots the client derives from a holding's

@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { JSONSnapshotData, TableName } from "common";
+import { JSONAverageInflation, JSONSnapshotData, TableName } from "common";
 import {
   ApiResponse,
   BudgetsGetResponse,
@@ -12,6 +12,7 @@ import {
   TransfersGetResponse,
   RecurringsGetResponse,
   InstitutionsGetResponse,
+  InflationGetResponse,
 } from "server";
 import {
   Account,
@@ -584,6 +585,17 @@ const fetchSecurities = async (): Promise<FetchSecuritiesResult> => {
   return result;
 };
 
+interface FetchInflationResult {
+  inflation: JSONAverageInflation | null;
+  networkFailed: boolean;
+}
+
+const fetchInflation = async (): Promise<FetchInflationResult> => {
+  const response = await call.get<InflationGetResponse>("/api/inflation").catch(console.error);
+  if (isFailedResponse(response)) return { inflation: null, networkFailed: true };
+  return { inflation: response.body ?? null, networkFailed: false };
+};
+
 // ---------------------------------------------------------------------------
 // Stage helpers (#839). `_sync` is a sequencer over these; each stage is a
 // module-scope function so the pure ones can be unit-tested without
@@ -606,6 +618,7 @@ export interface Stage1Fetched {
   tombstonePairIds: Set<string>;
   recurrings: RecurringDictionary;
   tombstoneRecurringIds: Set<string>;
+  inflation: JSONAverageInflation | null;
   /** The accounts fetch failed — the orchestrator bails before painting. */
   accountsFailed: boolean;
   /** Any of the other Stage 1 fetches failed — the cursor stays put. */
@@ -619,6 +632,9 @@ export interface Stage1Fetched {
   securitiesFailed: boolean;
   transfersFailed: boolean;
   recurringsFailed: boolean;
+  /** Kept out of `fetchFailed`: inflation is neither delta-synced nor
+   *  persisted, so the cursor has nothing to wait for. */
+  inflationFailed: boolean;
 }
 
 /** The time-partitioned triple Stage 2 fetches over a recent window and
@@ -646,6 +662,7 @@ export const fetchStage1 = async (
   const securitiesPromise = fetchSecurities();
   const transfersPromise = fetchTransfers(cursor, includeDeleted);
   const recurringsPromise = fetchRecurrings(cursor, includeDeleted);
+  const inflationPromise = fetchInflation();
 
   const [
     accountsResult,
@@ -655,6 +672,7 @@ export const fetchStage1 = async (
     securitiesResult,
     transfersResult,
     recurringsResult,
+    inflationResult,
   ] = await Promise.all([
     accountsPromise,
     budgetsPromise,
@@ -663,6 +681,7 @@ export const fetchStage1 = async (
     securitiesPromise,
     transfersPromise,
     recurringsPromise,
+    inflationPromise,
   ]);
 
   return {
@@ -679,6 +698,7 @@ export const fetchStage1 = async (
     tombstonePairIds: transfersResult.tombstonePairIds,
     recurrings: recurringsResult.recurrings,
     tombstoneRecurringIds: recurringsResult.tombstoneRecurringIds,
+    inflation: inflationResult.inflation,
     accountsFailed: accountsResult.networkFailed,
     fetchFailed:
       budgetsResult.networkFailed ||
@@ -693,6 +713,7 @@ export const fetchStage1 = async (
     securitiesFailed: securitiesResult.networkFailed,
     transfersFailed: transfersResult.networkFailed,
     recurringsFailed: recurringsResult.networkFailed,
+    inflationFailed: inflationResult.networkFailed,
   };
 };
 
@@ -724,6 +745,7 @@ export const paintStage1 = (oldData: Data, fetched: Stage1Fetched): Data => {
     securities: fetched.securitiesFailed ? oldData.securities : fetched.securities,
     transfers: fetched.transfersFailed ? oldData.transfers : fetched.transfers,
     recurrings: fetched.recurringsFailed ? oldData.recurrings : fetched.recurrings,
+    inflation: fetched.inflationFailed ? oldData.inflation : fetched.inflation,
   });
   stage1.status.isInit = true;
   stage1.status.isLoading = true;
@@ -867,6 +889,7 @@ export const applyDelta = (
   if (!stage1.chartsFailed) next.charts = stage1.charts;
   if (!stage1.institutionsFailed) next.institutions = stage1.institutions;
   if (!stage1.securitiesFailed) next.securities = stage1.securities;
+  if (!stage1.inflationFailed) next.inflation = stage1.inflation;
   mergeTransfersDelta(next, stage1);
   mergeRecurringsDelta(next, stage1);
   mergeTransactionsDelta(next, partitioned.transactions);
@@ -1352,6 +1375,7 @@ export const useSync = () => {
           case TableName.Sessions:
           case TableName.ApiKeys:
           case TableName.RejectedCategories:
+          case TableName.CpiSnapshots:
             return;
           default: {
             // Exhaustiveness guard: adding a new `TableName` value that

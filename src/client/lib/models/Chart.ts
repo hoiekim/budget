@@ -78,6 +78,8 @@ export class BalanceChartConfiguration implements JSONBalanceChartConfiguration 
 export class ProjectionChartConfiguration implements JSONProjectionChartConfiguration {
   account_ids: string[] = [];
   auto_saving_config = false;
+  auto_goal_config = false;
+  budget_ids: string[] = [];
   initial_saving = new AmountInTime();
   living_cost = new AmountInTime();
   contribution = 0;

@@ -175,4 +175,5 @@ export * from "./search";
 export * from "./date";
 export * from "./math";
 export * from "./Queue";
+export * from "./tax";
 export * from "./hash";

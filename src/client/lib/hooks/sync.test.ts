@@ -190,6 +190,8 @@ describe("stage helpers", () => {
     securitiesFailed: false,
     transfersFailed: false,
     recurringsFailed: false,
+    inflation: null,
+    inflationFailed: false,
   });
 
   const emptyPartitioned = (): PartitionedFetched => ({
@@ -244,6 +246,41 @@ describe("stage helpers", () => {
       const painted = paintStage1(oldData, stage1);
       expect(painted.budgets).toBe(oldData.budgets);
       expect(painted.budgets.has(kept.id)).toBe(true);
+    });
+  });
+
+  describe("inflation", () => {
+    const INFLATION = {
+      year_over_year_inflation: 1.025,
+      from: "1996-09",
+      to: "2026-09",
+      series_id: "CUUR0000SA0",
+    };
+
+    test("Stage 1 paints the fetched average, including the server's null", () => {
+      const stage1 = emptyStage1();
+      stage1.inflation = INFLATION;
+      expect(paintStage1(new Data(), stage1).inflation).toEqual(INFLATION);
+
+      const old = new Data({ inflation: INFLATION });
+      expect(paintStage1(old, emptyStage1()).inflation).toBeNull();
+    });
+
+    test("a failed fetch keeps the previous average instead of painting null", () => {
+      const old = new Data({ inflation: INFLATION });
+      const stage1 = emptyStage1();
+      stage1.inflationFailed = true;
+      expect(paintStage1(old, stage1).inflation).toEqual(INFLATION);
+      expect(applyDelta(old, stage1, emptyPartitioned()).inflation).toEqual(INFLATION);
+    });
+
+    test("the apply step replaces the average on a successful fetch", () => {
+      const old = new Data({ inflation: INFLATION });
+      const stage1 = emptyStage1();
+      stage1.inflation = { ...INFLATION, year_over_year_inflation: 1.03 };
+      expect(applyDelta(old, stage1, emptyPartitioned()).inflation?.year_over_year_inflation).toBe(
+        1.03,
+      );
     });
   });
 
