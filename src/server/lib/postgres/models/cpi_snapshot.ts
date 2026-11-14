@@ -5,17 +5,8 @@ import { CPI_SNAPSHOT_ID, SERIES_ID, SNAPSHOT_DATE, INDEX_VALUE, UPDATED } from 
 import { Model, RowValueType, createTable } from "./base";
 
 /**
- * Monthly Consumer Price Index observations pulled from the BLS API by the
- * scheduled refresh (`compute-tools/refresh-cpi-snapshots.ts`). Global data —
- * no `user_id` — so every user's projection chart averages the same series.
- *
- * Kept out of the `snapshots` table on purpose: that table's rows are
- * user-scoped (or keyed to a held security) and stream to the client through
- * `GET /api/snapshots`, whose JSON union has no member for a price index.
- *
- * The primary key is `${series_id}-${YYYY-MM}`, so re-fetching a month
- * upserts the same row and bumps `updated`, which is what the refresh
- * cadence gate reads.
+ * Monthly Consumer Price Index observations from the scheduled BLS refresh.
+ * Global (no `user_id`); see docs/ARCHITECTURE.md, "BLS".
  */
 const cpiSnapshotSchema = {
   [CPI_SNAPSHOT_ID]: "VARCHAR(255) PRIMARY KEY",

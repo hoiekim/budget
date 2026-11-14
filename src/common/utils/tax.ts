@@ -1,4 +1,5 @@
-import { getDateString } from "./date";
+import type { JSONTransaction } from "common";
+import { getDateString, ONE_DAY } from "./date";
 import { FEDERAL_INCOME_TAX, STATE_INCOME_TAX, TAX_YEAR } from "./tax-tables";
 
 /**
@@ -123,11 +124,6 @@ export const normalizeStateCode = (region: string | null | undefined): string | 
 
 const US_COUNTRY = new Set(["US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"]);
 
-export interface LocatedTransaction {
-  date: string;
-  location?: { region?: string | null; country?: string | null } | null;
-}
-
 export const RESIDENCE_LOOKBACK_DAYS = 365;
 
 /**
@@ -140,20 +136,20 @@ export const RESIDENCE_LOOKBACK_DAYS = 365;
  * a trip from outweighing a year of everyday spending at home.
  */
 export const inferResidenceState = (
-  transactions: Iterable<LocatedTransaction>,
+  transactions: Iterable<Pick<JSONTransaction, "date" | "location">>,
   now: Date = new Date(),
   lookbackDays: number = RESIDENCE_LOOKBACK_DAYS,
 ): string | undefined => {
   const end = getDateString(now);
-  const start = getDateString(new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000));
+  const start = getDateString(new Date(now.getTime() - lookbackDays * ONE_DAY));
 
   const tally = new Map<string, { count: number; latest: string }>();
   for (const t of transactions) {
     const day = typeof t.date === "string" ? t.date.slice(0, 10) : "";
     if (!day || day < start || day > end) continue;
-    const country = t.location?.country?.trim().toUpperCase();
+    const country = t.location.country?.trim().toUpperCase();
     if (country && !US_COUNTRY.has(country)) continue;
-    const code = normalizeStateCode(t.location?.region);
+    const code = normalizeStateCode(t.location.region);
     if (!code) continue;
     const entry = tally.get(code);
     if (entry) {

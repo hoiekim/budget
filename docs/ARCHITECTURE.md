@@ -64,10 +64,10 @@ A projection chart's goal (living cost, its as-of date, tax rate, and yearly inf
 |---|---|---|
 | Living cost | Sum of the monthly amounts of the budgets in `configuration.budget_ids` at today (income and unlimited budgets skipped) | Stored manual value when no selected budget contributes |
 | Living cost as of | Latest `active_from` among those budgets' active capacities ("periods"), walking into children for synced capacities | Start of the current month when no period is dated |
-| YoY inflation | `GET /api/inflation` — compound annual CPI-U growth over the last 30 years of stored history (`server/lib/inflation.ts`) | Stored manual value until the CPI backfill has a year of data |
+| YoY inflation | `Data.inflation`, synced from `GET /api/inflation` — compound annual CPI-U growth over the last 30 years of stored history (`server/lib/inflation.ts`) | Stored manual value until the CPI backfill has a year of data, or while the fetch has not succeeded |
 | Tax rate | Federal + state income tax on 12 × living cost (carried to current dollars), single filer, standard deduction (`common/utils/tax.ts`) | Federal only when no state can be inferred |
 
-The residence state is the U.S. state that appears most often in `location.region` across the past 365 days of transactions (`inferResidenceState`). Tax tables live in `common/utils/tax-tables.ts` and are for one tax year (`TAX_YEAR`); local income taxes, payroll taxes, and phase-outs are out of scope. The manual values stay stored, so turning auto off restores them.
+The residence state is the U.S. state that appears most often in `location.region` across the past 365 days of transactions (`inferResidenceState`). Tax tables live in `common/utils/tax-tables.ts` and are for one tax year (`TAX_YEAR`); local income taxes and payroll taxes are out of scope, and only the CT, UT and WI phase-outs are modeled. To roll forward a year, update `TAX_YEAR`, the federal table (the IRS Rev. Proc. for that year) and each state; the shape tests in `tax.test.ts` catch malformed entries. The manual values stay stored, so turning auto off restores them.
 
 ### Transaction Categorization (Auto-Suggest)
 
@@ -130,7 +130,9 @@ Fetches metadata for investment items when not available from Plaid or SimpleFin
 
 Supplies CPI-U history (series `CUUR0000SA0`, not seasonally adjusted) for the projection chart's auto inflation rate. Integration in `src/server/lib/bls.ts`; the job is `refreshCpiSnapshots` in `src/server/lib/compute-tools/refresh-cpi-snapshots.ts`, run from the hourly `scheduledSync` after the security-snapshot refresh.
 
-- **Never on the request path.** `GET /api/inflation` reads `cpi_snapshots` only.
+- **Never on the request path.** `GET /api/inflation` reads `cpi_snapshots` only. The client fetches it in Stage 1 of every `useSync` run into `Data.inflation` (in memory, not IndexedDB); a failed fetch keeps the previous value.
+- **Storage.** A table of its own rather than `snapshots`: those rows are user-scoped (or keyed to a held security) and stream through `GET /api/snapshots`, whose JSON union has no member for a price index. The key is `${series_id}-${YYYY-MM}`, so re-fetching a month upserts the same row and re-stamps `updated`.
 - **Backfill.** Any completed year in the 30-year window (+1 for the base month) with no stored month is requested — an empty table fills in one run (4 requests keyless, 2 with a key). Presence, not completeness, is tested, so a month BLS never published (October 2025) is not re-requested forever.
 - **Refresh.** When the latest stored month is older than last month and nothing was written in the past 22 hours, the latest stored year through the current year is re-requested. Upserts re-stamp `updated`, which is the cadence gate, so it survives restarts.
-- **Daily budget.** Every request draws on a rolling 24-hour budget — 10/day keyless (BLS cap 25), 50/day with `BLS_API_KEY` (cap 500). A run that hits it, or BLS's own "daily threshold" refusal, stops and leaves the rest to a later run.
+- **Failures.** An API error ends the run and defers the rest of its plan, so while BLS is failing each run spends one request. A span BLS answers with no data is skipped.
+- **Daily budget.** Every request draws on a rolling 24-hour budget — 10/day keyless (BLS cap 25), 50/day with `BLS_API_KEY` (cap 500). A run that hits it, or BLS's own "daily threshold" refusal, stops and leaves the rest to a later run. The budget is counted in memory, so a restart starts a fresh count; the `updated` gate above is what holds across restarts, and it only advances on a successful write.

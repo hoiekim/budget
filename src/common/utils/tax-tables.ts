@@ -17,9 +17,6 @@ import type { FederalIncomeTaxTable, StateIncomeTaxTable } from "./tax";
  * The MA 4% surtax and the CA 1% mental-health surtax are included as top
  * brackets.
  *
- * To roll forward a year: update `TAX_YEAR`, the federal table (IRS Rev.
- * Proc. for the year), and each state; the shape tests in `tax.test.ts`
- * catch malformed entries.
  */
 export const TAX_YEAR = 2026;
 

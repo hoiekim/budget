@@ -200,8 +200,6 @@ describe("inferGoalConfig", () => {
       state: "TX",
       today: TODAY,
     });
-    expect(result.livingCostSource).toBe("budgets");
-    expect(result.inflationSource).toBe("cpi");
     expect(result.living_cost.amount).toBe(2600);
     expect(result.living_cost.amountAsOf.getTime()).toBe(new Date(2025, 7, 1).getTime());
     expect(result.year_over_year_inflation).toBe(1.025);
@@ -220,8 +218,6 @@ describe("inferGoalConfig", () => {
       state: undefined,
       today: TODAY,
     });
-    expect(result.livingCostSource).toBe("manual");
-    expect(result.inflationSource).toBe("manual");
     expect(result.living_cost.amount).toBe(4000);
     expect(result.living_cost.amountAsOf.getTime()).toBe(new Date(2024, 0, 1).getTime());
     expect(result.year_over_year_inflation).toBe(1.038);

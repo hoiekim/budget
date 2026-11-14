@@ -38,7 +38,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { chart_id, name, configuration } = chart;
 
   const { data, calculations } = useAppContext();
-  const { accounts, budgets } = data;
+  const { accounts, budgets, inflation } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
@@ -113,9 +113,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     updateChart({ configuration: newConfig });
   };
 
-  // The number inputs report their final (clamped) value on the blur event,
-  // before `setValue` has landed in `configInput`, so each blur handler builds
-  // the saved configuration from the event rather than from state.
+  // Blur fires before `setValue` lands in `configInput`, so save the event's clamped value.
   const onBlurLivingCostAmount = (e: { target: { value: number } }) => {
     updateChart({
       configuration: { ...configInput, living_cost: { ...living_cost, amount: e.target.value } },
@@ -142,12 +140,11 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const stateName = goalConfig.state && US_STATE_NAMES[goalConfig.state];
   const taxResidenceLabel = stateName || "Unknown (federal tax only)";
 
-  const { inflation } = goalConfig;
   const inflationDataLabel = inflation
     ? `CPI ${inflation.from} – ${inflation.to}`
     : inflation === null
       ? "Not collected yet (using manual rate)"
-      : "Loading…";
+      : "Unavailable (using manual rate)";
 
   const numberOfSelectedAccounts = accounts.filter((a) => {
     return !a.hide && account_ids.includes(a.account_id);

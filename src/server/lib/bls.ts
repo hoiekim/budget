@@ -31,23 +31,14 @@ export interface BlsTier {
 /**
  * BLS publishes two tiers. Without a registration key the v1 endpoint allows
  * 25 requests a day at 10 years each; with one, v2 allows 500 a day at 20
- * years each. The budget each tier spends is set well below its cap so a
- * restart loop, a failing run that retries hourly, or someone else sharing the
- * egress IP cannot push the deployment into BLS's daily lockout.
+ * years each. `dailyBudget` is this process's share, counted in memory: a
+ * restart starts a fresh count, and BLS's cap is per key or IP, shared with
+ * anything else using it.
  */
 export const getBlsTier = (): BlsTier =>
   getApiKey()
     ? { version: "v2", dailyLimit: 500, dailyBudget: 50, maxYearsPerRequest: 20 }
     : { version: "v1", dailyLimit: 25, dailyBudget: 10, maxYearsPerRequest: 10 };
-
-// ---------------------------------------------------------------------------
-// Daily request budget
-// ---------------------------------------------------------------------------
-// A sliding 24-hour window over every outbound BLS request. Unlike Polygon's
-// per-minute gate, nothing should ever *wait* here: a slot that frees up in
-// twenty hours is useless to an hourly job, so `add` gives up after 1 ms and
-// the caller reports the run as budget-exhausted. `maxWaitMs: 0` would mean
-// "wait forever", hence 1.
 
 const makeBudgetQueue = () =>
   new Queue({ capacity: () => getBlsTier().dailyBudget, windowMs: ONE_DAY });
@@ -162,6 +153,7 @@ export const getCpiSeries = async (
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         }),
+      // Fail fast on a spent budget: 0 would wait forever for a slot hours away.
       { maxWaitMs: 1 },
     );
     if (!response.ok) {

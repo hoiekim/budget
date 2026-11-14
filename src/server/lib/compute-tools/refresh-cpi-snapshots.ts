@@ -17,7 +17,7 @@ export interface RefreshCpiSnapshotsResult {
   fresh: boolean;
   /** The series is behind, but a refresh ran within the skip window, so this run waits. */
   gated: boolean;
-  /** Planned requests not sent because the daily budget (ours or BLS's) is spent. */
+  /** Planned requests left for a later run: the daily budget (ours or BLS's) is spent, or BLS failed. */
   deferred: number;
   /** BLS errors, empty answers, and failed writes. */
   errors: number;
@@ -106,12 +106,11 @@ export const planCpiFetch = (
  * `scheduledSync` loop the way `refreshActiveSecuritySnapshots` does.
  *
  * BLS is never called on a client request: `GET /api/inflation` reads what
- * this job stored. Request volume is bounded three ways — the planner only
- * asks for missing years and, at most once per skip window, for the newest
- * months; the cadence gate lives in the table (`updated`), so it survives a
- * restart; and every request draws on the daily budget in `bls.ts`, which
- * sits well under BLS's own cap. A run that hits the budget stops and leaves
- * the rest of its plan to a later run.
+ * this job stored. Request volume is bounded three ways. The planner only asks
+ * for missing years and, at most once per skip window, for the newest months;
+ * that gate lives in the table (`updated`), so it survives a restart. A failed
+ * request ends the run, so while BLS is failing each run spends one request.
+ * And every request draws on the per-process daily budget in `bls.ts`.
  */
 export const refreshCpiSnapshots = async (now = new Date()): Promise<RefreshCpiSnapshotsResult> => {
   const series_id = bls.CPI_SERIES_ID;
@@ -152,7 +151,10 @@ export const refreshCpiSnapshots = async (now = new Date()): Promise<RefreshCpiS
         error: fetched.error,
         message: fetched.message,
       });
-      continue;
+      // An empty span says nothing about the next one; an API error likely repeats.
+      if (fetched.error === "no_data") continue;
+      result.deferred += plan.requests.length - i - 1;
+      break;
     }
     result.requests++;
 

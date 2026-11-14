@@ -224,7 +224,16 @@ describe("inferResidenceState", () => {
   const NOW = new Date(2026, 10, 14, 12);
   const tx = (date: string, region: string | null, country: string | null = "US") => ({
     date,
-    location: { region, country },
+    location: {
+      address: null,
+      city: null,
+      region,
+      postal_code: null,
+      country,
+      lat: null,
+      lon: null,
+      store_number: null,
+    },
   });
 
   it("picks the state that appears most often in the past year", () => {
@@ -266,17 +275,23 @@ describe("inferResidenceState", () => {
     expect(state).toBe("NH");
   });
 
-  it("skips foreign and unlocated transactions, normalizing names", () => {
+  it("skips a foreign region even when its code is also a state's", () => {
+    // Western Australia is "WA", the same code as Washington.
     const state = inferResidenceState(
       [
-        tx("2026-10-01", "ON", "CA"),
-        tx("2026-10-02", "ON", "CA"),
-        tx("2026-10-03", "BC", "Canada"),
-        tx("2026-10-04", null),
-        { date: "2026-10-05" },
-        { date: "2026-10-06", location: null },
-        tx("2026-10-07", "Colorado", null),
+        tx("2026-10-01", "WA", "AU"),
+        tx("2026-10-02", "WA", "Australia"),
+        tx("2026-10-03", "WA", "AU"),
+        tx("2026-10-04", "OR", "US"),
       ],
+      NOW,
+    );
+    expect(state).toBe("OR");
+  });
+
+  it("skips unlocated transactions and normalizes spelled-out names", () => {
+    const state = inferResidenceState(
+      [tx("2026-10-04", null), tx("2026-10-05", null), tx("2026-10-07", "Colorado", null)],
       NOW,
     );
     expect(state).toBe("CO");

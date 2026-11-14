@@ -237,11 +237,18 @@ describe("refreshCpiSnapshots", () => {
     expect(result.deferred).toBe(4);
   });
 
-  test("keeps going past a failed chunk and counts the error", async () => {
+  test("stops at the first API error and defers the rest of the plan", async () => {
     mockFetch.mockImplementationOnce(async () => new Response("{}", { status: 502 }));
     const result = await refreshCpiSnapshots(NOW);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ requests: 1, errors: 1, deferred: 3, upserted: 0 });
+  });
+
+  test("moves past a span BLS has no data for", async () => {
+    mockFetch.mockImplementationOnce(async () => new Response(JSON.stringify(blsBody([]))));
+    const result = await refreshCpiSnapshots(NOW);
     expect(mockFetch).toHaveBeenCalledTimes(4);
-    expect(result.errors).toBe(1);
+    expect(result).toMatchObject({ requests: 4, errors: 1, deferred: 0 });
     expect(result.upserted).toBeGreaterThan(0);
   });
 

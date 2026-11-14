@@ -25,8 +25,6 @@ export const ChartAccountsPage = () => {
 
   const { type, configuration } = chart;
   const { account_ids } = configuration;
-  // Balance and flow charts filter by budget; a projection chart sums the
-  // selected budgets into its auto-inferred living cost.
   const showBudgetSelector =
     type === ChartType.BALANCE || type === ChartType.FLOW || type === ChartType.PROJECTION;
   const budget_ids = showBudgetSelector

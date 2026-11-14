@@ -136,20 +136,10 @@ export const inferTaxRate = (
   return estimateIncomeTax(annualIncome, state).effectiveRate;
 };
 
-export interface GoalConfig {
-  /** Monthly living cost, its as-of date, and the tax rate to gross it up by. */
-  living_cost: AmountInTime;
-  year_over_year_inflation: number;
-}
-
-export interface InferredGoalConfig extends GoalConfig {
-  /** `"manual"` means no selected budget contributes yet, so the stored value is used. */
-  livingCostSource: "budgets" | "manual";
-  /** `"manual"` means no CPI average is available yet, so the stored value is used. */
-  inflationSource: "cpi" | "manual";
+export interface InferredGoalConfig
+  extends Pick<ProjectionChartConfiguration, "living_cost" | "year_over_year_inflation"> {
   /** USPS code of the state the tax estimate used; `undefined` means federal only. */
   state?: string;
-  inflation?: JSONAverageInflation | null;
 }
 
 export interface InferGoalConfigInput {
@@ -194,12 +184,5 @@ export const inferGoalConfig = ({
     taxRate,
   });
 
-  return {
-    living_cost,
-    year_over_year_inflation,
-    livingCostSource: inferredLivingCost ? "budgets" : "manual",
-    inflationSource: inflation ? "cpi" : "manual",
-    state,
-    inflation,
-  };
+  return { living_cost, year_over_year_inflation, state };
 };
