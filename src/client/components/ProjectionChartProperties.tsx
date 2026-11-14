@@ -138,13 +138,13 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const numberOfSelectedBudgets = budgets.filter((b) => budget_ids.includes(b.id)).length;
 
   const stateName = goalConfig.state && US_STATE_NAMES[goalConfig.state];
-  const taxResidenceLabel = stateName || "Unknown (federal tax only)";
+  const taxResidenceLabel = stateName || "Unknown (federal only)";
 
   const inflationDataLabel = inflation
     ? `CPI ${inflation.from} – ${inflation.to}`
     : inflation === null
-      ? "Not collected yet (using manual rate)"
-      : "Unavailable (using manual rate)";
+      ? "Not collected yet"
+      : "Unavailable";
 
   const numberOfSelectedAccounts = accounts.filter((a) => {
     return !a.hide && account_ids.includes(a.account_id);

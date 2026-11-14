@@ -119,7 +119,7 @@ describe("ProjectionChartProperties — goal configuration", () => {
   it("says so when the server has no CPI history yet", () => {
     render(buildChart({ auto_goal_config: true }), { inflation: null });
 
-    expect(screen.getByText("Not collected yet (using manual rate)")).toBeTruthy();
+    expect(screen.getByText("Not collected yet")).toBeTruthy();
     expect(input("Year over year inflation").value).toBe("3.80");
     expect(screen.getByText("Select budgets for living cost")).toBeTruthy();
   });
@@ -127,8 +127,8 @@ describe("ProjectionChartProperties — goal configuration", () => {
   it("does not report an unfetched average as missing CPI history", () => {
     render(buildChart({ auto_goal_config: true }), { inflation: undefined });
 
-    expect(screen.getByText("Unavailable (using manual rate)")).toBeTruthy();
-    expect(screen.queryByText("Not collected yet (using manual rate)")).toBeNull();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.queryByText("Not collected yet")).toBeNull();
     expect(input("Year over year inflation").value).toBe("3.80");
   });
 
