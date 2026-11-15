@@ -20,6 +20,7 @@ const realDetectRecurrings = { ...(await import("./detect-recurrings")) };
 const realRefreshSecuritySnapshots = {
   ...(await import("./refresh-security-snapshots")),
 };
+const realRefreshCpiSnapshots = { ...(await import("./refresh-cpi-snapshots")) };
 
 const mockGetAllItems = mock(
   async () => [] as { item_id: string; provider: ItemProvider }[],
@@ -38,6 +39,14 @@ const mockRefreshActiveSecuritySnapshots = mock(async () => ({
   fresh: 0,
   cash: 0,
   empty: 0,
+  errors: 0,
+}));
+const mockRefreshCpiSnapshots = mock(async () => ({
+  requests: 0,
+  upserted: 0,
+  fresh: true,
+  gated: false,
+  deferred: 0,
   errors: 0,
 }));
 const mockLogger = {
@@ -80,6 +89,10 @@ mock.module("./refresh-security-snapshots", () => ({
   ...realRefreshSecuritySnapshots,
   refreshActiveSecuritySnapshots: mockRefreshActiveSecuritySnapshots,
 }));
+mock.module("./refresh-cpi-snapshots", () => ({
+  ...realRefreshCpiSnapshots,
+  refreshCpiSnapshots: mockRefreshCpiSnapshots,
+}));
 
 // Fresh module instance that sees isPlaidConfigured=false at load.
 // The `?unconfigured` query keeps this separate from schedule.test.ts's import.
@@ -96,6 +109,7 @@ afterAll(() => {
   mock.module("./detect-transfers", () => realDetectTransfers);
   mock.module("./detect-recurrings", () => realDetectRecurrings);
   mock.module("./refresh-security-snapshots", () => realRefreshSecuritySnapshots);
+  mock.module("./refresh-cpi-snapshots", () => realRefreshCpiSnapshots);
 });
 
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 50));
@@ -118,6 +132,7 @@ describe("scheduledSync without Plaid configuration", () => {
     expect(mockRunTransferDetection).toHaveBeenCalledTimes(1);
     expect(mockRunRecurringDetection).toHaveBeenCalledTimes(1);
     expect(mockRefreshActiveSecuritySnapshots).toHaveBeenCalledTimes(1);
+    expect(mockRefreshCpiSnapshots).toHaveBeenCalledTimes(1);
     expect(mockLogger.info).toHaveBeenCalledWith("Scheduled sync completed");
   });
 });

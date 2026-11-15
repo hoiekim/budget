@@ -7,6 +7,7 @@ import {
   JSONAverageInflation,
   MAX_FLOAT,
   Optional,
+  TAX_YEAR,
   ViewDate,
 } from "common";
 
@@ -85,14 +86,25 @@ export const getLatestActiveFrom = (entity: BudgetFamily, date: Date): Date | un
 };
 
 /**
+ * What a budget adds to living cost each month at `date`: its active amount
+ * when that is spending. Income budgets (negative or zero amounts) and
+ * unlimited ones add nothing and return `undefined` — the one rule both the
+ * inference and the budget picker use.
+ */
+export const getLivingCostAmount = (budget: BudgetFamily, date: Date): number | undefined => {
+  const monthly = budget.getActiveAmount(date, "month");
+  if (!Number.isFinite(monthly) || monthly <= 0 || Math.abs(monthly) === MAX_FLOAT) return undefined;
+  return monthly;
+};
+
+/**
  * Living cost from the selected budgets: the sum of their monthly amounts at
  * `today`, as of the latest start date among the budget periods (capacities)
  * those amounts come from — the amounts are in that date's dollars. With no
  * dated period at all, the start of the current month stands in.
  *
- * Only spending counts: income budgets (negative amounts) and unlimited ones
- * are skipped. `undefined` when nothing selected contributes, so the caller
- * can fall back to the manual value.
+ * Only budgets `getLivingCostAmount` counts contribute. `undefined` when none
+ * does, so the caller can fall back to the manual value.
  */
 export const inferLivingCost = (
   budgets: BudgetFamily[],
@@ -103,8 +115,8 @@ export const inferLivingCost = (
   let latest: Date | undefined;
 
   for (const budget of budgets) {
-    const monthly = budget.getActiveAmount(today, "month");
-    if (!Number.isFinite(monthly) || monthly <= 0 || Math.abs(monthly) === MAX_FLOAT) continue;
+    const monthly = getLivingCostAmount(budget, today);
+    if (monthly === undefined) continue;
     amount += monthly;
     contributing++;
     const activeFrom = getLatestActiveFrom(budget, today);
@@ -118,21 +130,24 @@ export const inferLivingCost = (
 
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 
+/** The dollars the tax tables are in: the middle of their tax year. */
+const TAX_TABLE_DATE = new Date(TAX_YEAR, 6, 1);
+
 /**
  * The rate the projection grosses a living cost up by: the effective tax rate
  * on the income that leaves the annual living cost after tax, so
  * `amount / (1 - rate)` recovers that income. The amount is first carried from
- * its as-of date to `today` at `yearOverYearInflation`, because the tax tables
- * are in current dollars and the brackets are inflation-indexed — an old
- * budget amount would otherwise land in too low a bracket.
+ * its as-of date into the tax tables' dollars at `yearOverYearInflation`
+ * (forward or back), since the brackets are inflation-indexed: an old amount
+ * would otherwise land in too low a bracket, and once the tables' year is past,
+ * a constant real living cost would climb into higher ones.
  */
 export const inferTaxRate = (
   livingCost: Pick<AmountInTime, "amount" | "amountAsOf">,
   state: string | undefined,
   yearOverYearInflation: number,
-  today: Date = new Date(),
 ): number => {
-  const years = Math.max(0, (today.getTime() - livingCost.amountAsOf.getTime()) / MS_PER_YEAR);
+  const years = (TAX_TABLE_DATE.getTime() - livingCost.amountAsOf.getTime()) / MS_PER_YEAR;
   const growth = Math.pow(yearOverYearInflation > 0 ? yearOverYearInflation : 1, years);
   const gross = grossUpIncome(livingCost.amount * 12 * growth, state);
   return estimateIncomeTax(gross, state).effectiveRate;
@@ -142,6 +157,8 @@ export interface InferredGoalConfig
   extends Pick<ProjectionChartConfiguration, "living_cost" | "year_over_year_inflation"> {
   /** USPS code of the state the tax estimate used; `undefined` means federal only. */
   state?: string;
+  /** The selected budgets that add to the inferred living cost; absent in manual mode. */
+  livingCostBudgetIds?: string[];
 }
 
 export interface InferGoalConfigInput {
@@ -175,16 +192,19 @@ export const inferGoalConfig = ({
     .filter((b): b is BudgetFamily => !!b);
 
   const inferredLivingCost = inferLivingCost(selected, today);
+  const livingCostBudgetIds = selected
+    .filter((b) => getLivingCostAmount(b, today) !== undefined)
+    .map((b) => b.id);
   const year_over_year_inflation =
     inflation?.year_over_year_inflation ?? configuration.year_over_year_inflation;
 
   const base = inferredLivingCost ?? configuration.living_cost;
-  const taxRate = inferTaxRate(base, state, year_over_year_inflation, today);
+  const taxRate = inferTaxRate(base, state, year_over_year_inflation);
   const living_cost = new AmountInTime({
     amount: base.amount,
     amountAsOf: base.amountAsOf,
     taxRate,
   });
 
-  return { living_cost, year_over_year_inflation, state };
+  return { living_cost, year_over_year_inflation, state, livingCostBudgetIds };
 };

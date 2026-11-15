@@ -45,9 +45,13 @@ const makeBudgetQueue = () =>
 
 let budgetQueue = makeBudgetQueue();
 
+/** Set by a "daily threshold" refusal: no request goes out before this time. */
+let pausedUntil = 0;
+
 /** Forget every request counted against the daily budget (tests only). */
 export const resetBlsRequestBudget = () => {
   budgetQueue = makeBudgetQueue();
+  pausedUntil = 0;
 };
 
 export interface CpiObservation {
@@ -84,9 +88,9 @@ const messagesOf = (message: unknown): string =>
 
 /**
  * BLS answers a refused request with HTTP 200 and a status other than
- * `REQUEST_SUCCEEDED`. Running past the daily cap reads "…daily threshold…",
- * which is worth telling apart: the caller should stop for the day rather
- * than count it as one more failure to retry next hour.
+ * `REQUEST_SUCCEEDED`. Running past the daily cap reads "…daily threshold…";
+ * that one pauses this process's BLS requests for a day (`pausedUntil`)
+ * instead of being retried every hour.
  */
 const refusal = (body: BlsResponseBody): BlsResult<never> | undefined => {
   if (body.status === "REQUEST_SUCCEEDED") return undefined;
@@ -136,6 +140,14 @@ export const getCpiSeries = async (
     };
   }
 
+  if (Date.now() < pausedUntil) {
+    return {
+      success: false,
+      error: "budget_exhausted",
+      message: `BLS refused for its daily threshold; paused until ${new Date(pausedUntil).toISOString()}`,
+    };
+  }
+
   const apiKey = getApiKey();
   const url = `${BLS_HOST}/publicAPI/${tier.version}/timeseries/data/`;
   const body: Record<string, unknown> = {
@@ -161,7 +173,10 @@ export const getCpiSeries = async (
     }
     const json = (await response.json()) as BlsResponseBody;
     const refused = refusal(json);
-    if (refused) return refused;
+    if (refused) {
+      if (!refused.success && refused.error === "rate_limited") pausedUntil = Date.now() + ONE_DAY;
+      return refused;
+    }
 
     const observations = parseCpiObservations(json);
     if (!observations.length) {

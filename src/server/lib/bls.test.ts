@@ -121,6 +121,27 @@ describe("getCpiSeries", () => {
     expect(result).toMatchObject({ success: false, error: "rate_limited" });
   });
 
+  test("a daily-threshold refusal pauses further requests instead of retrying them", async () => {
+    respondWith({
+      status: "REQUEST_NOT_PROCESSED",
+      message: ["The daily threshold for total number of requests allocated to the user has been reached."],
+    });
+    await getCpiSeries(2025, 2026);
+    const next = await getCpiSeries(2025, 2026);
+    expect(next).toMatchObject({ success: false, error: "budget_exhausted" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    resetBlsRequestBudget();
+    expect((await getCpiSeries(2025, 2026)).success).toBe(true);
+  });
+
+  test("any other refusal does not pause requests", async () => {
+    respondWith({ status: "REQUEST_FAILED_INVALID_PARAMETERS", message: ["Invalid Series"] });
+    await getCpiSeries(2025, 2026);
+    expect((await getCpiSeries(2025, 2026)).success).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   test("reports any other refusal as api_error with BLS's message", async () => {
     respondWith({ status: "REQUEST_FAILED_INVALID_PARAMETERS", message: ["Invalid Series"] });
     const result = await getCpiSeries(2025, 2026);

@@ -38,7 +38,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { chart_id, name, configuration } = chart;
 
   const { data, calculations } = useAppContext();
-  const { accounts, budgets, inflation } = data;
+  const { accounts, inflation } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
@@ -59,7 +59,6 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     anual_percentage_yield,
     year_over_year_inflation,
     auto_goal_config,
-    budget_ids,
   } = configInput;
 
   const goalConfig = useGoalConfig(configInput);
@@ -135,7 +134,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     });
   };
 
-  const numberOfSelectedBudgets = budgets.filter((b) => budget_ids.includes(b.id)).length;
+  const numberOfLivingCostBudgets = goalConfig.livingCostBudgetIds?.length ?? 0;
 
   const stateName = goalConfig.state && US_STATE_NAMES[goalConfig.state];
   const taxResidenceLabel = stateName || "Unknown (federal only)";
@@ -269,8 +268,8 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
       <Property>
         {auto_goal_config && (
           <ButtonRow onClick={onClickAccounts}>
-            {numberOfSelectedBudgets
-              ? `Living cost from ${numberOfSelectedBudgets} budget${numberOfSelectedBudgets > 1 ? "s" : ""}`
+            {numberOfLivingCostBudgets
+              ? `Living cost from ${numberOfLivingCostBudgets} budget${numberOfLivingCostBudgets > 1 ? "s" : ""}`
               : "Select budgets for living cost"}
           </ButtonRow>
         )}

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { ChartType, US_STATE_NAMES } from "common";
+import { ChartType, numberToCommaString, US_STATE_NAMES, ViewDate } from "common";
 import {
   AmountInTime,
   Budget,
@@ -11,6 +11,7 @@ import {
   ProjectionChart,
   ProjectionChartConfiguration,
   Transaction,
+  inferTaxRate,
 } from "client";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { ProjectionChartProperties } from "./ProjectionChartProperties";
@@ -62,9 +63,13 @@ const buildData = (chart: ProjectionChart, inflation: Data["inflation"]) => {
     "food",
     new Budget({ budget_id: "food", name: "Food", capacities: [new Capacity({ month: 600 })] }),
   );
+  data.budgets.set(
+    "salary",
+    new Budget({ budget_id: "salary", name: "Salary", capacities: [new Capacity({ month: -8000 })] }),
+  );
   for (let i = 0; i < 3; i++) {
     const t = new Transaction({ account_id: "acc", transaction_id: `t-${i}`, date: recentDay() });
-    t.location = { ...t.location, region: "TX", country: "US" };
+    t.location = { ...t.location, region: "CA", country: "US" };
     data.transactions.set(t.transaction_id, t);
   }
   return data;
@@ -107,13 +112,29 @@ describe("ProjectionChartProperties — goal configuration", () => {
     expect(input("Living cost").value).toBe("2,600");
     expect(input("Living cost").disabled).toBe(true);
     expect(input("Tax rate").disabled).toBe(true);
-    expect(input("Tax rate").value).not.toBe("30.00");
+    // Budgets with no dated period are as of the start of this month.
+    const asOf = new ViewDate("month", new Date()).getStartDate();
+    const rate = inferTaxRate({ amount: 2600, amountAsOf: asOf }, "CA", INFLATION.year_over_year_inflation);
+    expect(input("Tax rate").value).toBe(numberToCommaString(rate * 100, 2));
     expect(screen.getByText(/^Tax.Residence$/)).toBeTruthy();
-    expect(screen.getByText(US_STATE_NAMES.TX)).toBeTruthy();
+    expect(screen.getByText(US_STATE_NAMES.CA)).toBeTruthy();
     expect(screen.getByText("CPI 1996-09 – 2026-09")).toBeTruthy();
     expect(screen.getByText("Living cost from 2 budgets")).toBeTruthy();
     // The panel reads the synced value; it never fetches data itself.
     expect(fetchStub.calls.requests).toEqual([]);
+  });
+
+  it("counts only the selected budgets that add to the living cost", () => {
+    render(buildChart({ auto_goal_config: true, budget_ids: ["rent", "salary"] }));
+    expect(screen.getByText("Living cost from 1 budget")).toBeTruthy();
+    expect(input("Living cost").value).toBe("2,000");
+    cleanup();
+
+    // An income budget alone contributes nothing: the manual value stands, and
+    // the row asks for budgets rather than claiming one.
+    render(buildChart({ auto_goal_config: true, budget_ids: ["salary"] }));
+    expect(screen.getByText("Select budgets for living cost")).toBeTruthy();
+    expect(input("Living cost").value).toBe("4,000");
   });
 
   it("says so when the server has no CPI history yet", () => {

@@ -11,7 +11,7 @@ import {
   PATH,
   ProjectionChartConfiguration,
 } from "client";
-import { ChartType } from "common";
+import { ChartType, MAX_FLOAT } from "common";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { ChartAccountsPage } from "./ChartAccountsPage";
 
@@ -175,11 +175,34 @@ describe("ChartAccountsPage — projection living-cost budgets", () => {
       "rent",
       new Budget({ budget_id: "rent", name: "Rent", capacities: [new Capacity({ month: 2000 })] }),
     );
+    data.budgets.set(
+      "salary",
+      new Budget({ budget_id: "salary", name: "Salary", capacities: [new Capacity({ month: -8000 })] }),
+    );
+    data.budgets.set(
+      "fun",
+      new Budget({ budget_id: "fun", name: "Fun", capacities: [new Capacity({ month: MAX_FLOAT })] }),
+    );
     return data;
   };
 
   const storedBudgetIds = (store: { data: Data }) =>
     (store.data.charts.get(CHART_ID)?.configuration as ProjectionChartConfiguration).budget_ids;
+
+  it("offers only budgets that can add to living cost, plus any already selected", () => {
+    const { store, setData } = buildStore(withRentBudget([]));
+    renderPage(store.data, setData);
+    expect(toggleInRow("Rent")).not.toBeNull();
+    expect(screen.queryByText("Salary")).toBeNull();
+    expect(screen.queryByText("Fun")).toBeNull();
+    cleanup();
+
+    // A selected income budget stays listed so it can be turned off.
+    const selected = buildStore(withRentBudget(["salary"]));
+    renderPage(selected.store.data, selected.setData);
+    expect(toggleInRow("Salary")?.checked).toBe(true);
+    expect(screen.queryByText("Fun")).toBeNull();
+  });
 
   it("offers the budgets that make up the inferred living cost", () => {
     const { store, setData } = buildStore(withRentBudget(["rent"]));

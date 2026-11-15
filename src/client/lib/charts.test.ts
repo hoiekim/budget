@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   getLatestActiveFrom,
+  getLivingCostAmount,
   inferGoalConfig,
   inferLivingCost,
   inferSavingConfig,
@@ -8,7 +9,7 @@ import {
 } from "./charts";
 import { AmountInTime, BalanceData, Budget, Capacity } from "client";
 import type { BudgetFamily } from "client/lib/models/BudgetFamily";
-import { estimateIncomeTax, MAX_FLOAT, ViewDate } from "common";
+import { estimateIncomeTax, MAX_FLOAT, TAX_YEAR, ViewDate } from "common";
 
 const makeBalanceData = (arrays: Record<string, number[]>): BalanceData =>
   ({
@@ -144,11 +145,24 @@ describe("inferLivingCost", () => {
   it("is undefined when nothing contributes", () => {
     expect(inferLivingCost([], TODAY)).toBeUndefined();
     expect(inferLivingCost([budget("salary", [monthly(-8000)])], TODAY)).toBeUndefined();
+    // A new budget's default capacity is 0: selected, but nothing to add.
+    expect(inferLivingCost([budget("new", [monthly(0)])], TODAY)).toBeUndefined();
+  });
+});
+
+describe("getLivingCostAmount", () => {
+  it("counts spending and nothing else", () => {
+    expect(getLivingCostAmount(budget("rent", [monthly(2000)]), TODAY)).toBe(2000);
+    expect(getLivingCostAmount(budget("salary", [monthly(-8000)]), TODAY)).toBeUndefined();
+    expect(getLivingCostAmount(budget("new", [monthly(0)]), TODAY)).toBeUndefined();
+    expect(getLivingCostAmount(budget("fun", [monthly(MAX_FLOAT)]), TODAY)).toBeUndefined();
   });
 });
 
 describe("inferTaxRate", () => {
-  const asOfToday = { amount: 5000, amountAsOf: TODAY };
+  /** The tables' own dollars, so no carrying applies. */
+  const TABLE_DATE = new Date(TAX_YEAR, 6, 1);
+  const YEAR_MS = 365.25 * 864e5;
 
   /** What is left after tax of the income the projection grosses `net` up to. */
   const netAfterGrossUp = (net: number, rate: number, state?: string) => {
@@ -164,26 +178,39 @@ describe("inferTaxRate", () => {
       [12000, "CA"],
       [5000, undefined],
     ] as const) {
-      const rate = inferTaxRate({ amount: monthly, amountAsOf: TODAY }, state, 1.03, TODAY);
+      const rate = inferTaxRate({ amount: monthly, amountAsOf: TABLE_DATE }, state, 1.03);
       expect(netAfterGrossUp(monthly * 12, rate, state)).toBeCloseTo(monthly * 12, 1);
     }
   });
 
   it("is higher than the rate on the living cost itself under progressive brackets", () => {
-    const rate = inferTaxRate(asOfToday, "CA", 1.03, TODAY);
+    const rate = inferTaxRate({ amount: 5000, amountAsOf: TABLE_DATE }, "CA", 1.03);
     expect(rate).toBeGreaterThan(estimateIncomeTax(60000, "CA").effectiveRate);
   });
 
   it("is zero for no living cost", () => {
-    expect(inferTaxRate({ amount: 0, amountAsOf: TODAY }, "CA", 1.03, TODAY)).toBe(0);
+    expect(inferTaxRate({ amount: 0, amountAsOf: TABLE_DATE }, "CA", 1.03)).toBe(0);
   });
 
-  it("carries an older amount into current dollars before taxing it", () => {
-    const fourYearsAgo = new Date(2022, 10, 14);
-    const rate = inferTaxRate({ amount: 5000, amountAsOf: fourYearsAgo }, undefined, 1.05, TODAY);
-    const grown = 60000 * Math.pow(1.05, (TODAY.getTime() - fourYearsAgo.getTime()) / (365.25 * 864e5));
-    expect(netAfterGrossUp(grown, rate)).toBeCloseTo(grown, 1);
-    expect(rate).toBeGreaterThan(inferTaxRate(asOfToday, undefined, 1.05, TODAY));
+  it("gives a constant real living cost the same rate in every year, not just the tables' year", () => {
+    const yoy = 1.025;
+    const base = inferTaxRate({ amount: 5000, amountAsOf: TABLE_DATE }, "CA", yoy);
+    for (const years of [-4, 1, 5, 10]) {
+      const amountAsOf = new Date(TAX_YEAR + years, 6, 1);
+      const amount = 5000 * Math.pow(yoy, (amountAsOf.getTime() - TABLE_DATE.getTime()) / YEAR_MS);
+      expect(inferTaxRate({ amount, amountAsOf }, "CA", yoy)).toBeCloseTo(base, 10);
+    }
+  });
+
+  it("carries an amount into the tables' dollars, forward or back, before taxing it", () => {
+    const older = new Date(TAX_YEAR - 4, 6, 1);
+    const later = new Date(TAX_YEAR + 4, 6, 1);
+    const atTables = inferTaxRate({ amount: 5000, amountAsOf: TABLE_DATE }, undefined, 1.05);
+    const fromOlder = inferTaxRate({ amount: 5000, amountAsOf: older }, undefined, 1.05);
+    const grown = 60000 * Math.pow(1.05, (TABLE_DATE.getTime() - older.getTime()) / YEAR_MS);
+    expect(netAfterGrossUp(grown, fromOlder)).toBeCloseTo(grown, 1);
+    expect(fromOlder).toBeGreaterThan(atTables);
+    expect(inferTaxRate({ amount: 5000, amountAsOf: later }, undefined, 1.05)).toBeLessThan(atTables);
   });
 });
 
@@ -201,6 +228,7 @@ describe("inferGoalConfig", () => {
   const budgets = new Map<string, BudgetFamily>([
     ["rent", budget("rent", [monthly(2000, "2025-08-01")]) as unknown as BudgetFamily],
     ["food", budget("food", [monthly(600)]) as unknown as BudgetFamily],
+    ["salary", budget("salary", [monthly(-8000)]) as unknown as BudgetFamily],
   ]);
   const inflation = {
     year_over_year_inflation: 1.025,
@@ -211,20 +239,24 @@ describe("inferGoalConfig", () => {
 
   it("infers every field when budgets, CPI, and a state are available", () => {
     const result = inferGoalConfig({
-      configuration,
+      configuration: { ...configuration, budget_ids: [...configuration.budget_ids, "salary"] },
       getBudget: (id) => budgets.get(id),
       inflation,
-      state: "TX",
+      state: "CA",
       today: TODAY,
     });
     expect(result.living_cost.amount).toBe(2600);
     expect(result.living_cost.amountAsOf.getTime()).toBe(new Date(2025, 7, 1).getTime());
     expect(result.year_over_year_inflation).toBe(1.025);
-    expect(result.living_cost.taxRate).toBeCloseTo(
-      inferTaxRate(result.living_cost, "TX", 1.025, TODAY),
-      12,
+    expect(result.living_cost.taxRate).toBeCloseTo(0.0653504, 6);
+    // The state reaches the rate: California's share is on top of federal.
+    expect(result.living_cost.taxRate!).toBeGreaterThan(
+      inferTaxRate(result.living_cost, undefined, 1.025),
     );
-    expect(result.state).toBe("TX");
+    expect(result.state).toBe("CA");
+    // Only budgets that add to the living cost are reported: not the income
+    // budget, and not the id of a deleted one.
+    expect(result.livingCostBudgetIds).toEqual(["rent", "food"]);
   });
 
   it("keeps the manual living cost and inflation when there is nothing to infer from", () => {
@@ -240,9 +272,10 @@ describe("inferGoalConfig", () => {
     expect(result.year_over_year_inflation).toBe(1.038);
     // The tax rate is still estimated (federal only) rather than the stored 30%.
     expect(result.living_cost.taxRate).toBeCloseTo(
-      inferTaxRate(manualLivingCost, undefined, 1.038, TODAY),
+      inferTaxRate(manualLivingCost, undefined, 1.038),
       12,
     );
+    expect(result.livingCostBudgetIds).toEqual([]);
     expect(result.living_cost.taxRate).not.toBe(0.3);
   });
 

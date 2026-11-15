@@ -235,6 +235,11 @@ describe("refreshCpiSnapshots", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(result.requests).toBe(1);
     expect(result.deferred).toBe(4);
+
+    // The next hourly run sends nothing: the refusal paused BLS requests.
+    const nextHour = await refreshCpiSnapshots(new Date(NOW.getTime() + HOUR));
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(nextHour).toMatchObject({ requests: 0, deferred: 4 });
   });
 
   test("stops at the first API error and defers the rest of the plan", async () => {
