@@ -6,3 +6,4 @@ export * from "./RejectedCategory";
 export * from "./Snapshot";
 export * from "./Transaction";
 export * from "./miscellaneous";
+export * from "./Inflation";

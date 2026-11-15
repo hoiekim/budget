@@ -1,7 +1,17 @@
 // Run with: bun test --preload ./scripts/test-preload.ts index.test.tsx
 import { afterEach, describe, expect, it } from "bun:test";
 import { cleanup } from "@testing-library/react";
-import { Account, AmountInTime, Calculations, Chart, Data, ProjectionChart, ProjectionChartConfiguration } from "client";
+import {
+  Account,
+  AmountInTime,
+  Budget,
+  Calculations,
+  Capacity,
+  Chart,
+  Data,
+  ProjectionChart,
+  ProjectionChartConfiguration,
+} from "client";
 import { ChartType } from "common";
 import { buildContext, renderWithContext, resetDom } from "test-render";
 import { ProjectionChartRow } from ".";
@@ -106,5 +116,42 @@ describe("ProjectionChartRow — empty selection", () => {
 
     expect(container.querySelector(".ProjectionChartRow")).not.toBeNull();
     expect(container.querySelector(".ProjectionChartRow table")).toBeNull();
+  });
+});
+
+describe("ProjectionChartRow — auto goal configuration", () => {
+  const scenarioLabels = (container: HTMLElement) =>
+    [...container.querySelectorAll("td.scenario span.scenarioName")].map((el) => el.textContent);
+
+  it("projects against the inferred goal instead of the stored manual one", () => {
+    const calculations = new Calculations();
+    calculations.balanceData.set(ACC_ID, new Date(), 100000);
+    const data = buildData({});
+    data.budgets.set(
+      "rent",
+      new Budget({ budget_id: "rent", name: "Rent", capacities: [new Capacity({ month: 2000 })] }),
+    );
+    data.inflation = {
+      year_over_year_inflation: 1.025,
+      from: "1996-09",
+      to: "2026-09",
+      series_id: "CUUR0000SA0",
+    };
+    const configuration = {
+      initial_saving: new AmountInTime({ amount: 100000, amountAsOf: new Date() }),
+      // A stored goal no saving can reach: only the "Now" row renders against it.
+      living_cost: new AmountInTime({ amount: 1e12, amountAsOf: new Date() }),
+      budget_ids: ["rent"],
+    };
+
+    const manual = renderRow(data, [ACC_ID], { calculations, configuration });
+    expect(scenarioLabels(manual)).toEqual(["Now"]);
+    cleanup();
+
+    const auto = renderRow(data, [ACC_ID], {
+      calculations,
+      configuration: { ...configuration, auto_goal_config: true },
+    });
+    expect(scenarioLabels(auto)).toEqual(["Now", "Current\u00a0trajectory", "Plan"]);
   });
 });

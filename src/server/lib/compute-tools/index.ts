@@ -7,3 +7,4 @@ export * from "./detect-recurrings";
 export * from "./cash-holding";
 export * from "./backfill-snapshots";
 export * from "./refresh-security-snapshots";
+export * from "./refresh-cpi-snapshots";

@@ -3,13 +3,15 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import {
   Account,
+  Budget,
+  Capacity,
   Chart,
   ContextType,
   Data,
   PATH,
   ProjectionChartConfiguration,
 } from "client";
-import { ChartType } from "common";
+import { ChartType, MAX_FLOAT } from "common";
 import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
 import { ChartAccountsPage } from "./ChartAccountsPage";
 
@@ -152,5 +154,84 @@ describe("ChartAccountsPage — stale account ids", () => {
     });
 
     expect(storedAccountIds(store)).toEqual([HIDDEN_ID, DELETED_ID]);
+  });
+});
+
+describe("ChartAccountsPage — projection living-cost budgets", () => {
+  const withRentBudget = (budget_ids: string[]) => {
+    const data = buildData();
+    const chart = data.charts.get(CHART_ID)!;
+    data.charts.set(
+      CHART_ID,
+      new Chart({
+        ...chart,
+        configuration: new ProjectionChartConfiguration({
+          ...(chart.configuration as ProjectionChartConfiguration),
+          budget_ids,
+        }),
+      }),
+    );
+    data.budgets.set(
+      "rent",
+      new Budget({ budget_id: "rent", name: "Rent", capacities: [new Capacity({ month: 2000 })] }),
+    );
+    data.budgets.set(
+      "salary",
+      new Budget({ budget_id: "salary", name: "Salary", capacities: [new Capacity({ month: -8000 })] }),
+    );
+    data.budgets.set(
+      "fun",
+      new Budget({ budget_id: "fun", name: "Fun", capacities: [new Capacity({ month: MAX_FLOAT })] }),
+    );
+    return data;
+  };
+
+  const storedBudgetIds = (store: { data: Data }) =>
+    (store.data.charts.get(CHART_ID)?.configuration as ProjectionChartConfiguration).budget_ids;
+
+  it("offers only budgets that can add to living cost, plus any already selected", () => {
+    const { store, setData } = buildStore(withRentBudget([]));
+    renderPage(store.data, setData);
+    expect(toggleInRow("Rent")).not.toBeNull();
+    expect(screen.queryByText("Salary")).toBeNull();
+    expect(screen.queryByText("Fun")).toBeNull();
+    cleanup();
+
+    // A selected income budget stays listed so it can be turned off.
+    const selected = buildStore(withRentBudget(["salary"]));
+    renderPage(selected.store.data, selected.setData);
+    expect(toggleInRow("Salary")?.checked).toBe(true);
+    expect(screen.queryByText("Fun")).toBeNull();
+  });
+
+  it("offers the budgets that make up the inferred living cost", () => {
+    const { store, setData } = buildStore(withRentBudget(["rent"]));
+    renderPage(store.data, setData);
+
+    expect(screen.getByText("Select budgets for living cost")).toBeTruthy();
+    expect(toggleInRow("Rent")?.checked).toBe(true);
+  });
+
+  it("saves a toggled budget into the projection configuration", async () => {
+    const { store, setData } = buildStore(withRentBudget([]));
+    renderPage(store.data, setData);
+
+    await act(async () => {
+      fireEvent.click(toggleInRow("Rent"));
+    });
+
+    expect(storedBudgetIds(store)).toEqual(["rent"]);
+    expect(fetchStub?.calls.requests.map((r) => r.url)).toEqual(["/api/chart"]);
+  });
+
+  it("keeps the account selection when a budget is toggled", async () => {
+    const { store, setData } = buildStore(withRentBudget([]));
+    renderPage(store.data, setData);
+
+    await act(async () => {
+      fireEvent.click(toggleInRow("Rent"));
+    });
+
+    expect(storedAccountIds(store)).toEqual([VISIBLE_ID, HIDDEN_ID, DELETED_ID]);
   });
 });

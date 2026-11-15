@@ -1,4 +1,4 @@
-import { assign, ValueOf, environment } from "common";
+import { assign, ValueOf, environment, JSONAverageInflation } from "common";
 import { StoreName } from "client/lib/indexed-db/accessor";
 import { Account } from "./Account";
 import { Holding, Institution, Security, Status } from "./miscellaneous";
@@ -320,6 +320,12 @@ export class Data {
    *  Populated by `useSync`'s `fetchRecurrings()` on cold/warm
    *  load, mutated in-place via `useRecurrings()` action methods. */
   recurrings = new RecurringDictionary();
+
+  /** Average CPI inflation from `GET /api/inflation`, fetched in Stage 1 of
+   *  every sync and kept in memory only. `undefined` until a sync has fetched
+   *  it (or while every fetch has failed); `null` when the server has no CPI
+   *  history yet. */
+  inflation: JSONAverageInflation | null | undefined = undefined;
 
   constructor(init?: Partial<Data>) {
     assign(this, init);
