@@ -7,7 +7,15 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ItemProvider, numberToCommaString, ViewDate, currencyCodeToSymbol } from "common";
+import {
+  ItemProvider,
+  numberToCommaString,
+  ViewDate,
+  currencyCodeToSymbol,
+  dateFromSnapshotId,
+  dateInputValue,
+  getDateString,
+} from "common";
 import {
   call,
   PATH,
@@ -36,14 +44,6 @@ import { HoldingSnapshotPostResponse, ValidateTickerResponse } from "server";
 
 import "./index.css";
 
-const toDateInputValue = (d: Date) => d.toISOString().split("T")[0];
-
-const toIsoDateInput = (raw: string | null | undefined): string => {
-  if (!raw) return "";
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? raw.slice(0, 10) : toDateInputValue(date);
-};
-
 interface NewHoldingForm {
   ticker: string;
   quantity: string;
@@ -51,6 +51,17 @@ interface NewHoldingForm {
 }
 
 const EMPTY_FORM: NewHoldingForm = { ticker: "", quantity: "", costBasis: "" };
+
+/**
+ * The day a holding snapshot occupies, from its id — not the stored
+ * timestamp. The id (`holding-<account>-<security>-<YYYYMMDD>`) is the
+ * snapshot's identity and both writers derive it the same way; the stored
+ * instant is a midnight-UTC carrier of the picked bare date, so rendering
+ * it reads a day early west of UTC. Falls back to the timestamp rendering
+ * for ids that are not the expected shape.
+ */
+const snapshotDay = (snap: HoldingSnapshot): string =>
+  dateFromSnapshotId(snap.snapshot.snapshot_id) ?? dateInputValue(snap.snapshot.date);
 
 interface SecurityInfo {
   security_id: string | null;
@@ -235,7 +246,7 @@ export const HoldingProperties = () => {
           next[id] = {
             quantity: snap.holding.quantity != null ? String(snap.holding.quantity) : "",
             costBasis: snap.holding.cost_basis != null ? String(snap.holding.cost_basis) : "",
-            date: toIsoDateInput(snap.snapshot.date),
+            date: snapshotDay(snap),
             error: "",
           };
         }
@@ -246,7 +257,7 @@ export const HoldingProperties = () => {
 
   const [form, setForm] = useState<NewHoldingForm>(EMPTY_FORM);
   const [snapshotDateInput, setSnapshotDateInput] = useState(
-    toDateInputValue(viewDate.getEndDate()),
+    getDateString(viewDate.getEndDate()),
   );
   const [tickerStatus, setTickerStatus] = useState<"idle" | "validating" | "valid" | "invalid">(
     "idle",
@@ -255,7 +266,7 @@ export const HoldingProperties = () => {
   const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
-    if (isNew) setSnapshotDateInput(toDateInputValue(viewDate.getEndDate()));
+    if (isNew) setSnapshotDateInput(getDateString(viewDate.getEndDate()));
   }, [isNew, viewDate]);
 
   const onChangeField =
@@ -332,7 +343,7 @@ export const HoldingProperties = () => {
       investmentTransactions: data.investmentTransactions,
       securitySnapshots: data.securitySnapshots,
     },
-    viewEndDate.toISOString().slice(0, 10),
+    getDateString(viewEndDate),
   );
   // Second computation at TODAY — the button's presence tracks the security's
   // LATEST unreconciled surplus, not just the current view's window, so the
@@ -593,7 +604,7 @@ export const HoldingProperties = () => {
 
   const onBlurDate = (snap: HoldingSnapshot, raw: string) => async () => {
     if (!raw) return;
-    if (raw === toIsoDateInput(snap.snapshot.date)) return;
+    if (raw === snapshotDay(snap)) return;
     await updateSnapshot(snap, { snapshot_date: raw });
   };
 
