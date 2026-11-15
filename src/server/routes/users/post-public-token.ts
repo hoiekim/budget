@@ -81,6 +81,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
 
       const item = await exchangePlaidToken(user, public_token, institution_id);
       await upsertItems(user, [item]);
+      plaid.forgetUnresolvableInstitution(institution_id);
 
       await Promise.all([syncPlaidAccounts(item.item_id), syncPlaidTransactions(item.item_id)]);
 
