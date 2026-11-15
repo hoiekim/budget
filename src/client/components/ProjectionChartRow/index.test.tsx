@@ -11,6 +11,7 @@ import {
   Data,
   ProjectionChart,
   ProjectionChartConfiguration,
+  ScreenType,
 } from "client";
 import { ChartType } from "common";
 import { buildContext, renderWithContext, resetDom } from "test-render";
@@ -51,6 +52,7 @@ const renderRow = (
   options?: {
     calculations?: Calculations;
     configuration?: Partial<ProjectionChartConfiguration>;
+    screenType?: ScreenType;
   },
 ) => {
   const { container } = renderWithContext(
@@ -58,6 +60,7 @@ const renderRow = (
     buildContext({
       data,
       ...(options?.calculations ? { calculations: options.calculations } : {}),
+      ...(options?.screenType !== undefined ? { screenType: options.screenType } : {}),
     }),
   );
   return container;
@@ -82,9 +85,80 @@ describe("ProjectionChartRow — scenario labels", () => {
     const labels = [...table!.querySelectorAll("td.scenario span.scenarioName")].map(
       (el) => el.textContent,
     );
-    expect(labels).toEqual(["Now", "Current\u00a0trajectory", "Plan"]);
+    expect(labels).toEqual(["Now", "Trajectory", "Plan"]);
     // the swatch stays as a visual aid beside the text
     expect(table!.querySelectorAll("td.scenario div.label").length).toBe(3);
+  });
+});
+
+describe("ProjectionChartRow — narrow screens and narrow cells", () => {
+  const renderTable = (screenType: ScreenType) => {
+    const calculations = new Calculations();
+    calculations.balanceData.set(ACC_ID, new Date(), 1_100_100);
+    const container = renderRow(buildData({}), [ACC_ID], {
+      calculations,
+      screenType,
+      configuration: {
+        initial_saving: new AmountInTime({ amount: 1_100_100, amountAsOf: new Date() }),
+      },
+    });
+    return container.querySelector(".ProjectionChartRow table")!;
+  };
+  const hiddenNames = (table: Element) =>
+    [...table.querySelectorAll(".scenarioName, th.scenario span")].map((el) =>
+      el.classList.contains("visuallyHidden"),
+    );
+  const nowRowCells = (table: Element) =>
+    [...table.querySelectorAll("tbody tr:first-child td")].map((td) => td.textContent);
+
+  it("hides the scenario names on a narrow screen but keeps the color chips", () => {
+    const table = renderTable(ScreenType.Narrow);
+    // header + the three row names, all still in the DOM for screen readers
+    expect(hiddenNames(table)).toEqual([true, true, true, true]);
+    expect(table.querySelectorAll("td.scenario div.label").length).toBe(3);
+  });
+
+  it("shows the scenario names on wider screens", () => {
+    for (const screenType of [ScreenType.Medium, ScreenType.Wide]) {
+      const table = renderTable(screenType);
+      expect(hiddenNames(table)).toEqual([false, false, false, false]);
+      cleanup();
+    }
+  });
+
+  it("shows full amounts while the table fits", () => {
+    const [, , saved] = nowRowCells(renderTable(ScreenType.Narrow));
+    expect(saved).toBe("$ 1,100,100");
+  });
+
+  it("switches every amount to the compact form when the table is wider than its container", () => {
+    const tableWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollWidth");
+    const containerWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    try {
+      Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
+        configurable: true,
+        get() {
+          return this.tagName === "TABLE" ? 400 : 0;
+        },
+      });
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+        configurable: true,
+        get: () => 320,
+      });
+      const [, date, saved, payout] = nowRowCells(renderTable(ScreenType.Narrow));
+      expect(saved).toBe("$1.1M");
+      expect(payout).toMatch(/^\$[\d.]+K$/);
+      // dates have no compact form
+      expect(date).toMatch(/^\d{4}-\d{2}$/);
+    } finally {
+      // Put back what was there; where the getter was inherited, drop the override.
+      const restore = (name: string, own: PropertyDescriptor | undefined) => {
+        if (own) Object.defineProperty(HTMLElement.prototype, name, own);
+        else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
+      };
+      restore("scrollWidth", tableWidth);
+      restore("clientWidth", containerWidth);
+    }
   });
 });
 
@@ -152,6 +226,6 @@ describe("ProjectionChartRow — auto goal configuration", () => {
       calculations,
       configuration: { ...configuration, auto_goal_config: true },
     });
-    expect(scenarioLabels(auto)).toEqual(["Now", "Current\u00a0trajectory", "Plan"]);
+    expect(scenarioLabels(auto)).toEqual(["Now", "Trajectory", "Plan"]);
   });
 });

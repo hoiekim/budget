@@ -55,20 +55,15 @@ describe("planCpiFetch", () => {
     const plan = planCpiFetch([], NOW, 10);
     expect(plan.requests).toEqual([
       [FIRST_YEAR, FIRST_YEAR + 9],
-      [FIRST_YEAR + 10, FIRST_YEAR + 19],
-      [FIRST_YEAR + 20, FIRST_YEAR + 29],
-      [FIRST_YEAR + 30, 2026],
+      [FIRST_YEAR + 10, 2026],
     ]);
     expect(plan.requests.length).toBeLessThanOrEqual(getBlsTier().dailyBudget);
     expect(plan.fresh).toBe(false);
   });
 
-  test("with a registration key the same backfill takes two requests", () => {
+  test("with a registration key the same backfill takes one request", () => {
     const plan = planCpiFetch([], NOW, 20);
-    expect(plan.requests).toEqual([
-      [FIRST_YEAR, FIRST_YEAR + 19],
-      [FIRST_YEAR + 20, 2026],
-    ]);
+    expect(plan.requests).toEqual([[FIRST_YEAR, 2026]]);
   });
 
   test("a current series makes no request at all", () => {
@@ -98,10 +93,10 @@ describe("planCpiFetch", () => {
   test("a partly finished backfill requests only the missing years", () => {
     const rows = fullHistory(2026, 10, iso(HOUR)).filter((r) => {
       const y = Number(r.date.slice(0, 4));
-      return y < 2001 || y > 2004;
+      return y < 2013 || y > 2016;
     });
     const plan = planCpiFetch(rows, NOW, 10);
-    expect(plan.requests).toEqual([[2001, 2004]]);
+    expect(plan.requests).toEqual([[2013, 2016]]);
     expect(plan.fresh).toBe(true);
   });
 
@@ -182,12 +177,13 @@ describe("refreshCpiSnapshots", () => {
   test("backfills an empty table, storing no month later than the current one", async () => {
     const result = await refreshCpiSnapshots(NOW);
 
-    expect(mockFetch).toHaveBeenCalledTimes(4);
-    expect(result.requests).toBe(4);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(result.requests).toBe(2);
     expect(result.errors).toBe(0);
     expect(result.deferred).toBe(0);
-    // 31 complete years + January..November of 2026 (December is in the future).
-    expect(result.upserted).toBe(31 * 12 + 11);
+    // Complete years from FIRST_YEAR through 2025 + January..November of 2026
+    // (December is in the future).
+    expect(result.upserted).toBe((2026 - FIRST_YEAR) * 12 + 11);
 
     const allValues = upserts.flatMap((u) => u.values);
     expect(allValues).toContain("CUUR0000SA0-2026-11");
@@ -218,7 +214,7 @@ describe("refreshCpiSnapshots", () => {
     const result = await refreshCpiSnapshots(NOW);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(result.requests).toBe(1);
-    expect(result.deferred).toBe(3);
+    expect(result.deferred).toBe(1);
   });
 
   test("stops for the day when BLS says its own threshold is reached", async () => {
@@ -234,33 +230,33 @@ describe("refreshCpiSnapshots", () => {
     const result = await refreshCpiSnapshots(NOW);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(result.requests).toBe(1);
-    expect(result.deferred).toBe(4);
+    expect(result.deferred).toBe(2);
 
     // A later run sends nothing: the refusal paused BLS requests (bls.test.ts pins the 24 hours).
     const nextHour = await refreshCpiSnapshots(new Date(NOW.getTime() + HOUR));
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(nextHour).toMatchObject({ requests: 0, deferred: 4 });
+    expect(nextHour).toMatchObject({ requests: 0, deferred: 2 });
   });
 
   test("stops at the first API error and defers the rest of the plan", async () => {
     mockFetch.mockImplementationOnce(async () => new Response("{}", { status: 502 }));
     const result = await refreshCpiSnapshots(NOW);
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({ requests: 1, errors: 1, deferred: 3, upserted: 0 });
+    expect(result).toMatchObject({ requests: 1, errors: 1, deferred: 1, upserted: 0 });
   });
 
   test("moves past a span BLS has no data for", async () => {
     mockFetch.mockImplementationOnce(async () => new Response(JSON.stringify(blsBody([]))));
     const result = await refreshCpiSnapshots(NOW);
-    expect(mockFetch).toHaveBeenCalledTimes(4);
-    expect(result).toMatchObject({ requests: 4, errors: 1, deferred: 0 });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ requests: 2, errors: 1, deferred: 0 });
     expect(result.upserted).toBeGreaterThan(0);
   });
 
   test("counts a failed write as an error without throwing", async () => {
     failUpsert = true;
     const result = await refreshCpiSnapshots(NOW);
-    expect(result.errors).toBe(4);
+    expect(result.errors).toBe(2);
     expect(result.upserted).toBe(0);
   });
 });

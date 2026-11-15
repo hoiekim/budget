@@ -4,10 +4,9 @@ import { CPI_SERIES_ID } from "./bls";
 
 /**
  * How far back the average reaches, and so how much history the scheduled
- * backfill keeps. Thirty years spans a typical retirement horizon and is long
- * enough that one hot or cold decade does not dominate the rate.
+ * backfill keeps.
  */
-export const INFLATION_AVERAGE_YEARS = 30;
+export const INFLATION_AVERAGE_YEARS = 15;
 
 /** Less than a year of history cannot produce a meaningful annual rate. */
 const MIN_SPAN_MONTHS = 12;

@@ -26,3 +26,17 @@ div.ProjectionChartRow > table td.scenario div.label {
 div.ProjectionChartRow > table td.scenario span.scenarioName {
   vertical-align: middle;
 }
+
+div.ProjectionChartRow > table th,
+div.ProjectionChartRow > table td {
+  white-space: nowrap;
+}
+
+/* Hidden on narrow screens but still read by screen readers. */
+div.ProjectionChartRow > table .visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

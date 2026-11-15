@@ -7,7 +7,9 @@ import {
   JSONAverageInflation,
   MAX_FLOAT,
   Optional,
+  pluralize,
   TAX_YEAR,
+  US_STATE_NAMES,
   ViewDate,
 } from "common";
 
@@ -207,4 +209,32 @@ export const inferGoalConfig = ({
   });
 
   return { living_cost, year_over_year_inflation, state, livingCostBudgetIds };
+};
+
+/**
+ * How each auto goal value was inferred, for the goal configuration's info
+ * icon: the sources it used (budgets, residence state, CPI range) or why it
+ * fell back to the manual value.
+ */
+export const describeGoalInference = (
+  goal: Pick<InferredGoalConfig, "state" | "livingCostBudgetIds">,
+  inflation: JSONAverageInflation | null | undefined,
+): string => {
+  const budgets = goal.livingCostBudgetIds?.length ?? 0;
+  const livingCost = budgets
+    ? `Living cost: the monthly amounts of ${pluralize(budgets, "selected spending budget")}, as of the latest date one of their budget periods started.`
+    : "Living cost: your manual amount, because no selected budget is a spending budget. Select budgets under Selected Accounts & Budgets.";
+
+  const stateName = goal.state && US_STATE_NAMES[goal.state];
+  const taxRate = stateName
+    ? `Tax rate: federal and ${stateName} income tax for a single filer with the standard deduction, on the income that leaves the living cost after tax. ${stateName} is the state your transactions from the past year show most often.`
+    : "Tax rate: federal income tax only, for a single filer with the standard deduction, on the income that leaves the living cost after tax. None of your transactions from the past year shows a U.S. state.";
+
+  const inflationRate = inflation
+    ? `Inflation: the average yearly change in the Consumer Price Index (CPI-U, Bureau of Labor Statistics) from ${inflation.from} to ${inflation.to}.`
+    : inflation === null
+      ? "Inflation: your manual rate, because the Consumer Price Index history hasn't been collected yet."
+      : "Inflation: your manual rate, because the Consumer Price Index average isn't available right now.";
+
+  return [livingCost, taxRate, inflationRate].join("\n\n");
 };

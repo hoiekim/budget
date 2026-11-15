@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  describeGoalInference,
   getLatestActiveFrom,
   getLivingCostAmount,
   inferGoalConfig,
@@ -288,5 +289,48 @@ describe("inferGoalConfig", () => {
       today: TODAY,
     });
     expect(manualLivingCost.taxRate).toBe(0.3);
+  });
+});
+
+describe("describeGoalInference", () => {
+  const inflation = {
+    year_over_year_inflation: 1.025,
+    from: "2011-09",
+    to: "2026-09",
+    series_id: "CUUR0000SA0",
+  };
+  const paragraphs = (text: string) => text.split("\n\n");
+
+  it("names each source: the counted budgets, the residence state, and the CPI range", () => {
+    const [livingCost, taxRate, inflationRate] = paragraphs(
+      describeGoalInference({ state: "NY", livingCostBudgetIds: ["rent", "food"] }, inflation),
+    );
+    expect(livingCost).toContain("2 selected spending budgets,");
+    expect(taxRate).toContain("federal and New York income tax");
+    expect(taxRate).toContain("New York is the state your transactions from the past year show most often");
+    expect(inflationRate).toContain("from 2011-09 to 2026-09");
+  });
+
+  it("uses the singular for one budget", () => {
+    const [livingCost] = paragraphs(describeGoalInference({ livingCostBudgetIds: ["rent"] }, inflation));
+    expect(livingCost).toContain("1 selected spending budget,");
+  });
+
+  it("says when each value fell back or narrowed", () => {
+    const [livingCost, taxRate] = paragraphs(
+      describeGoalInference({ state: undefined, livingCostBudgetIds: [] }, inflation),
+    );
+    expect(livingCost).toContain("your manual amount");
+    expect(taxRate).toContain("federal income tax only");
+    expect(taxRate).not.toContain(" and ");
+
+    // A code outside the state tables reads as no state, not as "undefined".
+    const [, unknownState] = paragraphs(describeGoalInference({ state: "ZZ" }, inflation));
+    expect(unknownState).toContain("federal income tax only");
+  });
+
+  it("tells a CPI history not collected yet apart from an average that didn't arrive", () => {
+    expect(paragraphs(describeGoalInference({}, null))[2]).toContain("hasn't been collected yet");
+    expect(paragraphs(describeGoalInference({}, undefined))[2]).toContain("isn't available right now");
   });
 });
