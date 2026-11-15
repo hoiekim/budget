@@ -10,12 +10,16 @@ import {
 } from "plaid";
 import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
 import { JSONItem, ItemStatus, getDateString, LocalDate } from "common";
-import { getClient, ignorable_error_codes } from "./util";
+import { PlaidClientDeps, getClient, ignorable_error_codes, plaidQueue } from "./util";
 
 export interface PlaidTransaction extends Transaction {}
 
-export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
-  const client = getClient(user);
+export const getTransactions = async (
+  user: MaskedUser,
+  items: JSONItem[],
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+) => {
+  const client = getClientFn(user);
 
   type PlaidTransactionsResponse = {
     items: JSONItem[];
@@ -51,7 +55,7 @@ export const getTransactions = async (user: MaskedUser, items: JSONItem[]) => {
           access_token: access_token,
           cursor: cursor,
         };
-        const response = await client.transactionsSync(request);
+        const response = await plaidQueue.add(() => client.transactionsSync(request));
         const { added, removed, modified, has_more, next_cursor } = response.data;
 
         thisItemAdded.push(added);
@@ -109,8 +113,7 @@ export interface PlaidInvestmentTransaction extends InvestmentTransaction {}
  * upsertItems broke items.test.ts, mocked plaid util broke
  * get-institutions tests) whenever the suite ran together.
  */
-export interface InvestmentTransactionDeps {
-  getClient?: typeof getClient;
+export interface InvestmentTransactionDeps extends PlaidClientDeps {
   upsertItems?: typeof upsertItems;
   updateItemStatus?: typeof updateItemStatus;
 }
@@ -190,7 +193,7 @@ export const getInvestmentTransactions = async (
       if (total === undefined) total = 0;
 
       try {
-        const response = await client.investmentsTransactionsGet(request);
+        const response = await plaidQueue.add(() => client.investmentsTransactionsGet(request));
         const investmentTransactions = response.data.investment_transactions;
         total = response.data.total_investment_transactions;
         allInvestmentTransactions.push(investmentTransactions);

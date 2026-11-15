@@ -1,12 +1,16 @@
 import { CountryCode, LinkTokenCreateRequest, Products } from "plaid";
 import { MaskedUser } from "server";
 import { JSONItem } from "common";
-import { getClient } from "./util";
+import { PlaidClientDeps, getClient, plaidQueue } from "./util";
 
 const { HOST_NAME } = process.env;
 
-export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
-  const client = getClient(user);
+export const getLinkToken = async (
+  user: MaskedUser,
+  access_token?: string,
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+) => {
+  const client = getClientFn(user);
 
   const request: LinkTokenCreateRequest = {
     user: { client_user_id: user.user_id },
@@ -23,7 +27,7 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
     request.update = { account_selection_enabled: true };
   } else request.products = [Products.Transactions];
 
-  const response = await client.linkTokenCreate(request);
+  const response = await plaidQueue.add(() => client.linkTokenCreate(request));
 
   return response.data;
 };
@@ -36,9 +40,7 @@ export const getLinkToken = async (user: MaskedUser, access_token?: string) => {
  * is registered keeps the mock — mocking the plaid util in this file leaked
  * into sibling test files (see transactions.test.ts).
  */
-export interface ExchangePublicTokenDeps {
-  getClient?: typeof getClient;
-}
+export type ExchangePublicTokenDeps = PlaidClientDeps;
 
 export const exchangePublicToken = async (
   user: MaskedUser,
@@ -48,23 +50,30 @@ export const exchangePublicToken = async (
   const { getClient: getClientFn = getClient } = deps;
   const client = getClientFn(user);
 
-  const response = await client.itemPublicTokenExchange({ public_token });
+  const response = await plaidQueue.add(() => client.itemPublicTokenExchange({ public_token }));
 
   return response.data;
 };
 
-export const getItem = async (access_token: string) => {
-  const client = getClient();
+export const getItem = async (
+  access_token: string,
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+) => {
+  const client = getClientFn();
 
-  const response = await client.itemGet({ access_token });
+  const response = await plaidQueue.add(() => client.itemGet({ access_token }));
 
   return response.data.item;
 };
 
-export const deleteItem = async (user: MaskedUser, { access_token }: JSONItem) => {
-  const client = getClient(user);
+export const deleteItem = async (
+  user: MaskedUser,
+  { access_token }: JSONItem,
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+) => {
+  const client = getClientFn(user);
 
-  const response = await client.itemRemove({ access_token });
+  const response = await plaidQueue.add(() => client.itemRemove({ access_token }));
 
   return response.data;
 };
