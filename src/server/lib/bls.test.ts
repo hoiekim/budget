@@ -4,7 +4,7 @@
 const originalApiKey = process.env.BLS_API_KEY;
 delete process.env.BLS_API_KEY;
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterAll, setSystemTime } from "bun:test";
 import { restoreLeaves } from "test-helpers";
 
 const okBody = (data: Array<{ year: string; period: string; value: string }>) => ({
@@ -121,18 +121,33 @@ describe("getCpiSeries", () => {
     expect(result).toMatchObject({ success: false, error: "rate_limited" });
   });
 
-  test("a daily-threshold refusal pauses further requests instead of retrying them", async () => {
-    respondWith({
-      status: "REQUEST_NOT_PROCESSED",
-      message: ["The daily threshold for total number of requests allocated to the user has been reached."],
-    });
-    await getCpiSeries(2025, 2026);
-    const next = await getCpiSeries(2025, 2026);
-    expect(next).toMatchObject({ success: false, error: "budget_exhausted" });
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+  test("a daily-threshold refusal pauses further requests for 24 hours instead of retrying them", async () => {
+    const refusedAt = new Date("2026-11-14T12:00:00Z");
+    const hours = (h: number) => new Date(refusedAt.getTime() + h * 60 * 60 * 1000);
+    try {
+      setSystemTime(refusedAt);
+      respondWith({
+        status: "REQUEST_NOT_PROCESSED",
+        message: ["The daily threshold for total number of requests allocated to the user has been reached."],
+      });
+      await getCpiSeries(2025, 2026);
 
-    resetBlsRequestBudget();
-    expect((await getCpiSeries(2025, 2026)).success).toBe(true);
+      for (const at of [hours(1), hours(23.9)]) {
+        setSystemTime(at);
+        expect(await getCpiSeries(2025, 2026)).toMatchObject({
+          success: false,
+          error: "budget_exhausted",
+        });
+      }
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // The pause lifts after a day; the rolling budget has room again by then.
+      setSystemTime(hours(24.1));
+      expect((await getCpiSeries(2025, 2026)).success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("any other refusal does not pause requests", async () => {

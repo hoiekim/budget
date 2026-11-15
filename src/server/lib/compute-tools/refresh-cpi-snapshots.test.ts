@@ -236,7 +236,7 @@ describe("refreshCpiSnapshots", () => {
     expect(result.requests).toBe(1);
     expect(result.deferred).toBe(4);
 
-    // The next hourly run sends nothing: the refusal paused BLS requests.
+    // A later run sends nothing: the refusal paused BLS requests (bls.test.ts pins the 24 hours).
     const nextHour = await refreshCpiSnapshots(new Date(NOW.getTime() + HOUR));
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(nextHour).toMatchObject({ requests: 0, deferred: 4 });
