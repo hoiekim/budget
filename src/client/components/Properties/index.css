@@ -31,6 +31,22 @@ div.Properties > .propertyLabel {
   align-items: center;
 }
 
+div.Properties > .propertyLabel > span.titleWithInfo {
+  display: inline-flex;
+  align-items: center;
+}
+
+div.Properties > .propertyLabel > span.titleWithInfo > button.info,
+div.Properties > .propertyLabel > span.titleWithInfo > button.info:hover {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: auto;
+  padding: 4px 6px;
+  background: none;
+  color: var(--textDim);
+}
+
 div.Properties > div.propertyLabel > div.row.keyValue {
   display: flex;
   align-items: center;

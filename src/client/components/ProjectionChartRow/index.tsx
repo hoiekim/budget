@@ -1,11 +1,18 @@
-import { Dispatch, MouseEventHandler, SetStateAction, useMemo } from "react";
-import { getYearMonthString, numberToCommaString, ViewDate } from "common";
+import { Dispatch, MouseEventHandler, SetStateAction, useMemo, useRef } from "react";
+import {
+  getYearMonthString,
+  numberToCommaString,
+  numberToCompactString,
+  ViewDate,
+} from "common";
 import {
   useAccountGraph,
   useAppContext,
+  useCompactWhenOverflowing,
   useGoalConfig,
   ProjectionChart,
   inferSavingConfig,
+  ScreenType,
 } from "client";
 import { ChartRowShell, DateLabel, Graph, MoneyLabel } from "client/components";
 import { calculateProjection } from "./lib";
@@ -26,8 +33,14 @@ export const ProjectionChartRow = ({
   onClick,
   onSetOrder,
 }: ProjectionChartRowProps) => {
-  const { data, calculations } = useAppContext();
+  const { data, calculations, screenType } = useAppContext();
   const { accounts } = data;
+
+  const tableRef = useRef<HTMLTableElement>(null);
+  const compact = useCompactWhenOverflowing(tableRef);
+  const money = (n: number) =>
+    compact ? `$${numberToCompactString(n)}` : `$ ${numberToCommaString(n, 0)}`;
+  const scenarioName = screenType === ScreenType.Narrow ? "scenarioName visuallyHidden" : "scenarioName";
   const { configuration } = chart;
   const { account_ids, auto_saving_config } = configuration;
   const { living_cost, year_over_year_inflation } = useGoalConfig(configuration);
@@ -161,10 +174,12 @@ export const ProjectionChartRow = ({
         labelY={new MoneyLabel("USD")}
       />
       {showTable && (
-        <table width="100%">
+        <table width="100%" ref={tableRef}>
           <thead>
             <tr>
-              <th className="scenario">Scenario</th>
+              <th className="scenario">
+                <span className={scenarioName}>Scenario</span>
+              </th>
               <th>Date</th>
               <th>Saved</th>
               <th>Payout Max</th>
@@ -175,32 +190,32 @@ export const ProjectionChartRow = ({
             <tr>
               <td className="scenario">
                 <div className="label colored" style={{ backgroundColor: "#097" }} />
-                <span className="scenarioName">Now</span>
+                <span className={scenarioName}>Now</span>
               </td>
               <td>{getYearMonthString(currentViewDate.getStartDate())}</td>
-              <td>$ {numberToCommaString(lastValue, 0)}</td>
-              <td>$ {numberToCommaString(lastValue * (mpy - momInflation), 0)}</td>
+              <td>{money(lastValue)}</td>
+              <td>{money(lastValue * (mpy - momInflation))}</td>
             </tr>
             {!!currentRetireDate && !!currentRetireAmount && (
               <tr>
                 <td className="scenario">
                   <div className="label colored" style={{ backgroundColor: "#f43" }} />
-                  <span className="scenarioName">Current&nbsp;trajectory</span>
+                  <span className={scenarioName}>Trajectory</span>
                 </td>
                 <td>{getYearMonthString(currentRetireDate)}</td>
-                <td>$ {numberToCommaString(currentRetireAmount, 0)}</td>
-                <td>$ {numberToCommaString(currentRetireAmount * (mpy - momInflation), 0)}</td>
+                <td>{money(currentRetireAmount)}</td>
+                <td>{money(currentRetireAmount * (mpy - momInflation))}</td>
               </tr>
             )}
             {!!planRetireDate && !!planRetireAmount && (
               <tr>
                 <td className="scenario">
                   <div className="label" style={{ backgroundColor: "#aaa" }} />
-                  <span className="scenarioName">Plan</span>
+                  <span className={scenarioName}>Plan</span>
                 </td>
                 <td>{getYearMonthString(planRetireDate)}</td>
-                <td>$ {numberToCommaString(planRetireAmount, 0)}</td>
-                <td>$ {numberToCommaString(planRetireAmount * (mpy - momInflation), 0)}</td>
+                <td>{money(planRetireAmount)}</td>
+                <td>{money(planRetireAmount * (mpy - momInflation))}</td>
               </tr>
             )}
           </tbody>

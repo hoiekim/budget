@@ -1,4 +1,4 @@
-import { getDateString, LocalDate, US_STATE_NAMES, ViewDate } from "common";
+import { getDateString, LocalDate, pluralize, ViewDate } from "common";
 import {
   Chart,
   ProjectionChart,
@@ -19,6 +19,8 @@ import {
   CapacityNumberInput,
   inferSavingConfig,
   useGoalConfig,
+  describeGoalInference,
+  QuestionIcon,
 } from "client";
 import {
   ChangeEventHandler,
@@ -38,7 +40,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { chart_id, name, configuration } = chart;
 
   const { data, calculations } = useAppContext();
-  const { accounts, inflation } = data;
+  const { accounts, budgets, inflation } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
@@ -59,6 +61,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     anual_percentage_yield,
     year_over_year_inflation,
     auto_goal_config,
+    budget_ids,
   } = configInput;
 
   const goalConfig = useGoalConfig(configInput);
@@ -134,20 +137,13 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
     });
   };
 
-  const numberOfLivingCostBudgets = goalConfig.livingCostBudgetIds?.length ?? 0;
-
-  const stateName = goalConfig.state && US_STATE_NAMES[goalConfig.state];
-  const taxResidenceLabel = stateName || "Unknown (federal only)";
-
-  const inflationDataLabel = inflation
-    ? `CPI ${inflation.from} – ${inflation.to}`
-    : inflation === null
-      ? "Not collected yet"
-      : "Unavailable";
+  const onClickExplainGoal = () => window.alert(describeGoalInference(goalConfig, inflation));
 
   const numberOfSelectedAccounts = accounts.filter((a) => {
     return !a.hide && account_ids.includes(a.account_id);
   }).length;
+  const numberOfSelectedBudgets = budgets.filter((b) => budget_ids.includes(b.id)).length;
+  const selectionLabel = `${numberOfSelectedAccounts + numberOfSelectedBudgets} selected (${pluralize(numberOfSelectedAccounts, "account")} & ${pluralize(numberOfSelectedBudgets, "budget")})`;
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
     await mutate.delete(chart_id);
@@ -164,9 +160,9 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         <ChartTypeSelect chart={chart} />
       </Property>
 
-      <PropertyLabel>Selected&nbsp;Accounts</PropertyLabel>
+      <PropertyLabel>Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</PropertyLabel>
       <Property>
-        <ButtonRow onClick={onClickAccounts}>{numberOfSelectedAccounts}&nbsp;selected</ButtonRow>
+        <ButtonRow onClick={onClickAccounts}>{selectionLabel}</ButtonRow>
       </Property>
 
       {children}
@@ -255,7 +251,19 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         </KeyValue>
       </Property>
       <PropertyLabel>
-        Goal&nbsp;Configuration
+        <span className="titleWithInfo">
+          Goal&nbsp;Configuration
+          {auto_goal_config && (
+            <button
+              type="button"
+              className="info"
+              onClick={onClickExplainGoal}
+              aria-label="How the auto goal values are inferred"
+            >
+              <QuestionIcon size={12} />
+            </button>
+          )}
+        </span>
         <KeyValue name="Auto">
           <ToggleInput
             compact={true}
@@ -266,13 +274,6 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
         </KeyValue>
       </PropertyLabel>
       <Property>
-        {auto_goal_config && (
-          <ButtonRow onClick={onClickAccounts}>
-            {numberOfLivingCostBudgets
-              ? `Living cost from ${numberOfLivingCostBudgets} budget${numberOfLivingCostBudgets > 1 ? "s" : ""}`
-              : "Select budgets for living cost"}
-          </ButtonRow>
-        )}
         <KeyValue name="Living&nbsp;Cost">
           <div>
             <CapacityNumberInput
@@ -318,11 +319,6 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             <span className="small">&nbsp;%</span>
           </div>
         </KeyValue>
-        {auto_goal_config && (
-          <KeyValue name="Tax&nbsp;Residence">
-            <span>{taxResidenceLabel}</span>
-          </KeyValue>
-        )}
         <KeyValue name="YoY&nbsp;Inflation">
           <div>
             <CapacityNumberInput
@@ -339,11 +335,6 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
             <span className="small">&nbsp;%</span>
           </div>
         </KeyValue>
-        {auto_goal_config && (
-          <KeyValue name="Inflation&nbsp;Data">
-            <span>{inflationDataLabel}</span>
-          </KeyValue>
-        )}
       </Property>
 
       <PropertyLabel>&nbsp;</PropertyLabel>

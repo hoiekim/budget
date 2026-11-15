@@ -15,3 +15,4 @@ export * from "./useMutate";
 export * from "./useServerEvents";
 export * from "./viewDate";
 export * from "./useGoalConfig";
+export * from "./useCompactWhenOverflowing";

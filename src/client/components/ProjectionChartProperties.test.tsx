@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { ChartType, numberToCommaString, US_STATE_NAMES, ViewDate } from "common";
+import { ChartType, numberToCommaString, ViewDate } from "common";
 import {
+  Account,
   AmountInTime,
   Budget,
   Capacity,
@@ -55,6 +56,8 @@ const recentDay = () => {
 const buildData = (chart: ProjectionChart, inflation: Data["inflation"]) => {
   const data = new Data({ inflation });
   data.charts.set(CHART_ID, chart as unknown as Chart);
+  data.accounts.set("acc", new Account({ account_id: "acc", name: "Savings" } as never));
+  data.accounts.set("old", new Account({ account_id: "old", name: "Closed", hide: true } as never));
   data.budgets.set(
     "rent",
     new Budget({ budget_id: "rent", name: "Rent", capacities: [new Capacity({ month: 2000 })] }),
@@ -91,7 +94,23 @@ const render = (chart: ProjectionChart, synced = { inflation: INFLATION as Data[
 const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 
 describe("ProjectionChartProperties — goal configuration", () => {
-  it("in manual mode shows the stored values, stays editable, and hides the auto rows", () => {
+  const infoButton = () => screen.queryByLabelText("How the auto goal values are inferred");
+
+  /** The text the info button's alert shows. */
+  const explanation = () => {
+    const alert = spyOn(window, "alert").mockImplementation(() => {});
+    try {
+      act(() => {
+        fireEvent.click(infoButton()!);
+      });
+      expect(alert).toHaveBeenCalledTimes(1);
+      return String(alert.mock.calls[0][0]);
+    } finally {
+      alert.mockRestore();
+    }
+  };
+
+  it("in manual mode shows the stored values, stays editable, and has no info button", () => {
     fetchStub = stubFetch([]);
     render(buildChart());
 
@@ -99,12 +118,11 @@ describe("ProjectionChartProperties — goal configuration", () => {
     expect(input("Living cost").disabled).toBe(false);
     expect(input("Tax rate").value).toBe("30.00");
     expect(input("Year over year inflation").value).toBe("3.80");
-    expect(screen.queryByText(/^Tax.Residence$/)).toBeNull();
-    expect(screen.queryByText(/^Inflation.Data$/)).toBeNull();
+    expect(infoButton()).toBeNull();
     expect(fetchStub.calls.requests).toEqual([]);
   });
 
-  it("in auto mode shows values inferred from budgets, synced CPI, and transaction state", () => {
+  it("in auto mode shows inferred values and explains them behind the info button", () => {
     fetchStub = stubFetch([]);
     render(buildChart({ auto_goal_config: true, budget_ids: ["rent", "food"] }));
 
@@ -116,55 +134,71 @@ describe("ProjectionChartProperties — goal configuration", () => {
     const asOf = new ViewDate("month", new Date()).getStartDate();
     const rate = inferTaxRate({ amount: 2600, amountAsOf: asOf }, "CA", INFLATION.year_over_year_inflation);
     expect(input("Tax rate").value).toBe(numberToCommaString(rate * 100, 2));
-    expect(screen.getByText(/^Tax.Residence$/)).toBeTruthy();
-    expect(screen.getByText(US_STATE_NAMES.CA)).toBeTruthy();
-    expect(screen.getByText("CPI 1996-09 – 2026-09")).toBeTruthy();
-    expect(screen.getByText("Living cost from 2 budgets")).toBeTruthy();
+
+    // The sources live in the info alert now, not in rows of their own.
+    expect(screen.queryByText(/^Tax.Residence$/)).toBeNull();
+    expect(screen.queryByText(/^Inflation.Data$/)).toBeNull();
+    expect(screen.queryByText(/^Living cost from/)).toBeNull();
+    const text = explanation();
+    expect(text).toContain("2 selected spending budgets");
+    expect(text).toContain("federal and California income tax");
+    expect(text).toContain("from 1996-09 to 2026-09");
+
     // The panel reads the synced value; it never fetches data itself.
     expect(fetchStub.calls.requests).toEqual([]);
   });
 
   it("counts only the selected budgets that add to the living cost", () => {
     render(buildChart({ auto_goal_config: true, budget_ids: ["rent", "salary"] }));
-    expect(screen.getByText("Living cost from 1 budget")).toBeTruthy();
     expect(input("Living cost").value).toBe("2,000");
+    expect(explanation()).toContain("1 selected spending budget,");
     cleanup();
 
-    // An income budget alone contributes nothing: the manual value stands, and
-    // the row asks for budgets rather than claiming one.
+    // An income budget alone contributes nothing: the manual value stands.
     render(buildChart({ auto_goal_config: true, budget_ids: ["salary"] }));
-    expect(screen.getByText("Select budgets for living cost")).toBeTruthy();
     expect(input("Living cost").value).toBe("4,000");
+    expect(explanation()).toContain("Living cost: your manual amount");
   });
 
-  it("says so when the server has no CPI history yet", () => {
+  it("explains a missing CPI history apart from an average that has not arrived", () => {
     render(buildChart({ auto_goal_config: true }), { inflation: null });
-
-    expect(screen.getByText("Not collected yet")).toBeTruthy();
     expect(input("Year over year inflation").value).toBe("3.80");
-    expect(screen.getByText("Select budgets for living cost")).toBeTruthy();
-  });
+    expect(explanation()).toContain("hasn't been collected yet");
+    cleanup();
 
-  it("does not report an unfetched average as missing CPI history", () => {
     render(buildChart({ auto_goal_config: true }), { inflation: undefined });
-
-    expect(screen.getByText("Unavailable")).toBeTruthy();
-    expect(screen.queryByText("Not collected yet")).toBeNull();
     expect(input("Year over year inflation").value).toBe("3.80");
+    expect(explanation()).toContain("isn't available right now");
   });
 
-  it("opens the budget picker from the living-cost row", () => {
-    const calls = render(buildChart({ auto_goal_config: true }));
+  it("counts selected accounts and budgets under Selected Accounts & Budgets, in either mode", () => {
+    // A hidden account stays selected but isn't counted.
+    render(buildChart({ account_ids: ["acc", "old"], budget_ids: ["rent", "food"] }));
+    expect(screen.getByText(/^Selected.Accounts.&.Budgets$/)).toBeTruthy();
+    expect(screen.getByText("3 selected (1 account & 2 budgets)")).toBeTruthy();
+    cleanup();
+
+    render(buildChart({ auto_goal_config: true, account_ids: ["acc"], budget_ids: ["rent"] }));
+    expect(screen.getByText("2 selected (1 account & 1 budget)")).toBeTruthy();
+    cleanup();
+
+    // A deleted budget's leftover id is not counted.
+    render(buildChart({ account_ids: [], budget_ids: ["deleted-budget"] }));
+    expect(screen.getByText("0 selected (0 accounts & 0 budgets)")).toBeTruthy();
+  });
+
+  it("opens the account and budget picker from the selection row", () => {
+    const calls = render(buildChart({ budget_ids: ["rent"] }));
 
     act(() => {
-      fireEvent.click(screen.getByText("Select budgets for living cost"));
+      fireEvent.click(screen.getByText("1 selected (0 accounts & 1 budget)"));
     });
     expect(calls.go).toHaveLength(1);
     expect(calls.go[0].path).toBe(PATH.CHART_ACCOUNTS);
     expect(calls.go[0].params?.get("chart_id")).toBe(CHART_ID);
   });
 
-  it("turning auto on saves the flag on the chart", async () => {
+  it("turning auto on saves the flag on the chart and shows the info button", async () => {
     fetchStub = stubFetch([{ path: "/api/chart", response: { status: "success" } }]);
     render(buildChart());
 
@@ -175,5 +209,6 @@ describe("ProjectionChartProperties — goal configuration", () => {
     await waitFor(() => expect(fetchStub!.calls.requests).toHaveLength(1));
     expect(fetchStub.calls.requests[0]).toMatchObject({ url: "/api/chart", method: "POST" });
     expect(input("Living cost").disabled).toBe(true);
+    expect(infoButton()).not.toBeNull();
   });
 });

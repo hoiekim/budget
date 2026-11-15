@@ -9,6 +9,18 @@ export const environment = isNodejs
     ? "client"
     : "unknown";
 
+const compactNumberFormat = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumSignificantDigits: 3,
+});
+
+/** `pluralize(1, "budget")` → `"1 budget"`, `pluralize(2, "budget")` → `"2 budgets"`. */
+export const pluralize = (count: number, noun: string) =>
+  `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/** `1100100` → `"1.1M"`, `22439` → `"22.4K"`: at most three significant digits. */
+export const numberToCompactString = (n: number) => compactNumberFormat.format(n);
+
 export const numberToCommaString = (n: number, fixed = 2) => {
   const sign = n < 0 ? "-" : "";
 

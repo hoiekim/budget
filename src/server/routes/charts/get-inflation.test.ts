@@ -63,14 +63,14 @@ const row = (date: string, value: number) => ({
 
 describe("GET /inflation", () => {
   test("returns the averaged rate from stored CPI rows without calling out", async () => {
-    storedRows = [row("1996-09-01", 157.8), row("2026-09-01", 315.6)];
+    storedRows = [row("2011-09-01", 157.8), row("2026-09-01", 315.6)];
     const result = await getInflationRoute.execute(makeReq(), fakeRes());
 
     expect(result?.status).toBe("success");
     const body = (result as { body: { year_over_year_inflation: number; from: string; to: string } })
       .body;
-    expect(body.year_over_year_inflation).toBeCloseTo(Math.pow(2, 1 / 30), 10);
-    expect(body.from).toBe("1996-09");
+    expect(body.year_over_year_inflation).toBeCloseTo(Math.pow(2, 1 / 15), 10);
+    expect(body.from).toBe("2011-09");
     expect(body.to).toBe("2026-09");
     expect(mockFetch).not.toHaveBeenCalled();
   });
