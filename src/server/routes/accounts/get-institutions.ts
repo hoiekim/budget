@@ -26,7 +26,9 @@ const MAX_REQUESTED_IDS = 100;
  * has no batch endpoint for institutions, so the fallback is a fan-out over the
  * misses; `institutions` is a global table with no owner column, so any string
  * the caller invents reaches it. Bounded on three axes: ids per request, Plaid
- * round trips per user per minute, and round trips in flight process-wide.
+ * round trips per user per minute, and round trips in flight process-wide. An
+ * id Plaid has said does not exist is not asked again for an hour, and never
+ * charges the limiter while it is remembered.
  *
  * A fallback failure omits that one id rather than failing the response — one
  * unresolvable institution shouldn't blank every other institution's logo and
@@ -64,7 +66,9 @@ export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
 
     const stored = await searchInstitutionsById(requested);
     const storedIds = new Set(stored.map((i) => i.institution_id));
-    const missing = requested.filter((id) => !storedIds.has(id));
+    const missing = requested.filter(
+      (id) => !storedIds.has(id) && !plaid.isUnresolvableInstitution(id),
+    );
 
     if (missing.length === 0) {
       return { status: "success", body: stored };

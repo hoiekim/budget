@@ -5,7 +5,7 @@
 // without the FE dedupe; (5) a Plaid failure omits its own id rather than
 // failing the batch.
 
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach, afterAll, setSystemTime } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
 
 const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
@@ -28,6 +28,7 @@ const REAL_PLAID = await import("plaid");
 
 const plaidCalls: string[] = [];
 const unresolvableIds = new Set<string>();
+const catalogMissIds = new Set<string>();
 let inflight = 0;
 let peakInflight = 0;
 
@@ -40,6 +41,11 @@ class FakePlaidApi {
       await new Promise((resolve) => setTimeout(resolve, 5));
       if (unresolvableIds.has(institution_id)) {
         throw new Error(`Plaid has no institution ${institution_id}`);
+      }
+      if (catalogMissIds.has(institution_id)) {
+        throw Object.assign(new Error("Request failed with status code 400"), {
+          response: { status: 400, data: { error_code: "INVALID_INSTITUTION" } },
+        });
       }
       return {
         data: {
@@ -68,7 +74,11 @@ mock.module("plaid", () => ({ ...fakePlaid, default: fakePlaid }));
 
 const { getInstitutionsRoute } = await import("./get-institutions");
 const { institutionFallbackRateLimiter } = await import("server/lib/rate-limit");
-const { getInstitutionsByIds } = await import("server/lib/plaid/institutions");
+const {
+  getInstitutionsByIds,
+  forgetUnresolvableInstitution,
+  UNRESOLVABLE_INSTITUTION_TTL,
+} = await import("server/lib/plaid/institutions");
 
 const USER_ID = "u-1";
 
@@ -93,6 +103,8 @@ beforeEach(() => {
   resetSqlMocks();
   plaidCalls.length = 0;
   unresolvableIds.clear();
+  catalogMissIds.forEach(forgetUnresolvableInstitution);
+  catalogMissIds.clear();
   inflight = 0;
   peakInflight = 0;
   institutionFallbackRateLimiter.reset(USER_ID);
@@ -393,5 +405,91 @@ describe("get-institutions partial Plaid failure", () => {
 
     expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(18);
     await drainDeferredWrites();
+  });
+});
+
+describe("get-institutions negative cache", () => {
+  afterEach(() => setSystemTime());
+
+  const requestOnce = async (ids: string) => {
+    resetSqlMocks();
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await getInstitutionsRoute.execute(makeReq({ ids }), fakeRes());
+    await drainDeferredWrites();
+    return result;
+  };
+
+  test("an id Plaid says does not exist is not asked again and stops charging the limiter", async () => {
+    catalogMissIds.add("ins_bogus");
+
+    await requestOnce("ins_bogus");
+    expect(plaidCalls).toEqual(["ins_bogus"]);
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(19);
+
+    for (let i = 0; i < 5; i++) await requestOnce("ins_bogus");
+    expect(plaidCalls).toEqual(["ins_bogus"]);
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(19);
+  });
+
+  test("the remembered id drops out while its siblings still reach Plaid", async () => {
+    catalogMissIds.add("ins_bogus");
+    await requestOnce("ins_bogus");
+    plaidCalls.length = 0;
+
+    const result = await requestOnce("ins_bogus,ins_live");
+    expect(plaidCalls).toEqual(["ins_live"]);
+    expect(
+      (result?.body as { institution_id: string }[]).map((i) => i.institution_id),
+    ).toEqual(["ins_live"]);
+  });
+
+  test("the entry is shared across users, matching the process-wide queue", async () => {
+    catalogMissIds.add("ins_bogus");
+    await requestOnce("ins_bogus");
+    plaidCalls.length = 0;
+
+    resetSqlMocks();
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await getInstitutionsRoute.execute(makeReq({ ids: "ins_bogus" }, "u-2"), fakeRes());
+    expect(plaidCalls).toEqual([]);
+    institutionFallbackRateLimiter.reset("u-2");
+  });
+
+  test("a transient Plaid failure is asked again on the next request", async () => {
+    unresolvableIds.add("ins_flaky");
+
+    await requestOnce("ins_flaky");
+    await requestOnce("ins_flaky");
+    expect(plaidCalls).toEqual(["ins_flaky", "ins_flaky"]);
+    expect(institutionFallbackRateLimiter.remaining(USER_ID)).toBe(18);
+  });
+
+  test("the entry expires after its TTL", async () => {
+    catalogMissIds.add("ins_bogus");
+    const start = Date.now();
+    setSystemTime(new Date(start));
+    await requestOnce("ins_bogus");
+
+    setSystemTime(new Date(start + UNRESOLVABLE_INSTITUTION_TTL - 1));
+    await requestOnce("ins_bogus");
+    expect(plaidCalls).toEqual(["ins_bogus"]);
+
+    setSystemTime(new Date(start + UNRESOLVABLE_INSTITUTION_TTL));
+    await requestOnce("ins_bogus");
+    expect(plaidCalls).toEqual(["ins_bogus", "ins_bogus"]);
+  });
+
+  test("forgetting the id lets the next request resolve it", async () => {
+    catalogMissIds.add("ins_new");
+    await requestOnce("ins_new");
+
+    catalogMissIds.delete("ins_new");
+    forgetUnresolvableInstitution("ins_new");
+    const result = await requestOnce("ins_new");
+
+    expect(plaidCalls).toEqual(["ins_new", "ins_new"]);
+    expect(
+      (result?.body as { institution_id: string; name: string }[]).map((i) => [i.institution_id, i.name]),
+    ).toEqual([["ins_new", "Plaid ins_new"]]);
   });
 });
