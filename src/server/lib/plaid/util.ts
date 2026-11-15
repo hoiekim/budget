@@ -1,5 +1,6 @@
 import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
 import { MaskedUser, logger } from "server";
+import { Queue } from "common";
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_PRODUCTION, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;
@@ -47,6 +48,20 @@ export const getClient = (user?: MaskedUser) => {
   });
   return new PlaidApi(config);
 };
+
+/**
+ * Every Plaid call made with {@link getClient} is metered against one
+ * app-level credential shared by every user of the deployment, so their
+ * concurrency is one process-wide budget. Route each client call through
+ * `plaidQueue.add(() => client.someCall(...))`.
+ */
+export const PLAID_MAX_INFLIGHT = 8;
+export const plaidQueue = new Queue({ maxInflight: PLAID_MAX_INFLIGHT });
+
+/** Test seam: the Plaid client factory. Production callers pass nothing. */
+export interface PlaidClientDeps {
+  getClient?: typeof getClient;
+}
 
 /**
  * Get a production Plaid client.

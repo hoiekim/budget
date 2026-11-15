@@ -1,10 +1,10 @@
 import { CountryCode } from "plaid";
 import { MaskedUser, logger } from "server";
 import { JSONInstitution, Queue } from "common";
-import { getClient } from "./util";
+import { getClient, plaidQueue } from "./util";
 
-// Process-wide rather than per request: Plaid meters these calls against one
-// app-level credential shared by every user of the deployment.
+// A sub-cap inside the shared Plaid gate, so one institutions batch cannot
+// take every slot from the sync paths.
 const institutionQueue = new Queue({ maxInflight: 4 });
 
 const getInstitution = async (
@@ -14,10 +14,12 @@ const getInstitution = async (
   const client = getClient(user);
 
   try {
-    const response = await client.institutionsGetById({
-      institution_id: id,
-      country_codes: [CountryCode.Us],
-    });
+    const response = await plaidQueue.add(() =>
+      client.institutionsGetById({
+        institution_id: id,
+        country_codes: [CountryCode.Us],
+      }),
+    );
 
     const { institution } = response.data;
 
