@@ -544,7 +544,7 @@ describe("BudgetConfigPage", () => {
     }
   });
 
-  it("toggling infinite sync on a budget marks only the budget, not its sections", async () => {
+  it("toggling infinite sync on a budget cascades onto its sections and categories", async () => {
     const { data, SECTION_A_ID, SECTION_B_ID, CATEGORY_ID } = buildSyncFamily();
 
     const store = { data };
@@ -580,34 +580,39 @@ describe("BudgetConfigPage", () => {
         fireEvent.click(saveButton);
       });
 
-      // Only the toggled budget is written — the infinite path no longer
-      // rewrites every section and category in the family.
       expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
         "POST /api/budget",
+        "POST /api/section",
+        "POST /api/section",
+        "POST /api/category",
       ]);
 
-      // The toggled budget is infinite and synced…
       const storedBudget = store.data.budgets.get(BUDGET_ID);
       expect(storedBudget?.capacities[0].is_synced).toBe(true);
       expect(storedBudget?.capacities[0].month).toBe(MAX_FLOAT);
-      // …but neither section was cascaded onto: each keeps its own mode and
-      // stored amount, so the childless section keeps resolving to 500.
       const storedA = store.data.sections.get(SECTION_A_ID);
-      expect(storedA?.capacities[0].is_synced).toBe(false);
-      expect(storedA?.capacities[0].month).toBe(500);
+      expect(storedA?.capacities[0].is_synced).toBe(true);
+      expect(storedA?.capacities[0].month).toBe(MAX_FLOAT);
       const storedB = store.data.sections.get(SECTION_B_ID);
-      expect(storedB?.capacities[0].is_synced).toBe(false);
-      expect(storedB?.capacities[0].month).toBe(500);
-      expect(storedB?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(500);
-      expect(store.data.categories.get(CATEGORY_ID)?.capacities[0].month).toBe(300);
-      // …and the budget sums the sections' effective amounts.
-      expect(storedBudget?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(1000);
+      expect(storedB?.capacities[0].is_synced).toBe(true);
+      expect(storedB?.capacities[0].month).toBe(MAX_FLOAT);
+      expect(store.data.categories.get(CATEGORY_ID)?.capacities[0].month).toBe(MAX_FLOAT);
+
+      // getChildren traverses globalData; point it at the saved family, the
+      // same state a reload would see.
+      globalData.budgets = store.data.budgets;
+      globalData.sections = store.data.sections;
+      globalData.categories = store.data.categories;
+      const date = new Date(2026, 0, 15);
+      expect(store.data.sections.get(SECTION_A_ID)?.getActiveAmount(date, "month")).toBe(MAX_FLOAT);
+      expect(store.data.sections.get(SECTION_B_ID)?.getActiveAmount(date, "month")).toBe(MAX_FLOAT);
+      expect(store.data.budgets.get(BUDGET_ID)?.getActiveAmount(date, "month")).toBe(MAX_FLOAT);
     } finally {
       resetGlobalData();
     }
   });
 
-  it("toggling infinite sync on a section marks only that section, not its siblings", async () => {
+  it("toggling infinite sync on a section cascades onto its categories, not its siblings or budget", async () => {
     const { data, SECTION_A_ID, SECTION_B_ID, CATEGORY_ID } = buildSyncFamily();
 
     const store = { data };
@@ -642,16 +647,19 @@ describe("BudgetConfigPage", () => {
 
       expect(fetchStub.calls.requests.map((r) => `${r.method} ${r.url}`)).toEqual([
         "POST /api/section",
+        "POST /api/category",
       ]);
 
-      // The toggled section is infinite and synced, and derives from its
-      // categories as they are…
       const storedA = store.data.sections.get(SECTION_A_ID);
       expect(storedA?.capacities[0].is_synced).toBe(true);
       expect(storedA?.capacities[0].month).toBe(MAX_FLOAT);
-      expect(storedA?.getActiveAmount(new Date(2026, 0, 15), "month")).toBe(300);
-      expect(store.data.categories.get(CATEGORY_ID)?.capacities[0].month).toBe(300);
-      // …but neither the budget nor the sibling section was cascaded onto.
+      expect(store.data.categories.get(CATEGORY_ID)?.capacities[0].month).toBe(MAX_FLOAT);
+      globalData.budgets = store.data.budgets;
+      globalData.sections = store.data.sections;
+      globalData.categories = store.data.categories;
+      expect(
+        store.data.sections.get(SECTION_A_ID)?.getActiveAmount(new Date(2026, 0, 15), "month"),
+      ).toBe(MAX_FLOAT);
       expect(store.data.budgets.get(BUDGET_ID)?.capacities[0].is_synced).toBe(false);
       const storedB = store.data.sections.get(SECTION_B_ID);
       expect(storedB?.capacities[0].is_synced).toBe(false);

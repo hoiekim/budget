@@ -272,13 +272,6 @@ describe("Capacity.getActiveAmount", () => {
   });
 
   test("is_synced=true at the leaf falls back to its stored month", () => {
-    // A synced leaf has nothing to derive from, so it keeps its stored
-    // amount. This is what stops a budget-level sync cascade from zeroing
-    // a childless section — and a leaf's stored month is its own amount,
-    // not a stale cache of a children-sum, so reading it is not a
-    // stale-cache leak. (Categories never carry the flag, so a synced
-    // category can only arise from corrupt data; it reads the same stored
-    // amount it would show unsynced.)
     const leaf = new Capacity({ is_synced: true, month: 9999 });
     expect(leaf.getActiveAmount(EPOCH, "month", [])).toBe(9999);
   });
