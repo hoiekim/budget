@@ -1,4 +1,4 @@
-import { AmountInTime, BalanceData, ProjectionChartConfiguration } from "client";
+import { AmountInTime, BalanceData, Data, ProjectionChartConfiguration } from "client";
 import type { BudgetFamily } from "client/lib/models/BudgetFamily";
 import {
   ChartType,
@@ -21,6 +21,21 @@ export const getChartTypeName = (type: ChartType) => {
 };
 
 export const chartTypeNames = Object.values(ChartType).map(getChartTypeName);
+
+/**
+ * The selection row of a balance or projection chart's settings, e.g.
+ * `"12 selected (11 accounts & 1 budget)"`. Hidden accounts and ids that no
+ * longer resolve (a deleted account or budget) aren't counted.
+ */
+export const getSelectionLabel = (
+  { accounts, budgets }: Pick<Data, "accounts" | "budgets">,
+  accountIds: string[],
+  budgetIds: string[],
+) => {
+  const accountCount = accounts.filter((a) => !a.hide && accountIds.includes(a.id)).length;
+  const budgetCount = budgets.filter((b) => budgetIds.includes(b.id)).length;
+  return `${accountCount + budgetCount} selected (${pluralize(accountCount, "account")} & ${pluralize(budgetCount, "budget")})`;
+};
 
 export const inferSavingConfig = (
   balanceData: BalanceData,

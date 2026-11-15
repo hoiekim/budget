@@ -8,9 +8,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, screen } from "@testing-library/react";
 import { ChartType } from "common";
 import {
+  Account,
   BalanceChart,
   BalanceChartConfiguration,
+  Budget,
   Chart,
+  Data,
   FlowChart,
   FlowChartConfiguration,
   ProjectionChart,
@@ -58,6 +61,56 @@ describe("chart-properties name input", () => {
       renderWithContext(element, buildContext());
       const input = screen.getByLabelText("Chart name") as HTMLInputElement;
       expect(input.value).toBe(name);
+    });
+  }
+});
+
+describe("chart-properties selection row", () => {
+  const data = new Data();
+  data.accounts.set("acc", new Account({ account_id: "acc", name: "Savings" } as never));
+  data.accounts.set("old", new Account({ account_id: "old", name: "Closed", hide: true } as never));
+  data.budgets.set("rent", new Budget({ budget_id: "rent", name: "Rent" }));
+  data.budgets.set("food", new Budget({ budget_id: "food", name: "Food" }));
+  // A hidden account and ids whose account or budget was deleted aren't counted.
+  const selection = {
+    account_ids: ["acc", "old", "deleted-account"],
+    budget_ids: ["rent", "food", "deleted-budget"],
+  };
+
+  const selectionCases = [
+    {
+      label: "Balance",
+      element: (
+        <BalanceChartProperties
+          chart={
+            new Chart({
+              type: ChartType.BALANCE,
+              configuration: new BalanceChartConfiguration(selection),
+            }) as BalanceChart
+          }
+        />
+      ),
+    },
+    {
+      label: "Projection",
+      element: (
+        <ProjectionChartProperties
+          chart={
+            new Chart({
+              type: ChartType.PROJECTION,
+              configuration: new ProjectionChartConfiguration(selection),
+            }) as ProjectionChart
+          }
+        />
+      ),
+    },
+  ];
+
+  for (const { label, element } of selectionCases) {
+    test(`${label}: counts accounts and budgets separately under Selected Accounts & Budgets`, () => {
+      renderWithContext(element, buildContext({ data }));
+      expect(screen.getByText(/^Selected.Accounts.&.Budgets$/)).toBeTruthy();
+      expect(screen.getByText("3 selected (1 account & 2 budgets)")).toBeTruthy();
     });
   }
 });

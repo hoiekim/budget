@@ -14,6 +14,7 @@ import {
   Row,
   KeyValue,
   ChartTypeSelect,
+  getSelectionLabel,
 } from "client";
 
 interface BalanceChartPropertiesProps {
@@ -27,7 +28,6 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
   const { account_ids, budget_ids } = configuration;
 
   const { data } = useAppContext();
-  const { accounts, budgets } = data;
 
   const [nameInput, setNameInput] = useState(name);
 
@@ -48,14 +48,6 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
     router.go(PATH.CHART_ACCOUNTS, { params: new URLSearchParams({ chart_id }) });
   };
 
-  const selectedAccountsCount = accounts.filter((a) => {
-    return !a.hide && account_ids.includes(a.id);
-  }).length;
-
-  const selectedBudgetsCount = budgets.filter((b) => {
-    return budget_ids.includes(b.id);
-  }).length;
-
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
     await mutate.delete(chart_id);
     router.back();
@@ -74,7 +66,7 @@ export const BalanceChartProperties = ({ chart, children }: BalanceChartProperti
       <PropertyLabel>Selected&nbsp;Accounts&nbsp;&&nbsp;Budgets</PropertyLabel>
       <Property>
         <ButtonRow onClick={onClickAccounts}>
-          {selectedAccountsCount + selectedBudgetsCount}&nbsp;selected
+          {getSelectionLabel(data, account_ids, budget_ids)}
         </ButtonRow>
       </Property>
 

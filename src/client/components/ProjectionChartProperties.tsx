@@ -1,4 +1,4 @@
-import { getDateString, LocalDate, pluralize, ViewDate } from "common";
+import { getDateString, LocalDate, ViewDate } from "common";
 import {
   Chart,
   ProjectionChart,
@@ -20,6 +20,7 @@ import {
   inferSavingConfig,
   useGoalConfig,
   describeGoalInference,
+  getSelectionLabel,
   QuestionIcon,
 } from "client";
 import {
@@ -40,7 +41,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
   const { chart_id, name, configuration } = chart;
 
   const { data, calculations } = useAppContext();
-  const { accounts, budgets, inflation } = data;
+  const { inflation } = data;
 
   const [nameInput, setNameInput] = useState(name);
   const [configInput, setConfigInput] = useState(new ProjectionChartConfiguration(configuration));
@@ -139,11 +140,7 @@ export const ProjectionChartProperties = ({ chart, children }: ProjectionChartPr
 
   const onClickExplainGoal = () => window.alert(describeGoalInference(goalConfig, inflation));
 
-  const numberOfSelectedAccounts = accounts.filter((a) => {
-    return !a.hide && account_ids.includes(a.account_id);
-  }).length;
-  const numberOfSelectedBudgets = budgets.filter((b) => budget_ids.includes(b.id)).length;
-  const selectionLabel = `${numberOfSelectedAccounts + numberOfSelectedBudgets} selected (${pluralize(numberOfSelectedAccounts, "account")} & ${pluralize(numberOfSelectedBudgets, "budget")})`;
+  const selectionLabel = getSelectionLabel(data, account_ids, budget_ids);
 
   const onClickRemove: MouseEventHandler<HTMLButtonElement> = async () => {
     await mutate.delete(chart_id);
