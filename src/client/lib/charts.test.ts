@@ -150,11 +150,28 @@ describe("inferLivingCost", () => {
 describe("inferTaxRate", () => {
   const asOfToday = { amount: 5000, amountAsOf: TODAY };
 
-  it("treats twelve months of living cost as the year's income", () => {
-    expect(inferTaxRate(asOfToday, undefined, 1.03, TODAY)).toBeCloseTo(
-      estimateIncomeTax(60000).effectiveRate,
-      12,
-    );
+  /** What is left after tax of the income the projection grosses `net` up to. */
+  const netAfterGrossUp = (net: number, rate: number, state?: string) => {
+    const gross = net / (1 - rate);
+    return gross - estimateIncomeTax(gross, state).total;
+  };
+
+  it("grosses twelve months of living cost up to an income that leaves exactly that after tax", () => {
+    for (const [monthly, state] of [
+      [5000, "CA"],
+      [8000, "CA"],
+      [8000, "NY"],
+      [12000, "CA"],
+      [5000, undefined],
+    ] as const) {
+      const rate = inferTaxRate({ amount: monthly, amountAsOf: TODAY }, state, 1.03, TODAY);
+      expect(netAfterGrossUp(monthly * 12, rate, state)).toBeCloseTo(monthly * 12, 1);
+    }
+  });
+
+  it("is higher than the rate on the living cost itself under progressive brackets", () => {
+    const rate = inferTaxRate(asOfToday, "CA", 1.03, TODAY);
+    expect(rate).toBeGreaterThan(estimateIncomeTax(60000, "CA").effectiveRate);
   });
 
   it("is zero for no living cost", () => {
@@ -165,7 +182,7 @@ describe("inferTaxRate", () => {
     const fourYearsAgo = new Date(2022, 10, 14);
     const rate = inferTaxRate({ amount: 5000, amountAsOf: fourYearsAgo }, undefined, 1.05, TODAY);
     const grown = 60000 * Math.pow(1.05, (TODAY.getTime() - fourYearsAgo.getTime()) / (365.25 * 864e5));
-    expect(rate).toBeCloseTo(estimateIncomeTax(grown).effectiveRate, 12);
+    expect(netAfterGrossUp(grown, rate)).toBeCloseTo(grown, 1);
     expect(rate).toBeGreaterThan(inferTaxRate(asOfToday, undefined, 1.05, TODAY));
   });
 });

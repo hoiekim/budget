@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   applyPhaseOut,
   computeBracketTax,
+  grossUpIncome,
   estimateFederalIncomeTax,
   estimateIncomeTax,
   estimateStateIncomeTax,
@@ -159,6 +160,34 @@ describe("tax tables", () => {
       [256225, 0.35],
       [640600, 0.37],
     ]);
+  });
+});
+
+describe("grossUpIncome", () => {
+  it("returns the income whose after-tax amount is the given net", () => {
+    for (const [net, state] of [
+      [60000, "CA"],
+      [96000, "NY"],
+      [144000, "CA"],
+      [36000, "CT"], // inside CT's exemption phase-out
+      [70000, "WI"], // inside WI's deduction phase-out
+      [900000, "CA"], // across the 1% surtax threshold
+      [60000, undefined],
+    ] as const) {
+      const gross = grossUpIncome(net, state);
+      expect(gross).toBeGreaterThan(net);
+      expect(gross - estimateIncomeTax(gross, state).total).toBeCloseTo(net, 1);
+    }
+  });
+
+  it("leaves an income that owes no tax unchanged", () => {
+    expect(grossUpIncome(10000, "TX")).toBe(10000);
+  });
+
+  it("is zero for no, negative, or non-numeric income", () => {
+    expect(grossUpIncome(0, "CA")).toBe(0);
+    expect(grossUpIncome(-5, "CA")).toBe(0);
+    expect(grossUpIncome(NaN, "CA")).toBe(0);
   });
 });
 

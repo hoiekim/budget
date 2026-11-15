@@ -3,6 +3,7 @@ import type { BudgetFamily } from "client/lib/models/BudgetFamily";
 import {
   ChartType,
   estimateIncomeTax,
+  grossUpIncome,
   JSONAverageInflation,
   MAX_FLOAT,
   Optional,
@@ -118,11 +119,12 @@ export const inferLivingCost = (
 const MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
 
 /**
- * Effective tax rate on a living cost, treating the annual living cost as the
- * income it would take to fund. The amount is first carried from its as-of
- * date to `today` at `yearOverYearInflation`, because the tax tables are in
- * current dollars and the brackets are inflation-indexed — an old budget
- * amount would otherwise land in too low a bracket.
+ * The rate the projection grosses a living cost up by: the effective tax rate
+ * on the income that leaves the annual living cost after tax, so
+ * `amount / (1 - rate)` recovers that income. The amount is first carried from
+ * its as-of date to `today` at `yearOverYearInflation`, because the tax tables
+ * are in current dollars and the brackets are inflation-indexed — an old
+ * budget amount would otherwise land in too low a bracket.
  */
 export const inferTaxRate = (
   livingCost: Pick<AmountInTime, "amount" | "amountAsOf">,
@@ -132,8 +134,8 @@ export const inferTaxRate = (
 ): number => {
   const years = Math.max(0, (today.getTime() - livingCost.amountAsOf.getTime()) / MS_PER_YEAR);
   const growth = Math.pow(yearOverYearInflation > 0 ? yearOverYearInflation : 1, years);
-  const annualIncome = livingCost.amount * 12 * growth;
-  return estimateIncomeTax(annualIncome, state).effectiveRate;
+  const gross = grossUpIncome(livingCost.amount * 12 * growth, state);
+  return estimateIncomeTax(gross, state).effectiveRate;
 };
 
 export interface InferredGoalConfig

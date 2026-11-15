@@ -6,9 +6,10 @@ import { FEDERAL_INCOME_TAX, STATE_INCOME_TAX, TAX_YEAR } from "./tax-tables";
  * Income tax estimate for the projection chart's auto goal configuration.
  *
  * The chart grosses living cost up by `1 / (1 - taxRate)` to get the income
- * savings must produce. In auto mode that rate is estimated by treating the
- * annual living cost as taxable income for a single filer taking the standard
- * deduction, federal plus the residence state's income tax.
+ * savings must produce. In auto mode that rate is the effective rate on the
+ * gross income whose after-tax amount is the annual living cost
+ * (`grossUpIncome`), for a single filer taking the standard deduction,
+ * federal plus the residence state's income tax.
  *
  * Deliberately left out: payroll taxes (withdrawals from savings are not
  * wages), local/city income taxes, credits beyond a state's flat personal
@@ -222,6 +223,22 @@ export interface IncomeTaxEstimate {
   /** `total / annualIncome`, 0 for no income. */
   effectiveRate: number;
 }
+
+/**
+ * The gross income whose after-tax amount is `netIncome`: the fixed point of
+ * G = net + tax(G). Each step adds the tax the previous estimate owes; the
+ * combined marginal rate stays below 1, so the steps shrink geometrically.
+ */
+export const grossUpIncome = (netIncome: number, stateCode?: string): number => {
+  if (!(netIncome > 0)) return 0;
+  let gross = netIncome;
+  for (let i = 0; i < 100; i++) {
+    const next = netIncome + estimateIncomeTax(gross, stateCode).total;
+    if (Math.abs(next - gross) < 0.005) return next;
+    gross = next;
+  }
+  return gross;
+};
 
 /** Federal plus state income tax for a single filer earning `annualIncome`. */
 export const estimateIncomeTax = (
