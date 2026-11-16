@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import { InvestmentTransactionType } from "common/lib/plaid-enums";
+import {
+  InvestmentTransactionSubtype,
+  InvestmentTransactionType,
+} from "common/lib/plaid-enums";
 import { getYearMonthString, LocalDate, ViewDate } from "common";
 import {
   Account,
@@ -80,6 +83,63 @@ const getBalanceDataFromTransactions = (
   addInvestmentCostBasis(balanceData, accounts, investmentTransactions, today);
 
   return balanceData;
+};
+
+// Subtypes whose rows move cash in a known direction. Only subtypes with
+// an unambiguous direction are listed: a distribution, a transfer, and the
+// corporate-action subtypes can move either way, so they stay out and read
+// their sign instead.
+const CASH_ARRIVING_SUBTYPES: ReadonlySet<InvestmentTransactionSubtype> = new Set([
+  InvestmentTransactionSubtype.Contribution,
+  InvestmentTransactionSubtype.Deposit,
+  InvestmentTransactionSubtype.Dividend,
+  InvestmentTransactionSubtype.DividendReinvestment,
+  InvestmentTransactionSubtype.Interest,
+  InvestmentTransactionSubtype.InterestReceivable,
+  InvestmentTransactionSubtype.InterestReinvestment,
+  InvestmentTransactionSubtype.LongTermCapitalGain,
+  InvestmentTransactionSubtype.LongTermCapitalGainReinvestment,
+  InvestmentTransactionSubtype.NonQualifiedDividend,
+  InvestmentTransactionSubtype.PendingCredit,
+  InvestmentTransactionSubtype.QualifiedDividend,
+  InvestmentTransactionSubtype.ReturnOfPrincipal,
+  InvestmentTransactionSubtype.ShortTermCapitalGain,
+  InvestmentTransactionSubtype.ShortTermCapitalGainReinvestment,
+]);
+
+const CASH_LEAVING_SUBTYPES: ReadonlySet<InvestmentTransactionSubtype> = new Set([
+  InvestmentTransactionSubtype.AccountFee,
+  InvestmentTransactionSubtype.FundFee,
+  InvestmentTransactionSubtype.LegalFee,
+  InvestmentTransactionSubtype.LoanPayment,
+  InvestmentTransactionSubtype.ManagementFee,
+  InvestmentTransactionSubtype.MarginExpense,
+  InvestmentTransactionSubtype.MiscellaneousFee,
+  InvestmentTransactionSubtype.NonResidentTax,
+  InvestmentTransactionSubtype.PendingDebit,
+  InvestmentTransactionSubtype.Send,
+  InvestmentTransactionSubtype.Tax,
+  InvestmentTransactionSubtype.TaxWithheld,
+  InvestmentTransactionSubtype.TransferFee,
+  InvestmentTransactionSubtype.TrustFee,
+  InvestmentTransactionSubtype.Withdrawal,
+]);
+
+/**
+ * Which way a no-share row moves cash, from its subtype: +1 when the money
+ * arrives, -1 when it leaves, 0 when the subtype carries no direction and
+ * the caller should fall back to the sign of `amount`. A cancel row
+ * reverses the row it cancels, so its subtype points the wrong way and it
+ * always falls back to the sign.
+ */
+const cashDirection = (
+  type: InvestmentTransactionType,
+  subtype: InvestmentTransactionSubtype,
+): 1 | -1 | 0 => {
+  if (type === InvestmentTransactionType.Cancel) return 0;
+  if (CASH_ARRIVING_SUBTYPES.has(subtype)) return 1;
+  if (CASH_LEAVING_SUBTYPES.has(subtype)) return -1;
+  return 0;
 };
 
 /**
@@ -167,8 +227,21 @@ const addInvestmentCostBasis = (
       } else {
         // Everything else moves money without moving shares — a fee, a
         // dividend, a deposit, a withdrawal, an in-kind transfer carrying its
-        // value in `amount`. Floored for the same reason the purchase leg is.
-        cash = Math.max(0, cash - amount);
+        // value in `amount`.
+        //
+        // Direction comes from the subtype, because the sign of `amount`
+        // does not carry it: Plaid signs a movement positive when the money
+        // leaves, and a manually entered row stores an unsigned magnitude.
+        // Provider rows agree with their subtype, so reading direction off
+        // it leaves them unchanged; a subtype this does not recognise, and
+        // a cancel row (whose direction is the reverse of its subtype),
+        // fall back to the sign. Floored for the same reason the purchase
+        // leg is.
+        const direction = cashDirection(t.type, t.subtype);
+        cash =
+          direction === 0
+            ? Math.max(0, cash - amount)
+            : Math.max(0, cash + direction * Math.abs(amount));
       }
 
       const invested = Array.from(positions.values()).reduce((sum, p) => sum + p.totalCost, 0);

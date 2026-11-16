@@ -460,6 +460,107 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-02")).toBeCloseTo(300, 2);
   });
 
+  // A hand-entered cash row stores its amount as an unsigned magnitude —
+  // the detail page lets the user set type/subtype freely, and the amount
+  // is typed positive either way — so only the subtype carries the
+  // direction. A provider-signed row keeps its sign, which agrees with its
+  // subtype.
+  const cashRow = (
+    id: string,
+    date: string,
+    amount: number,
+    subtype: InvestmentTransactionSubtype,
+    type: InvestmentTransactionType = InvestmentTransactionType.Cash,
+  ) =>
+    new InvestmentTransaction({
+      investment_transaction_id: id,
+      account_id: ACCOUNT_ID,
+      security_id: null,
+      date,
+      name: "Manual",
+      quantity: 0,
+      amount,
+      price: 0,
+      type,
+      subtype,
+    });
+
+  test("a manually entered deposit reads as money arriving, not as nothing", () => {
+    const balanceData = balancesFor(500, [
+      cashRow("m-dep", "2022-01-15", 500, InvestmentTransactionSubtype.Deposit),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(500, 2);
+  });
+
+  // The magnitude comes from the size of `amount`, not its sign: a
+  // withdrawal signed the opposite way — negative, the way a provider that
+  // signs arrivals positive would emit it — still leaves the account.
+  test("a withdrawal signed the opposite way still leaves the account", () => {
+    const balanceData = balancesFor(500, [
+      cashRow("dep", "2022-01-10", -1000, InvestmentTransactionSubtype.Deposit),
+      cashRow("out", "2022-01-20", -500, InvestmentTransactionSubtype.Withdrawal),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(500, 2);
+  });
+
+  test("a manually entered fee leaves the account", () => {
+    const balanceData = balancesFor(900, [
+      cashRow("dep", "2022-01-10", -1000, InvestmentTransactionSubtype.Deposit),
+      cashRow(
+        "m-fee",
+        "2022-01-20",
+        100,
+        InvestmentTransactionSubtype.AccountFee,
+        InvestmentTransactionType.Fee,
+      ),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(900, 2);
+  });
+
+  test("a manually entered dividend arrives", () => {
+    const balanceData = balancesFor(200, [
+      cashRow("m-div", "2022-01-15", 200, InvestmentTransactionSubtype.Dividend),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(200, 2);
+  });
+
+  test("a manual deposit followed by a manual withdrawal nets out", () => {
+    const balanceData = balancesFor(300, [
+      cashRow("m-dep", "2022-01-10", 500, InvestmentTransactionSubtype.Deposit),
+      cashRow("m-out", "2022-01-20", 200, InvestmentTransactionSubtype.Withdrawal),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(300, 2);
+  });
+
+  // Transfer, distribution, and the corporate-action subtypes move either
+  // way, so they are not in the direction map: they keep reading the sign.
+  test("an unmapped subtype still reads its sign", () => {
+    const arriving = balancesFor(300, [
+      cashRow("t-in", "2022-01-15", -300, InvestmentTransactionSubtype.Transfer),
+    ]);
+    expect(at(arriving, "2022-01")).toBeCloseTo(300, 2);
+    const leaving = balancesFor(0, [
+      cashRow("t-out", "2022-01-15", 300, InvestmentTransactionSubtype.Transfer),
+    ]);
+    expect(at(leaving, "2022-01")).toBe(0);
+  });
+
+  // A cancel reverses the row it cancels, so its subtype points the wrong
+  // way: a cancelled deposit signed positive is money leaving, not arriving.
+  test("a cancel row still reads its sign, not its subtype", () => {
+    const balanceData = balancesFor(600, [
+      cashRow("dep", "2022-01-10", -1000, InvestmentTransactionSubtype.Deposit),
+      cashRow(
+        "cancel",
+        "2022-01-20",
+        400,
+        InvestmentTransactionSubtype.Deposit,
+        InvestmentTransactionType.Cancel,
+      ),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(600, 2);
+  });
+
   // A month takes the state after everything in it, so a later row in the
   // same month has to win over an earlier one.
   test("a month reads the state after its last transaction, not its first", () => {
