@@ -11,8 +11,8 @@ import type { FieldSpec } from "server";
  */
 const BUDGET_BODY_SPEC: FieldSpec[] = [
   { path: "budget_id", type: "uuid" },
-  { path: "name", type: "string" },
-  { path: "iso_currency_code", type: "string", nullable: true },
+  { path: "name", type: "string", maxLength: 255 },
+  { path: "iso_currency_code", type: "string", nullable: true, maxLength: 10 },
   { path: "roll_over", type: "boolean", nullable: true },
   { path: "roll_over_start_date", type: "date", nullable: true },
   { path: "capacities", type: "array" },

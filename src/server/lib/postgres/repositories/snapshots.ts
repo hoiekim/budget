@@ -58,8 +58,8 @@ export interface HoldingSnapshot {
   snapshot_date: string;
   holding_account_id: string;
   holding_security_id: string;
-  institution_price?: number;
-  institution_value?: number;
+  institution_price?: number | null;
+  institution_value?: number | null;
   cost_basis?: number | null;
   quantity?: number;
 }

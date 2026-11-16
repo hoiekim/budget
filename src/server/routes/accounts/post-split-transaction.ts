@@ -6,6 +6,7 @@ import {
   validateFields,
   validationError,
   inferLabelConfidence,
+  DECIMAL_15_2_MAX,
 } from "server";
 import type { FieldSpec, PartialSplitTransaction } from "server";
 import { logger } from "server/lib/logger";
@@ -19,8 +20,8 @@ import { logger } from "server/lib/logger";
  */
 const SPLIT_TRANSACTION_BODY_SPEC: FieldSpec[] = [
   { path: "split_transaction_id", type: "uuid" },
-  { path: "transaction_id", type: "string" },
-  { path: "amount", type: "number" },
+  { path: "transaction_id", type: "string", maxLength: 255 },
+  { path: "amount", type: "number", max: DECIMAL_15_2_MAX },
   { path: "date", type: "date" },
   { path: "label.budget_id", type: "uuid", nullable: true },
   { path: "label.category_id", type: "uuid", nullable: true },

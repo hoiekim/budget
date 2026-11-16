@@ -191,6 +191,99 @@ describe("post-holding-snapshot validation", () => {
       expect(mockSendAlarm).not.toHaveBeenCalled();
     }
   });
+  test("rejects an over-limit numeric field in create mode before any SQL or alarm", async () => {
+    // The #880 follow-up: the DECIMAL(15, 6) / DECIMAL(15, 2) bounds now
+    // live on both specs, so an overflowing value is a `failed` answer
+    // naming the limit, not a 22003 at the write. Without the bound the
+    // route reaches the ownership lookup (SQL), so the no-SQL assertion
+    // discriminates.
+    const cases: [string, number, string][] = [
+      ["quantity", 1e9, "Field quantity must be at most 999999999.999999"],
+      ["cost_basis", 1e13, "Field cost_basis must be at most 9999999999999.99"],
+      ["institution_price", 1e9, "Field institution_price must be at most 999999999.999999"],
+      ["institution_value", 1e13, "Field institution_value must be at most 9999999999999.99"],
+    ];
+    for (const [field, value, message] of cases) {
+      mockUnsafe.mockClear();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "a-1", ticker_symbol: "TEST", quantity: 10, [field]: value }, "u-1"),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(message);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("rejects an over-limit numeric field in patch mode before any SQL or alarm", async () => {
+    // R2 LOW: the PATCH spec's new `max` bounds had no discriminating test
+    // — reverting only the PATCH spec's four `max` values left the suite
+    // green. The patch spec runs before the ownership lookup, so the
+    // refusal issues no SQL and no alarm, same as the create-mode guard.
+    const cases: [string, number, string][] = [
+      ["quantity", 1e9, "Field quantity must be at most 999999999.999999"],
+      ["cost_basis", 1e13, "Field cost_basis must be at most 9999999999999.99"],
+      ["institution_price", 1e9, "Field institution_price must be at most 999999999.999999"],
+      ["institution_value", 1e13, "Field institution_value must be at most 9999999999999.99"],
+    ];
+    for (const [field, value, message] of cases) {
+      mockUnsafe.mockClear();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ snapshot_id: "snap-1", [field]: value }, "u-1"),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(message);
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("rejects a derived institution_value that overflows DECIMAL(15, 2) in create mode before any SQL or alarm", async () => {
+    // R2 MED: quantity and institution_price each pass their specs, but
+    // their product overflows the holdings DECIMAL(15, 2) column, and
+    // upsertHoldings swallows the 22003 per row — the route answered
+    // success with a missing/stale holdings row. The combination is refused
+    // before the ownership lookup, so no SQL and no alarm. Magnitude, not
+    // value: the column overflows on either sign.
+    const cases: [number, number][] = [
+      [1e8, 1e8],
+      [-1e8, 1e8],
+    ];
+    for (const [quantity, institution_price] of cases) {
+      mockUnsafe.mockClear();
+      mockSendAlarm.mockClear();
+      const result = await postHoldingSnapshotRoute.execute(
+        makeReq({ account_id: "a-1", ticker_symbol: "VOO", quantity, institution_price }, "u-1"),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toBe(
+        "Field institution_value must be at most 9999999999999.99",
+      );
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockSendAlarm).not.toHaveBeenCalled();
+    }
+  });
+
+  test("the derived-value guard passes combinations that cannot overflow", async () => {
+    // The guard must not over-refuse: an explicit (spec-bounded)
+    // institution_value is stored as given so the product never reaches
+    // the holdings column, and an under-limit product fits it. Both pass
+    // the guard and fail later at the ownership lookup (no account row in
+    // this file's fake driver).
+    for (const body of [
+      { account_id: "a-1", ticker_symbol: "VOO", quantity: 1e8, institution_price: 1e8, institution_value: 100 },
+      { account_id: "a-1", ticker_symbol: "VOO", quantity: 1e6, institution_price: 1e6 },
+    ]) {
+      const result = await postHoldingSnapshotRoute.execute(makeReq(body, "u-1"), fakeRes());
+      expect(result?.status).toBe("failed");
+      expect(result?.message).toMatch(/not found or access denied/i);
+    }
+  });
 });
 
 describe("post-holding-snapshot — per-user cap on the shared Polygon gate", () => {

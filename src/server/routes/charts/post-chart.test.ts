@@ -104,6 +104,14 @@ describe("post-chart typed body fields", () => {
     await rejects({ chart_id: UUID, type: { a: 1 } }, "Field type must be a string");
   });
 
+  test("a name past the VARCHAR(255) column is refused before it reaches SQL", async () => {
+    await rejects({ chart_id: UUID, name: "n".repeat(256) }, "Field name must be at most 255 characters");
+  });
+
+  test("a type past the VARCHAR(50) column is refused before it reaches SQL", async () => {
+    await rejects({ chart_id: UUID, type: "t".repeat(51) }, "Field type must be at most 50 characters");
+  });
+
   test("a non-string configuration is refused — the client always sends a JSON string", async () => {
     for (const configuration of [{ account_ids: [] }, 5, null]) {
       clearSqlMocks();
@@ -120,6 +128,22 @@ describe("post-chart typed body fields", () => {
         name: "Net worth",
         type: "balance",
         // What the client serializes, via `Chart.toJSON`.
+        configuration: JSON.stringify({ account_ids: [], budget_ids: [] }),
+      }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+    expect(mockUnsafe).toHaveBeenCalled();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("values exactly at their VARCHAR bounds pass validation and reach the repo", async () => {
+    db.updateReturns = [{ chart_id: UUID }];
+    const result = await postChartRoute.execute(
+      makeReq({
+        chart_id: UUID,
+        name: "n".repeat(255),
+        type: "t".repeat(50),
         configuration: JSON.stringify({ account_ids: [], budget_ids: [] }),
       }),
       fakeRes(),

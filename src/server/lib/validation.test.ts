@@ -12,6 +12,8 @@ import {
   isUuid,
   validateFields,
   validationError,
+  DECIMAL_15_2_MAX,
+  DECIMAL_15_6_MAX,
 } from "./validation";
 import type { FieldSpec } from "./validation";
 
@@ -518,5 +520,52 @@ describe("validateFields", () => {
     expect(validateFields({ label: { budget_id: "nope" } }, ACCOUNT_SPEC).error).toBe(
       "Field label.budget_id must be a uuid"
     );
+  });
+
+  // A VARCHAR(n) column raises `22001 value too long` past n characters and a
+  // DECIMAL(p, s) column raises `22003 numeric field overflow` past 10^(p-s),
+  // so the bound is refused here with a message naming the limit instead of
+  // paging at the write. The at-limit value is accepted: the bound is the
+  // column's exact one, not a rounded-down guard.
+  const BOUNDED_SPEC: FieldSpec[] = [
+    { path: "name", type: "string", maxLength: 255 },
+    { path: "balances.current", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+    { path: "quantity", type: "number", max: DECIMAL_15_6_MAX },
+  ];
+
+  it("accepts a string exactly at maxLength", () => {
+    expect(validateFields({ name: "n".repeat(255) }, BOUNDED_SPEC).success).toBe(true);
+  });
+
+  it("refuses a string past maxLength and names the limit", () => {
+    const result = validateFields({ name: "n".repeat(256) }, BOUNDED_SPEC);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field name must be at most 255 characters");
+  });
+
+  it("accepts a number exactly at max, on either sign", () => {
+    for (const value of [9999999999999.99, -9999999999999.99]) {
+      expect(validateFields({ balances: { current: value } }, BOUNDED_SPEC).success).toBe(true);
+    }
+    expect(validateFields({ quantity: 999999999.999999 }, BOUNDED_SPEC).success).toBe(true);
+  });
+
+  it("refuses a number past max in magnitude and names the limit", () => {
+    for (const value of [1e13, -1e13]) {
+      const result = validateFields({ balances: { current: value } }, BOUNDED_SPEC);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Field balances.current must be at most 9999999999999.99");
+    }
+    const result = validateFields({ quantity: 1e9 }, BOUNDED_SPEC);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field quantity must be at most 999999999.999999");
+  });
+
+  it("still answers the type error when the value has the wrong type", () => {
+    // A bound must not swallow the type message: a string in a numeric column
+    // is a type failure, not a magnitude failure.
+    const result = validateFields({ balances: { current: "abc" } }, BOUNDED_SPEC);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Field balances.current must be a number");
   });
 });

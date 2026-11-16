@@ -17,8 +17,8 @@ import { logger } from "server/lib/logger";
  */
 const CHART_BODY_SPEC: FieldSpec[] = [
   { path: "chart_id", type: "uuid" },
-  { path: "name", type: "string", nullable: true },
-  { path: "type", type: "string", nullable: true },
+  { path: "name", type: "string", nullable: true, maxLength: 255 },
+  { path: "type", type: "string", nullable: true, maxLength: 50 },
   { path: "configuration", type: "string" },
 ];
 

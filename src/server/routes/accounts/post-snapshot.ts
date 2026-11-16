@@ -7,6 +7,7 @@ import {
   validateFields,
   validationError,
   getAccount,
+  DECIMAL_15_2_MAX,
 } from "server";
 import type { FieldSpec } from "server";
 import { logger } from "server/lib/logger";
@@ -29,14 +30,15 @@ export interface SnapshotPostResponse {
  * a `failed` answer with the field named, never a 22P02 at the write that
  * `Route.execute` turns into a 500 plus an alarm. `account.balances`
  * itself is optional — absent leaves nothing to check, and the write side
- * defaults each balance to null. Overflow stays out of scope here (see
- * #880, which adds the range bound to `FieldSpec` for all swept routes).
+ * defaults each balance to null. The bounds mirror the columns, so an
+ * overflowing balance is refused here with the limit named instead of
+ * raising 22003 at the write.
  */
 const SNAPSHOT_BODY_SPEC: FieldSpec[] = [
-  { path: "account.balances.available", type: "number", nullable: true },
-  { path: "account.balances.current", type: "number", nullable: true },
-  { path: "account.balances.limit", type: "number", nullable: true },
-  { path: "account.balances.iso_currency_code", type: "string", nullable: true },
+  { path: "account.balances.available", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "account.balances.current", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "account.balances.limit", type: "number", nullable: true, max: DECIMAL_15_2_MAX },
+  { path: "account.balances.iso_currency_code", type: "string", nullable: true, maxLength: 10 },
 ];
 
 export const postSnapshotRoute = new Route<SnapshotPostResponse>(

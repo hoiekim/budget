@@ -332,6 +332,53 @@ describe("post-holding-snapshot update mode", () => {
     expect(upd!.values).toContain(null);
   });
 
+  test("refuses a patch whose derived institution_value would overflow, writing nothing", async () => {
+    // R2 MED, re-sync path: the stored row carries no explicit
+    // institution_value, so the re-sync derives it from the patched
+    // quantity * institution_price — 1e8 * 1e8 overflows DECIMAL(15, 2)
+    // and upsertHoldings would swallow the 22003. The combination is
+    // refused before the snapshot write, so neither table is written and
+    // the holdings row cannot go stale behind a written snapshot.
+    snapshotRows = [
+      holdingSnapshotRow({ quantity: 10, institution_price: 110, institution_value: null }),
+    ];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 1e8, institution_price: 1e8 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(result?.message).toBe(
+      "Field institution_value must be at most 9999999999999.99",
+    );
+    expect(findCall(/update\s+snapshots/i)).toBeNull();
+    expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
+  test("an explicit institution_value lets an overflowing patch pair through to the write", async () => {
+    // The derivation only runs when the snapshot carries no explicit value
+    // — an explicit (spec-bounded) value is stored as given, so the
+    // product never reaches the holdings column.
+    snapshotRows = [
+      holdingSnapshotRow({ quantity: 10, institution_price: 110, institution_value: null }),
+    ];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({
+        snapshot_id: "snap-1",
+        quantity: 1e8,
+        institution_price: 1e8,
+        institution_value: 100,
+      }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(findCall(/update\s+snapshots/i)).not.toBeNull();
+  });
+
   test("a valid snapshot_date still patches the row", async () => {
     snapshotRows = [holdingSnapshotRow()];
 
@@ -511,6 +558,52 @@ describe("post-holding-snapshot create mode", () => {
     expect(result?.body?.snapshot_id).toBe(
       `holding-acct-9-sec-1-${getSquashedDateString(new Date())}`,
     );
+  });
+
+  test("a create with an explicit institution_value succeeds when quantity * price overflows", async () => {
+    // R2 MED, create path: the explicit value is stored as given, so the
+    // 1e8 * 1e8 product never reaches the holdings column — the guard
+    // passes and the create succeeds.
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({
+        account_id: "acct-9",
+        ticker_symbol: "VOO",
+        quantity: 1e8,
+        institution_price: 1e8,
+        institution_value: 100,
+        snapshot_date: "2024-03-15",
+      }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(findCall(/insert\s+into\s+holdings/i)).not.toBeNull();
+  });
+
+  test("a create with an under-limit product derives institution_value into the holdings row", async () => {
+    // The happy derived path still works: 1e6 * 1e6 fits DECIMAL(15, 2),
+    // so the holdings row carries the derived 1e12.
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({
+        account_id: "acct-9",
+        ticker_symbol: "VOO",
+        quantity: 1e6,
+        institution_price: 1e6,
+        snapshot_date: "2024-03-15",
+      }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const holdingsInsert = findCall(/insert\s+into\s+holdings/i);
+    expect(holdingsInsert).not.toBeNull();
+    expect(holdingsInsert!.values).toContain(1e12);
   });
 
   test("rejects an unparseable snapshot_date instead of minting a NaN id", async () => {
