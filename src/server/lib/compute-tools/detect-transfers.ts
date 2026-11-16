@@ -59,10 +59,12 @@ const fetchCandidates = async (
      JOIN transactions t2
        ON t1.user_id = t2.user_id
       AND t1.user_id = $1
-      AND t1.amount + t2.amount = 0
+      -- Matched as plain comparisons on t2's columns so the planner can hash-join on
+      -- amount; an expression over both sides forces a compare of every pair of rows.
+      AND t2.amount = -t1.amount
       AND t1.amount <> 0
       AND t1.account_id <> t2.account_id
-      AND ABS(t1.date - t2.date) <= $2
+      AND t2.date BETWEEN t1.date - $2::int AND t1.date + $2::int
       AND t1.transaction_id < t2.transaction_id
      -- Scoped to the user: a transaction's account_id can name another user's account.
      JOIN accounts a1 ON a1.account_id = t1.account_id AND a1.user_id = t1.user_id

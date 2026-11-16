@@ -362,6 +362,16 @@ describe("runTransferDetection", () => {
     expect(inserts).toHaveLength(2);
   });
 
+  test("candidate join matches amount and date as comparisons on t2's columns, so it can hash-join instead of comparing every pair", async () => {
+    setupMock({ users: [userRow({ user_id: "user-1" })], candidates: [] });
+    await runTransferDetection();
+    const candidateSql = String(
+      mockReservedUnsafe.mock.calls.find((c) => /JOIN\s+transactions\s+t2/i.test(String(c[0])))?.[0],
+    ).replace(/\s+/g, " ");
+    expect(candidateSql).toContain("AND t2.amount = -t1.amount AND");
+    expect(candidateSql).toContain("AND t2.date BETWEEN t1.date - $2::int AND t1.date + $2::int AND");
+  });
+
   test("candidate-fetch SQL uses 7-day window + hidden-account exclusion", async () => {
     // Single user with no candidates — we only inspect the SELECT-candidates
     // SQL shape that the engine issues per user.
