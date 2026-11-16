@@ -98,10 +98,12 @@ const getInfiniteBudgetsToSync = <T extends BudgetFamily>(
   const updatedOriginal = original.clone({ ...updated, capacities: [overrideCpacity] });
   toUpdateList.add(updatedOriginal);
   if (original.type !== "category") {
-    const { sections: children, categories: grandChildren } = getBudgetsToUpdatePeriod(
-      original,
-      updated,
-    );
+    const { sections, categories } = getBudgetsToUpdatePeriod(original, updated);
+    const isBudget = original.type === "budget";
+    const children = isBudget ? sections : [];
+    const grandChildren = isBudget
+      ? categories
+      : categories.filter((c) => c.section_id === original.id);
     // The previous skip-check `every(c => c.isInfinite && c.isIncome === isIncome)`
     // read the `isInfinite`/`isIncome` getters which look at the stored
     // `.month` — that's the stale advisory cache for is_synced rows.
@@ -148,21 +150,32 @@ const getLimitedBudgetsToSync = <T extends BudgetFamily>(
   sections.forEach((c) => toUpdateList.add(c));
   categories.forEach((c) => toUpdateList.add(c));
 
-  // Mark budget + section capacities as "synced with children". The stored
-  // `month` is left as-is (advisory cache); readers must derive the
-  // displayed amount via Capacity.getActiveAmount, which sums the same
-  // period's amounts from the entity's children. This replaces the
-  // previous design where the FE summed children via `capacityData` and
-  // persisted the result into `month` — a frontend math bug could then
-  // corrupt the saved sum. Mark-only-and-derive eliminates that class.
+  // Mark the toggled entity — and, for a budget, its sections — as "synced
+  // with children". The stored `month` is left as-is (advisory cache);
+  // readers must derive the displayed amount via Capacity.getActiveAmount,
+  // which sums the same period's amounts from the entity's children. This
+  // replaces the previous design where the FE summed children via
+  // `capacityData` and persisted the result into `month` — a frontend math
+  // bug could then corrupt the saved sum. Mark-only-and-derive eliminates
+  // that class.
+  //
+  // A budget toggle cascades: the budget derives from its sections, so the
+  // sections must derive from their categories too, or the budget would
+  // sum the sections' stored amounts instead of their live ones. A section
+  // toggle marks only that section — its children are categories, which
+  // never carry the flag.
   if (original.type === "budget") {
     for (const capacity of budget.capacities) {
       capacity.is_synced = true;
     }
-  }
-
-  if (original.type === "budget" || original.type === "section") {
     for (const section of sections) {
+      for (const capacity of section.capacities) {
+        capacity.is_synced = true;
+      }
+    }
+  } else if (original.type === "section") {
+    const section = sections.find((s) => s.id === original.id);
+    if (section) {
       for (const capacity of section.capacities) {
         capacity.is_synced = true;
       }

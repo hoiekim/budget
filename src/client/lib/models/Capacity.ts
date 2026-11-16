@@ -95,9 +95,11 @@ export class Capacity {
    *  - `is_synced = true`: returns the sum of each child's `getActiveAmount`
    *    at the caller-supplied `date`. Walks recursively so a synced budget
    *    summing synced sections summing concrete categories resolves
-   *    correctly. Without `children`, returns 0 (caller didn't provide
-   *    context — surface as "empty" rather than silently use the stale
-   *    stored `month`).
+   *    correctly. With no `children` argument, returns 0 (caller didn't
+   *    provide context — surface as "empty" rather than silently use the
+   *    stale stored `month`). With an empty child list, returns the stored
+   *    `this[interval]`: a synced leaf has nothing to derive from, so it
+   *    keeps its stored amount instead of collapsing to zero.
    *
    * **The `date` parameter is the view date**, not the parent capacity's
    * `active_from`. A budget with a single capacity active_from=2024-01
@@ -120,7 +122,8 @@ export class Capacity {
     children?: CapacityChildLike[],
   ): number => {
     if (!this.is_synced) return this[interval];
-    if (!children || children.length === 0) return 0;
+    if (!children) return 0;
+    if (children.length === 0) return this[interval];
     let total = 0;
     for (const child of children) {
       const childCapacity = child.getActiveCapacity(date);
