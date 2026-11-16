@@ -1,7 +1,6 @@
 // The planner is pure; the runner reads and writes `cpi_snapshots` through
 // the SQL driver (mocked) and calls BLS through `globalThis.fetch` (mocked). No
 // API key is set, so the keyless v1 tier applies: 10 years per request.
-const originalApiKey = process.env.BLS_API_KEY;
 delete process.env.BLS_API_KEY;
 
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
@@ -23,11 +22,7 @@ const { planCpiFetch, refreshCpiSnapshots, CPI_REFRESH_SKIP_WINDOW_HOURS } = awa
 const { resetBlsRequestBudget, getBlsTier } = await import("server/lib/bls");
 const { INFLATION_AVERAGE_YEARS } = await import("server/lib/inflation");
 
-afterAll(() => {
-  if (originalApiKey === undefined) delete process.env.BLS_API_KEY;
-  else process.env.BLS_API_KEY = originalApiKey;
-  restoreLeaves();
-});
+afterAll(restoreLeaves);
 
 const NOW = new Date(2026, 10, 14, 12); // 2026-11-14, latest publishable month 2026-10
 const HOUR = 60 * 60 * 1000;

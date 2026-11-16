@@ -1,7 +1,6 @@
 // `bls.ts` reads `BLS_API_KEY` on every call, so each test sets the tier it
 // wants. `globalThis.fetch` is replaced for the file and put back by
-// `restoreLeaves`; the env var is restored from the snapshot below.
-const originalApiKey = process.env.BLS_API_KEY;
+// `restoreLeaves`, which also puts the env var back to the preload's snapshot.
 delete process.env.BLS_API_KEY;
 
 import { describe, test, expect, mock, beforeEach, afterAll, setSystemTime } from "bun:test";
@@ -27,11 +26,7 @@ const {
   CPI_SERIES_ID,
 } = await import("./bls");
 
-afterAll(() => {
-  if (originalApiKey === undefined) delete process.env.BLS_API_KEY;
-  else process.env.BLS_API_KEY = originalApiKey;
-  restoreLeaves();
-});
+afterAll(restoreLeaves);
 
 const respondWith = (body: unknown, status = 200) => {
   mockFetch.mockImplementationOnce(async () => new Response(JSON.stringify(body), { status }));
