@@ -68,6 +68,7 @@ for (const [name, value] of nativeNetworkGlobals) {
 // Named one by one rather than looped: `env-example.test.ts` cannot resolve a
 // computed key, and an env access it cannot follow is a hole in that scan.
 (globalThis as Record<string, unknown>).__REAL_ENV = {
+  BLS_API_KEY: process.env.BLS_API_KEY,
   DISCORD_ALARM_WEBHOOK: process.env.DISCORD_ALARM_WEBHOOK,
   LOG_LEVEL: process.env.LOG_LEVEL,
   NODE_ENV: process.env.NODE_ENV,

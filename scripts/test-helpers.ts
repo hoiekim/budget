@@ -68,6 +68,8 @@ export const restoreEnv = (): void => {
   const snapshot = realLeaves().__REAL_ENV;
   // Written out one name at a time for the same reason the snapshot is: a
   // computed key is an env access the `.env.example` scan cannot follow.
+  if (snapshot.BLS_API_KEY === undefined) delete process.env.BLS_API_KEY;
+  else process.env.BLS_API_KEY = snapshot.BLS_API_KEY;
   if (snapshot.DISCORD_ALARM_WEBHOOK === undefined) delete process.env.DISCORD_ALARM_WEBHOOK;
   else process.env.DISCORD_ALARM_WEBHOOK = snapshot.DISCORD_ALARM_WEBHOOK;
   if (snapshot.LOG_LEVEL === undefined) delete process.env.LOG_LEVEL;
