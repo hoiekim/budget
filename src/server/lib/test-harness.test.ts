@@ -2,7 +2,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "fs";
 import path from "path";
 import ts from "typescript";
-import { envReads } from "../../../scripts/env-scan";
+import { envReads, extractSource, isEnvWrite } from "../../../scripts/env-scan";
 import { restoreFetch, restoreLeaves, restoreEnv } from "test-helpers";
 
 /**
@@ -37,12 +37,12 @@ const ENV_RESTORERS = ["restoreEnv", "restoreLeaves"];
 const ENV_SCAN_ROOTS = ["src", "scripts", "vite.config.ts", "eslint.config.js", "healthcheck.js"];
 const STUB_HELPERS = ["stubFetch"];
 const TEARDOWN = ["afterAll", "afterEach"];
-// The detector and the restorer have to name the same set: a name missing
-// from this list leaks past the scan, and one missing from `restoreEnv` leaks
-// past the restore. Deriving it from the snapshot leaves one copy to keep. A
-// prefix pattern would not do, since it matches knobs the snapshot does not
-// carry.
-const MARKET_DATA_ENV = Object.keys(
+// The restorer can only put back what the snapshot carries, so the snapshot
+// has to cover every env name any test writes — the coverage test below
+// enforces that. Deriving the list from the snapshot leaves one copy to
+// keep. (The detector itself no longer consults this list: any env write
+// counts.)
+const SNAPSHOTTED_ENV = Object.keys(
   (globalThis as { __REAL_ENV: Record<string, string | undefined> }).__REAL_ENV,
 );
 
@@ -182,21 +182,21 @@ const leaksFetch = (source: ts.SourceFile): boolean => {
 };
 
 /**
- * A write to the market-data env, which decides whether the market-data code
- * reaches the live upstream or short-circuits.
+ * Any write to the env, under any name — which decides whether the code
+ * under test reaches the live upstream or short-circuits.
  *
  * It is the write that matters, not the read: a file that sets an API key and
  * does not put it back leaves every file after it taking the network branch,
  * and a fire-and-forget backfill started under that key outlives its own file
  * and lands its calls in whatever stub is installed when they resolve.
+ *
+ * The names come from the shared extractor, so a write shape the extractor
+ * cannot name — a computed key — still counts as a write rather than passing
+ * silently; only the snapshot-coverage test needs the name.
  */
-const assignsMarketDataEnv = (node: ts.Node, source: ts.SourceFile): boolean => {
-  if (!ts.isBinaryExpression(node)) return false;
-  if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return false;
-  const target = node.left;
-  if (!ts.isPropertyAccessExpression(target)) return false;
-  if (target.expression.getText(source) !== "process.env") return false;
-  return MARKET_DATA_ENV.includes(target.name.text);
+const envWritesIn = (source: ts.SourceFile): { names: string[]; hasOpaqueWrite: boolean } => {
+  const { write, opaqueWrite } = extractSource(source, source.fileName);
+  return { names: write, hasOpaqueWrite: opaqueWrite.length > 0 };
 };
 
 /**
@@ -214,15 +214,16 @@ const restoresEnvByHand = (source: ts.SourceFile): boolean =>
     (node) =>
       ts.isCallExpression(node) &&
       TEARDOWN.includes(node.expression.getText(source)) &&
-      node.arguments.some((argument) =>
-        some(argument, (inner) => assignsMarketDataEnv(inner, source)),
-      ),
+      node.arguments.some((argument) => some(argument, (inner) => isEnvWrite(inner))),
   );
 
-/** A file that sets market-data env and does not hand it back to the snapshot. */
-const leaksEnv = (source: ts.SourceFile): boolean =>
-  some(source, (node) => assignsMarketDataEnv(node, source)) &&
-  (!restoresEnv(source) || restoresEnvByHand(source));
+/** A file that sets env and does not hand it back to the snapshot. */
+const leaksEnv = (source: ts.SourceFile): boolean => {
+  const { names, hasOpaqueWrite } = envWritesIn(source);
+  return (
+    (names.length > 0 || hasOpaqueWrite) && (!restoresEnv(source) || restoresEnvByHand(source))
+  );
+};
 
 const offendsEnv = (body: string): boolean => leaksEnv(parseSource("fixture.test.ts", body));
 
@@ -308,7 +309,7 @@ describe("globalThis.fetch stubs", () => {
   });
 });
 
-describe("market-data env", () => {
+describe("test env", () => {
   afterAll(restoreEnv);
 
   test("every test file that sets it restores it in a teardown hook", () => {
@@ -348,41 +349,59 @@ describe("market-data env", () => {
     });
   });
 
-  // The detector derives its names from the snapshot; these assert the
-  // restorer covers that same set, in both of its branches.
+  // These assert the restorer covers the snapshot's set, in both of its
+  // branches — the detector no longer derives its names from the snapshot,
+  // but the restorer can only put back what the snapshot carries.
   test("restoreEnv puts back every name the snapshot carries", () => {
-    const sentinel = Object.fromEntries(MARKET_DATA_ENV.map((name) => [name, `snap-${name}`]));
+    const sentinel = Object.fromEntries(SNAPSHOTTED_ENV.map((name) => [name, `snap-${name}`]));
 
     withSnapshot(sentinel, () => {
-      for (const name of MARKET_DATA_ENV) process.env[name] = "clobbered";
+      for (const name of SNAPSHOTTED_ENV) process.env[name] = "clobbered";
 
       restoreEnv();
 
-      for (const name of MARKET_DATA_ENV) expect(process.env[name]).toBe(`snap-${name}`);
+      for (const name of SNAPSHOTTED_ENV) expect(process.env[name]).toBe(`snap-${name}`);
     });
   });
 
-  // The snapshot is the single source of truth for which names the scan
-  // watches, so a knob the product reads but nobody snapshotted would narrow
-  // the guard silently rather than widen it.
+  // The snapshot is what restoreEnv can put back, so a market-data knob the
+  // product reads but the snapshot does not carry would be writable by a
+  // test with no way to hand it back.
   test("the snapshot carries every market-data name the product reads", () => {
     const { read } = envReads(ENV_SCAN_ROOTS);
     const unsnapshotted = [...read]
-      .filter((name) => /^(?:POLYGON|YAHOO)_/.test(name) && !MARKET_DATA_ENV.includes(name))
+      .filter((name) => /^(?:POLYGON|YAHOO)_/.test(name) && !SNAPSHOTTED_ENV.includes(name))
+      .sort();
+
+    expect(unsnapshotted).toEqual([]);
+  });
+
+  // The snapshot is what restoreEnv can put back, so a name a test writes
+  // that the snapshot does not carry would leak past the restore even
+  // though the detector sees it. A read-only knob needs no entry: if a
+  // test ever writes it, this fails until the snapshot grows to match.
+  test("the snapshot carries every env name any test writes", () => {
+    const written = new Set<string>();
+    for (const file of testFiles(SRC)) {
+      const { write } = extractSource(parse(file), file);
+      for (const name of write) written.add(name);
+    }
+    const unsnapshotted = [...written]
+      .filter((name) => !SNAPSHOTTED_ENV.includes(name))
       .sort();
 
     expect(unsnapshotted).toEqual([]);
   });
 
   test("restoreEnv deletes every name the snapshot found unset", () => {
-    const unset = Object.fromEntries(MARKET_DATA_ENV.map((name) => [name, undefined]));
+    const unset = Object.fromEntries(SNAPSHOTTED_ENV.map((name) => [name, undefined]));
 
     withSnapshot(unset, () => {
-      for (const name of MARKET_DATA_ENV) process.env[name] = "leaked";
+      for (const name of SNAPSHOTTED_ENV) process.env[name] = "leaked";
 
       restoreEnv();
 
-      for (const name of MARKET_DATA_ENV) expect(name in process.env).toBe(false);
+      for (const name of SNAPSHOTTED_ENV) expect(name in process.env).toBe(false);
     });
   });
 
@@ -393,7 +412,25 @@ describe("market-data env", () => {
         `afterAll(restoreLeaves);\n` + `it("x", () => { process.env.POLYGON_API_KEY = "k"; });`,
       ),
     ).toBe(false);
-    expect(offendsEnv(`it("x", () => { process.env.OTHER_THING = "k"; });`)).toBe(false);
+    // The rule is no longer scoped to the snapshot's names: any env write
+    // in a test file has to be handed back.
+    expect(offendsEnv(`it("x", () => { process.env.OTHER_THING = "k"; });`)).toBe(true);
+  });
+
+  test("the scan sees a delete, an element-access write, and a computed-key write", () => {
+    expect(offendsEnv(`it("x", () => { delete process.env.OTHER_THING; });`)).toBe(true);
+    expect(offendsEnv(`it("x", () => { process.env["OTHER_THING"] = "k"; });`)).toBe(true);
+    expect(offendsEnv(`it("x", () => { process.env[NAME] = "k"; });`)).toBe(true);
+    expect(
+      offendsEnv(
+        `afterAll(restoreEnv);\n` + `it("x", () => { process.env[NAME] = "k"; });`,
+      ),
+    ).toBe(false);
+  });
+
+  test("a file that only reads the env does not offend", () => {
+    expect(offendsEnv(`it("x", () => { const k = process.env.POLYGON_API_KEY; });`)).toBe(false);
+    expect(offendsEnv(`it("x", () => { const { X } = process.env; });`)).toBe(false);
   });
 
   test("a teardown that restores only fetch has not restored the env", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, mock, afterEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { restoreEnv, restoreLeaves } from "test-helpers";
 
 // We need to mock fetch before importing alarm
 const mockFetch = mock(() => Promise.resolve({ ok: true } as Response));
@@ -30,7 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  delete process.env.DISCORD_ALARM_WEBHOOK;
+  restoreEnv();
 });
 
 const WEBHOOK = "https://discord.com/api/webhooks/test";

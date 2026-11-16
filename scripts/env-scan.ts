@@ -3,14 +3,15 @@ import path from "path";
 import ts from "typescript";
 
 /**
- * One scanner for every question about which env names the tree reads.
+ * One scanner for every question about which env names the tree reads and
+ * writes.
  *
  * Two tests ask that question — `.env.example` asks whether an entry is
  * documented and whether it is dead, and the test harness asks whether the
- * market-data snapshot covers what the product reads. They share this
- * extractor rather than each carrying a parser, because a second parser is a
- * second set of shapes to miss, and a reader-shape it misses makes the guard
- * built on it pass silently.
+ * snapshot covers what the tests write. They share this extractor rather
+ * than each carrying a parser, because a second parser is a second set of
+ * shapes to miss, and a reader-shape it misses makes the guard built on it
+ * pass silently.
  */
 export const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -98,44 +99,52 @@ const isWriteTarget = (access: ts.Node): boolean => {
 interface Extraction {
   /** Variable names this file reads off the env object. */
   read: string[];
+  /** Variable names this file writes onto the env object. */
+  write: string[];
   /** Sites that hand the env object somewhere the parser cannot follow. */
   opaque: string[];
+  /** Sites that write the env object under a name the parser cannot follow. */
+  opaqueWrite: string[];
 }
 
 /**
- * Every read of the env object in one file, taken off the parsed syntax tree.
+ * Every read and write of the env object in one file, taken off the parsed
+ * syntax tree.
  *
  * Working from the tree rather than the text is what makes a name in a comment,
  * a log string or a JSX text node impossible to mistake for a read. An access
  * that reaches the env object under no statically known name — a spread, a
  * computed key, an alias — is reported as opaque rather than dropped.
  */
-export const extract = (file: string): Extraction => {
-  const source = ts.createSourceFile(
-    file,
-    readFileSync(file, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    SCRIPT_KIND[path.extname(file)] ?? ts.ScriptKind.TS
-  );
-
+export const extractSource = (source: ts.SourceFile, label: string): Extraction => {
   const read: string[] = [];
+  const write: string[] = [];
   const opaque: string[] = [];
+  const opaqueWrite: string[] = [];
 
   const site = (node: ts.Node, reason: string) => {
     const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
-    opaque.push(`${path.relative(REPO_ROOT, file)}:${line + 1}: ${reason}`);
+    opaque.push(`${label}:${line + 1}: ${reason}`);
+  };
+
+  const siteWrite = (node: ts.Node, reason: string) => {
+    const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+    opaqueWrite.push(`${label}:${line + 1}: ${reason}`);
   };
 
   const visit = (node: ts.Node) => {
     if (isEnvObject(node)) {
       const parent = node.parent;
       if (ts.isPropertyAccessExpression(parent) && parent.expression === node) {
-        if (!isWriteTarget(parent)) read.push(parent.name.text);
+        if (isWriteTarget(parent)) write.push(parent.name.text);
+        else read.push(parent.name.text);
       } else if (ts.isElementAccessExpression(parent) && parent.expression === node) {
         const key = parent.argumentExpression;
         if (ts.isStringLiteralLike(key)) {
-          if (!isWriteTarget(parent)) read.push(key.text);
+          if (isWriteTarget(parent)) write.push(key.text);
+          else read.push(key.text);
+        } else if (isWriteTarget(parent)) {
+          siteWrite(parent, "computed key");
         } else {
           site(parent, "computed key");
         }
@@ -158,7 +167,34 @@ export const extract = (file: string): Extraction => {
   };
 
   visit(source);
-  return { read, opaque };
+  return { read, write, opaque, opaqueWrite };
+};
+
+export const extract = (file: string): Extraction => {
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    SCRIPT_KIND[path.extname(file)] ?? ts.ScriptKind.TS
+  );
+  return extractSource(source, path.relative(REPO_ROOT, file));
+};
+
+/**
+ * Any write to the env object under any name — set, delete, compound, or
+ * element access. The test harness uses this to tell a teardown that hands
+ * the env back by hand from one that calls a restorer, without re-deriving
+ * the write shapes.
+ */
+export const isEnvWrite = (node: ts.Node): boolean => {
+  if (ts.isPropertyAccessExpression(node) && isEnvObject(node.expression)) {
+    return isWriteTarget(node);
+  }
+  if (ts.isElementAccessExpression(node) && isEnvObject(node.expression)) {
+    return isWriteTarget(node);
+  }
+  return false;
 };
 
 
