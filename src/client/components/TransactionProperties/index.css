@@ -37,8 +37,8 @@ div.TransactionProperties .row.partnerPickerEmpty > .partnerPickerEmptyText {
 /* Candidate row — the `.row` is the clickable surface (role=button) so
    its block children stack as block elements without `<button>`'s
    user-agent layout quirks. Layout mirrors `.TransactionRow >
-   .transactionInfo` exactly (50 / calc(100% - 140px) / 90 column
-   math). */
+   .transactionInfo` exactly (50px date, a name that takes the free space,
+   an amount 16px after it). */
 div.TransactionProperties .row.partnerCandidate {
   display: block;
   cursor: pointer;
@@ -64,11 +64,13 @@ div.TransactionProperties .row.partnerCandidate .authorized_date {
 }
 
 div.TransactionProperties .row.partnerCandidate .merchant_name {
-  width: calc(100% - 140px);
+  flex: 1;
+  min-width: 0;
 }
 
 div.TransactionProperties .row.partnerCandidate .amount {
-  width: 90px;
+  flex-shrink: 0;
+  margin-left: 16px;
   text-align: right;
   white-space: nowrap;
 }
