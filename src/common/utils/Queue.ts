@@ -20,11 +20,11 @@
  * getters are re-evaluated on every `add()` so env-driven caps can change
  * at runtime (tests do this).
  *
- * `maxWaitMs` bounds how long a task may sit waiting for a rate slot before
- * `add()` rejects with `QueueWaitTimeoutError`. It bounds the rate gate only
- * — a task already past that gate is never timed out, and the concurrency
- * gate stays unbounded. Set it per queue, or per call via
- * `add(task, { maxWaitMs })`; `<= 0` (or unset) waits indefinitely.
+ * `maxWaitMs` bounds how long a task may sit waiting for a rate slot and an
+ * in-flight slot combined before `add()` rejects with
+ * `QueueWaitTimeoutError`. A task that has started is never timed out. Set it
+ * per queue, or per call via `add(task, { maxWaitMs })`; `<= 0` (or unset)
+ * waits indefinitely.
  */
 export interface QueueOptions {
   capacity?: number | (() => number);
@@ -38,14 +38,14 @@ export interface QueueAddOptions {
 }
 
 /**
- * Thrown by `add()` when the rate gate could not produce a slot within
+ * Thrown by `add()` when the queue could not start the task within
  * `maxWaitMs`. Callers that shed rather than queue — a request someone is
  * waiting on — should catch this and surface a retryable failure, leaving
  * the slot to whoever can still use it.
  */
 export class QueueWaitTimeoutError extends Error {
   constructor(waitedMs: number) {
-    super(`No rate slot available within ${waitedMs}ms`);
+    super(`No queue slot available within ${waitedMs}ms`);
     this.name = "QueueWaitTimeoutError";
   }
 }
@@ -68,8 +68,10 @@ export class Queue {
   }
 
   async add<T>(task: () => Promise<T>, options: QueueAddOptions = {}): Promise<T> {
-    await this.waitForRateSlot(options.maxWaitMs ?? this.defaultMaxWaitMs);
-    await this.acquireInflight();
+    const maxWaitMs = options.maxWaitMs ?? this.defaultMaxWaitMs;
+    const deadline = maxWaitMs > 0 ? Date.now() + maxWaitMs : Infinity;
+    await this.waitForRateSlot(maxWaitMs, deadline);
+    await this.acquireInflight(maxWaitMs, deadline);
     try {
       return await task();
     } finally {
@@ -77,10 +79,9 @@ export class Queue {
     }
   }
 
-  private async waitForRateSlot(maxWaitMs: number): Promise<void> {
+  private async waitForRateSlot(maxWaitMs: number, deadline: number): Promise<void> {
     const cap = this.getCapacity();
     if (cap <= 0) return;
-    const deadline = maxWaitMs > 0 ? Date.now() + maxWaitMs : Infinity;
     while (true) {
       const now = Date.now();
       const cutoff = now - this.windowMs;
@@ -99,13 +100,37 @@ export class Queue {
     }
   }
 
-  private async acquireInflight(): Promise<void> {
+  private async acquireInflight(maxWaitMs: number, deadline: number): Promise<void> {
     const max = this.getMaxInflight();
     if (max <= 0) return;
     while (this.inflight >= max) {
-      await new Promise<void>((resolve) => this.inflightWaiters.push(resolve));
+      await this.waitForRelease(maxWaitMs, deadline);
     }
     this.inflight++;
+  }
+
+  private waitForRelease(maxWaitMs: number, deadline: number): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (deadline === Infinity) {
+        this.inflightWaiters.push(resolve);
+        return;
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        reject(new QueueWaitTimeoutError(maxWaitMs));
+        return;
+      }
+      const waiter = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        const index = this.inflightWaiters.indexOf(waiter);
+        if (index !== -1) this.inflightWaiters.splice(index, 1);
+        reject(new QueueWaitTimeoutError(maxWaitMs));
+      }, remaining);
+      this.inflightWaiters.push(waiter);
+    });
   }
 
   private releaseInflight(): void {

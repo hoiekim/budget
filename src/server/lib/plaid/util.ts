@@ -14,6 +14,14 @@ if (!isPlaidConfigured) {
   logger.warn("Plaid is not configured. Check env vars.");
 }
 
+/**
+ * Every call made with {@link getClient} holds a {@link plaidQueue} slot until
+ * it settles, and the SDK's axios default never times out, so one stalled
+ * connection would hold a shared slot forever. 30 s leaves room for a large
+ * `transactionsSync` page while still handing a stuck slot back.
+ */
+export const PLAID_REQUEST_TIMEOUT_MS = 30_000;
+
 export const getClient = (user?: MaskedUser) => {
   if (!isPlaidConfigured) {
     throw new Error("Plaid is not configured — refusing to make Plaid API calls");
@@ -40,6 +48,7 @@ export const getClient = (user?: MaskedUser) => {
   const config = new Configuration({
     basePath,
     baseOptions: {
+      timeout: PLAID_REQUEST_TIMEOUT_MS,
       headers: {
         "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
         "PLAID-SECRET": secret,
@@ -57,6 +66,14 @@ export const getClient = (user?: MaskedUser) => {
  */
 export const PLAID_MAX_INFLIGHT = 8;
 export const plaidQueue = new Queue({ maxInflight: PLAID_MAX_INFLIGHT });
+
+/**
+ * How long a call made while someone waits on the HTTP response may queue for
+ * a {@link plaidQueue} slot. Bun reaps a silent request after 10 s, so a call
+ * that cannot start inside half of that fails with `QueueWaitTimeoutError`
+ * instead of being dropped with no response.
+ */
+export const PLAID_FOREGROUND_WAIT_MS = 5_000;
 
 /** Test seam: the Plaid client factory. Production callers pass nothing. */
 export interface PlaidClientDeps {

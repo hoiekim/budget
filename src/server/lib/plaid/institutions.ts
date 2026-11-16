@@ -1,7 +1,7 @@
 import { CountryCode } from "plaid";
 import { MaskedUser, logger } from "server";
 import { JSONInstitution, Queue } from "common";
-import { getClient, plaidQueue } from "./util";
+import { PLAID_FOREGROUND_WAIT_MS, PlaidClientDeps, getClient, plaidQueue } from "./util";
 
 // A sub-cap inside the shared Plaid gate, so one institutions batch cannot
 // take every slot from the sync paths.
@@ -10,15 +10,18 @@ const institutionQueue = new Queue({ maxInflight: 4 });
 const getInstitution = async (
   user: MaskedUser,
   id: string,
+  getClientFn: typeof getClient,
 ): Promise<JSONInstitution | undefined> => {
-  const client = getClient(user);
+  const client = getClientFn(user);
 
   try {
-    const response = await plaidQueue.add(() =>
-      client.institutionsGetById({
-        institution_id: id,
-        country_codes: [CountryCode.Us],
-      }),
+    const response = await plaidQueue.add(
+      () =>
+        client.institutionsGetById({
+          institution_id: id,
+          country_codes: [CountryCode.Us],
+        }),
+      { maxWaitMs: PLAID_FOREGROUND_WAIT_MS },
     );
 
     const { institution } = response.data;
@@ -60,9 +63,10 @@ const getInstitution = async (
 export const getInstitutionsByIds = async (
   user: MaskedUser,
   ids: string[],
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
 ): Promise<JSONInstitution[]> => {
   const settled = await Promise.all(
-    ids.map((id) => institutionQueue.add(() => getInstitution(user, id))),
+    ids.map((id) => institutionQueue.add(() => getInstitution(user, id, getClientFn))),
   );
   return settled.filter((institution): institution is JSONInstitution => !!institution);
 };
