@@ -20,6 +20,7 @@ import { CheckIcon, TransactionRowInfo } from "client/components";
 import { ApiResponse } from "server";
 import TransferControls from "./TransferControls";
 import RecurringControls from "./RecurringControls";
+import { getTransactionTitle } from "./transactionTitle";
 
 interface Props {
   transaction: Transaction | SplitTransaction;
@@ -98,7 +99,7 @@ const TransactionRow = ({ transaction }: Props) => {
     !isSplitTransaction && recurring?.status === "suggested" ? recurring.recurring_id : undefined;
   const isConfirmedRecurring = recurring?.status === "confirmed";
 
-  const title = label.memo || (!merchant_name && name ? name : merchant_name);
+  const title = getTransactionTitle(label.memo, merchant_name, name);
   const subtitle =
     !label.memo && merchant_name && name && merchant_name.toLowerCase() !== name.toLowerCase()
       ? name
