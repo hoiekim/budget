@@ -70,6 +70,11 @@ describe("TransferRow", () => {
     expect(title(container)).toBe("Rent savings");
   });
 
+  it("names the outgoing leg by its merchant when it has no memo", () => {
+    const { container } = render([incomingLeg(), outgoingLeg({ merchant_name: "Bank" })]);
+    expect(title(container)).toBe("Bank");
+  });
+
   it("falls back to the incoming leg's name when the outgoing leg has none", () => {
     const { container } = render([outgoingLeg({ name: "" }), incomingLeg()]);
     expect(title(container)).toBe("ONLINE TRANSFER FROM CHECKING");
