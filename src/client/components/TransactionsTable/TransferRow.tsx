@@ -1,6 +1,7 @@
 import { useAppContext, PATH } from "client";
 import { RightArrowIcon, TransactionRowInfo } from "client/components";
 import type { JSONTransaction } from "common";
+import { getTransactionTitle } from "./transactionTitle";
 
 interface Props {
   /** Both transactions in the confirmed pair, in server order. */
@@ -11,9 +12,10 @@ interface Props {
  * Bundled single-row presentation of a confirmed transfer pair. The two paired
  * transactions are folded into one row showing the date, both accounts
  * (from → to), the pair's absolute amount (no +/− sign since the money
- * doesn't leave the household), and a "Transfer" label where the merchant
- * would sit. The side whose `amount` is positive (Plaid outflow) is the
- * "outgoing" side; falls back to the first if signs are equal.
+ * doesn't leave the household), and the outgoing side's name — or the
+ * incoming side's when the outgoing one has none — tagged "Transfer".
+ * The side whose `amount` is positive (Plaid outflow) is the "outgoing"
+ * side; falls back to the first if signs are equal.
  */
 const TransferRow = ({ transactions }: Props) => {
   const { data, router } = useAppContext();
@@ -44,6 +46,10 @@ const TransferRow = ({ transactions }: Props) => {
 
   const date = outgoing.authorized_date || outgoing.date;
 
+  const titleOf = (t: JSONTransaction | undefined) =>
+    t ? getTransactionTitle(t.label?.memo, t.merchant_name, t.name) : "";
+  const title = titleOf(outgoing) || titleOf(incoming);
+
   return (
     <div className="TransactionRow TransferRow">
       <TransactionRowInfo
@@ -54,7 +60,10 @@ const TransferRow = ({ transactions }: Props) => {
         amountClassName="transferAmount"
         onClickInfo={onClickInfo}
       >
-        <div className="bigText">Transfer</div>
+        <div className="titleLine">
+          <div className="bigText">{title}</div>
+          <span className="transferChip">Transfer</span>
+        </div>
         <div className="smallText">
           {fromAccount?.custom_name || fromAccount?.name}
           &nbsp;

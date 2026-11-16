@@ -20,7 +20,8 @@ div.TransactionRow > .transactionInfo > .authorized_date {
 }
 
 div.TransactionRow > .transactionInfo > .merchant_name {
-  width: calc(100% - 140px);
+  flex: 1;
+  min-width: 0;
 }
 
 div.TransactionRow > .transactionInfo > .merchant_name > div {
@@ -29,8 +30,11 @@ div.TransactionRow > .transactionInfo > .merchant_name > div {
   overflow: hidden;
 }
 
+/* The amount takes only its own width, so the space before it is the margin
+   alone: the space a typical M/DD date leaves in the 50px date column. */
 div.TransactionRow > .transactionInfo > .amount {
-  width: 90px;
+  flex-shrink: 0;
+  margin-left: 16px;
   text-align: right;
 }
 
@@ -140,9 +144,9 @@ div.TransactionRow .transferAmountIcon {
   color: var(--textSoftLight);
 }
 
-/* Title line: the title truncates while a confirmed recurring's chip stays
-   beside it. The chip is sized to sit inside the title's own line box so
-   the row keeps its height. */
+/* Title line: the title truncates while a confirmed recurring's or a
+   transfer's chip stays beside it. The chip is sized to sit inside the
+   title's own line box so the row keeps its height. */
 div.TransactionRow > .transactionInfo > .merchant_name > .titleLine {
   display: flex;
   align-items: center;
@@ -156,7 +160,8 @@ div.TransactionRow > .transactionInfo > .merchant_name > .titleLine > .bigText {
   white-space: nowrap;
 }
 
-div.TransactionRow > .transactionInfo > .merchant_name > .titleLine > .recurringChip {
+div.TransactionRow > .transactionInfo > .merchant_name > .titleLine > .recurringChip,
+div.TransactionRow > .transactionInfo > .merchant_name > .titleLine > .transferChip {
   flex-shrink: 0;
   padding: 2px 6px;
   border-radius: 8px;
