@@ -54,6 +54,8 @@ div.TransactionProperties .row.partnerCandidate:not(.disabled):hover {
 }
 
 div.TransactionProperties .row.partnerCandidate .partnerCandidateInfo {
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
