@@ -8,6 +8,7 @@ import {
   CategoryDictionary,
   PATH,
   call,
+  compareByOrder,
   useAppContext,
   useLocalStorageState,
   useMemoryState,
@@ -69,12 +70,7 @@ export const SectionBar = ({ section, onSetOrder }: Props) => {
 
   const categoryBars = Array.from(categories)
     .filter(([_category_id, category]) => category.section_id === section_id)
-    .sort(([a], [b]) => {
-      const indexA = categoriesOrder.indexOf(a);
-      const indexB = categoriesOrder.indexOf(b);
-      if (indexA === undefined || indexB === undefined) return 0;
-      return indexA - indexB;
-    })
+    .sort(([a], [b]) => compareByOrder(categoriesOrder, a, b))
     .map(([category_id, category]) => {
       return <CategoryBar key={category_id} category={category} onSetOrder={setCategoriesOrder} />;
     });

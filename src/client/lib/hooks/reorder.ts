@@ -29,6 +29,23 @@ let reorderThrottliing = false;
 let touching = false;
 let isClickAllowed = true;
 
+/**
+ * Compare two ids by their positions in a persisted order list, for
+ * `Array.prototype.sort`. Ids absent from the list sort last (keeping
+ * their existing relative order), so a first paint matches the settled
+ * order the effect converges to — an unknown id never jumps ahead of
+ * the user's saved order. Note the sentinel is -1: `indexOf` never
+ * returns `undefined`, so a guard on `undefined` is dead code.
+ */
+export const compareByOrder = (order: string[], a: string, b: string) => {
+  const indexA = order.indexOf(a);
+  const indexB = order.indexOf(b);
+  if (indexA === -1 && indexB === -1) return 0;
+  if (indexA === -1) return 1;
+  if (indexB === -1) return -1;
+  return indexA - indexB;
+};
+
 export const useReorder = (
   dataId: string,
   onSetOrder?: Dispatch<SetStateAction<string[]>>
