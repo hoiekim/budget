@@ -81,7 +81,7 @@ A labeled transaction stores its category across three correlated columns. Both 
 | `0 < c < 1` | Auto-suggested, not yet confirmed by user |
 | `1` | User confirmed |
 
-**Prod backfill.** A backfill on 2026-05-13 set `label_category_confidence = 1` for every row with `label_category_id IS NOT NULL`. The application code's confirmation predicate (`category_confidence === 1 && !!category_id` in `src/client/lib/hooks/calculation/budgets.ts`) does not tolerate `NULL`, so this backfill is load-bearing — any new INSERT that sets `label_category_id` without also setting `label_category_confidence` would reintroduce the "labeled but counted as unsorted" miscount.
+**Prod backfill.** A backfill on 2026-05-13 set `label_category_confidence = 1` for every row with `label_category_id IS NOT NULL`. The application code's confirmation predicate (`Transaction.isConfirmed()` in `src/client/lib/models/Transaction.ts`, i.e. `category_confidence === 1 && !!category_id`) does not tolerate `NULL`, so this backfill is load-bearing — any new INSERT that sets `label_category_id` without also setting `label_category_confidence` would reintroduce the "labeled but counted as unsorted" miscount.
 
 **Split transactions.** Splits inherit the same four-state encoding as transactions. `SplitTransaction.toTransaction()` rebuilds the label using the split's own `category_confidence`, so a user-confirmed split (`1`) lands in the sorted bucket and an auto-suggested split (`0 < c < 1`) lands in unsorted. The two-pass auto-suggest engine (#344) writes per-split suggestions; the `POST /split-transaction` route applies `inferLabelConfidence` so FE-driven updates write `1` on user-set categories and `0` on user-cleared categories.
 
