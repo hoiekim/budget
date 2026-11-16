@@ -83,13 +83,16 @@ export const stopScheduledSync = () => {
 
 Process-level handlers (`SIGINT`, `SIGTERM`, `unhandledRejection`, `uncaughtException`) belong in the application entry point (`start.ts`), not in library modules. Shutdown should drain resources in order:
 
-1. Stop accepting new connections (close HTTP server)
-2. Close database pool
-3. Exit process
+1. Stop scheduled work and rate-limit cleanup
+2. Stop accepting new connections (stop HTTP server)
+3. Close database pool
+4. Exit process
 
 ```typescript
 const gracefulShutdown = async () => {
-  server.close();
+  stopRateLimitCleanup();
+  stopScheduledSync();
+  server.stop(); // Bun's `Server` exposes `stop()`, not `close()`
   await pool.end();
   process.exit(0);
 };
@@ -97,6 +100,8 @@ const gracefulShutdown = async () => {
 process.on("SIGINT", gracefulShutdown);
 process.on("SIGTERM", gracefulShutdown);
 ```
+
+The real sequence lives in `start.ts` (`shutdown`): the two cleanup stops run first, then `server.stop()`, then `pool.end()`.
 
 Library modules should not register global process handlers as side effects of import.
 

@@ -32,6 +32,10 @@ budget/
 │   │       ├── api-keys/     # Scoped API key management
 │   │       ├── budgets/      # Budget management
 │   │       ├── charts/       # Chart data
+│   │       ├── client-error.ts  # Client-error reporting endpoint
+│   │       ├── events/       # Event feed
+│   │       ├── health.ts     # Health check endpoint
+│   │       ├── recurrings/   # Recurring transaction management
 │   │       ├── transfers/    # Transfer pair management
 │   │       ├── users/        # User management
 │   │       └── webhooks/     # Webhook handlers
@@ -40,7 +44,7 @@ budget/
 │       └── utils/            # Shared utilities
 ├── docs/                     # Documentation
 ├── build/                    # Compiled output
-└── _manual_tools/            # Development and maintenance scripts
+└── scripts/                  # Development and maintenance scripts
 ```
 
 ## Data Models
