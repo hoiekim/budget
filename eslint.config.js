@@ -5,7 +5,7 @@ import globals from "globals";
 
 export default [
   {
-    files: ["src/**/*.ts", "src/**/*.tsx"],
+    files: ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "scripts/**/*.tsx", "vite.config.ts", "healthcheck.js"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
