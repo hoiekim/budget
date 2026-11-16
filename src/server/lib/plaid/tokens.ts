@@ -1,7 +1,9 @@
 import { CountryCode, LinkTokenCreateRequest, Products } from "plaid";
 import { MaskedUser } from "server";
 import { JSONItem } from "common";
-import { PlaidClientDeps, getClient, plaidQueue } from "./util";
+import { PLAID_FOREGROUND_WAIT_MS, PlaidClientDeps, getClient, plaidQueue } from "./util";
+
+const foreground = { maxWaitMs: PLAID_FOREGROUND_WAIT_MS };
 
 const { HOST_NAME } = process.env;
 
@@ -27,7 +29,7 @@ export const getLinkToken = async (
     request.update = { account_selection_enabled: true };
   } else request.products = [Products.Transactions];
 
-  const response = await plaidQueue.add(() => client.linkTokenCreate(request));
+  const response = await plaidQueue.add(() => client.linkTokenCreate(request), foreground);
 
   return response.data;
 };
@@ -50,7 +52,7 @@ export const exchangePublicToken = async (
   const { getClient: getClientFn = getClient } = deps;
   const client = getClientFn(user);
 
-  const response = await plaidQueue.add(() => client.itemPublicTokenExchange({ public_token }));
+  const response = await plaidQueue.add(() => client.itemPublicTokenExchange({ public_token }), foreground);
 
   return response.data;
 };
@@ -61,7 +63,7 @@ export const getItem = async (
 ) => {
   const client = getClientFn();
 
-  const response = await plaidQueue.add(() => client.itemGet({ access_token }));
+  const response = await plaidQueue.add(() => client.itemGet({ access_token }), foreground);
 
   return response.data.item;
 };
@@ -73,7 +75,7 @@ export const deleteItem = async (
 ) => {
   const client = getClientFn(user);
 
-  const response = await plaidQueue.add(() => client.itemRemove({ access_token }));
+  const response = await plaidQueue.add(() => client.itemRemove({ access_token }), foreground);
 
   return response.data;
 };

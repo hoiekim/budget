@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Products } from "plaid";
 import type { JSONItem } from "common";
 import type { MaskedUser } from "server";
 import { getAccounts, getHoldings } from "./accounts";
 import { getTransactions, getInvestmentTransactions } from "./transactions";
 import { getLinkToken, exchangePublicToken, getItem, deleteItem } from "./tokens";
-import { PLAID_MAX_INFLIGHT, plaidQueue } from "./util";
+import { getInstitutionsByIds } from "./institutions";
+import { PLAID_FOREGROUND_WAIT_MS, PLAID_MAX_INFLIGHT, plaidQueue } from "./util";
 import type { PlaidClientDeps } from "./util";
 
 // No mock.module: every function takes its client through the injected
@@ -42,6 +43,8 @@ const fakeClient = {
   itemPublicTokenExchange: () => track({ data: { access_token: "at", item_id: "it" } }),
   itemGet: () => track({ data: { item: { item_id: "it" } } }),
   itemRemove: () => track({ data: {} }),
+  institutionsGetById: ({ institution_id }: { institution_id: string }) =>
+    track({ data: { institution: { institution_id, name: institution_id } } }),
 };
 
 const deps: PlaidClientDeps = {
@@ -58,6 +61,7 @@ const makeItem = (n: number) =>
   }) as unknown as JSONItem;
 
 const items = Array.from({ length: 20 }, (_, n) => makeItem(n));
+const institutionIds = Array.from({ length: 20 }, (_, n) => `ins_${n}`);
 
 /** One item's full fan-out, as linking a new item runs it: four endpoint families at once. */
 const syncOneItem = (item: JSONItem) =>
@@ -84,9 +88,10 @@ describe("shared Plaid concurrency gate", () => {
       exchangePublicToken(user, "public", deps),
       getItem("access-0", deps),
       deleteItem(user, items[0]!, deps),
+      getInstitutionsByIds(user, institutionIds, deps),
     ]);
 
-    expect(calls).toBe(items.length * 4 + 4);
+    expect(calls).toBe(items.length * 4 + 4 + institutionIds.length);
     expect(peakInflight).toBe(PLAID_MAX_INFLIGHT);
   });
 
@@ -95,6 +100,13 @@ describe("shared Plaid concurrency gate", () => {
 
     expect(calls).toBe(items.length);
     expect(peakInflight).toBe(PLAID_MAX_INFLIGHT);
+  });
+
+  it("holds an institutions batch to its sub-cap inside the shared gate", async () => {
+    const institutions = await getInstitutionsByIds(user, institutionIds, deps);
+
+    expect(institutions.map((i) => i.institution_id)).toStrictEqual(institutionIds);
+    expect(peakInflight).toBe(4);
   });
 
   it("keeps one item's full fan-out parallel", async () => {
@@ -116,5 +128,38 @@ describe("shared Plaid concurrency gate", () => {
 
     expect(calls).toBe(items.length);
     expect(peakInflight).toBe(PLAID_MAX_INFLIGHT);
+  });
+
+  describe("wait bound", () => {
+    const originalAdd = plaidQueue.add;
+    let waits: (number | undefined)[] = [];
+
+    beforeEach(() => {
+      waits = [];
+      plaidQueue.add = ((task, options) => {
+        waits.push(options?.maxWaitMs);
+        return originalAdd.call(plaidQueue, task, options);
+      }) as typeof plaidQueue.add;
+    });
+
+    afterEach(() => {
+      plaidQueue.add = originalAdd;
+    });
+
+    it("bounds the wait of calls made while a request is open", async () => {
+      await getLinkToken(user, undefined, deps);
+      await exchangePublicToken(user, "public", deps);
+      await getItem("access-0", deps);
+      await deleteItem(user, items[0]!, deps);
+      await getInstitutionsByIds(user, ["ins_0"], deps);
+
+      expect(waits).toStrictEqual(Array(5).fill(PLAID_FOREGROUND_WAIT_MS));
+    });
+
+    it("leaves background sync calls waiting for as long as it takes", async () => {
+      await syncOneItem(items[0]!);
+
+      expect(waits).toStrictEqual(Array(4).fill(undefined));
+    });
   });
 });
