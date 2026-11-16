@@ -307,16 +307,11 @@ const getBalanceDataFromSnapshots = (
     }
   });
 
-  // A live balance is fresher than a stale snapshot — but only when there
-  // is no user-recorded snapshot for the current month, and only when a
-  // live balance actually exists. Writing unconditionally clobbered the
-  // whole current-month bucket (BalanceHistory is keyed by year-month),
-  // and `getAccountBalance`'s `|| 0` turned "no balance known" into $0.00
-  // for manual accounts. A recorded snapshot wins its month; the live
-  // balance fills only months no snapshot covers.
+  // The live balance is the latest balance of the current month, so it wins
+  // that month over any snapshot. An account with no live balance (a manual
+  // account never given one) keeps its snapshot instead of reading $0.00.
   accounts.forEach((a) => {
     if (!a.balances.current && a.balances.current !== 0) return;
-    if (balanceData.get(a.id, today) !== undefined) return;
     balanceData.set(a.id, today, getAccountBalance(a));
   });
 

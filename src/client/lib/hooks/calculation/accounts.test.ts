@@ -139,12 +139,9 @@ describe("getDisplayBalance cold-load past-balance flash", () => {
   });
 });
 
-// #878: a snapshot dated in the current month was discarded — the
-// snapshot tier wrote the live balance over the whole current-month
-// bucket (BalanceHistory is keyed by year-month), and its day-granular
-// future-date guard dropped the snapshot forms' period-end default date
-// outright. A recorded snapshot wins its month; the live balance fills
-// only months no snapshot covers, and only when one actually exists.
+// BalanceHistory is keyed by year-month. The live balance is the latest
+// balance of the current month and wins it; a current-month snapshot fills
+// the month only when the account has no live balance.
 describe("account snapshots in the current month", () => {
   const ACCOUNT_ID = "man1";
   const thisMonth = getYearMonthString(new Date());
@@ -203,13 +200,13 @@ describe("account snapshots in the current month", () => {
     expect(at(balanceData, thisMonth)).toBe(1000);
   });
 
-  test("a recorded snapshot wins the current month over the live balance", () => {
+  test("the live balance wins the current month over a recorded snapshot", () => {
     const balanceData = balancesFor(500, [snapshot(`${thisMonth}-05`, 1000)]);
-    expect(at(balanceData, thisMonth)).toBe(1000);
+    expect(at(balanceData, thisMonth)).toBe(500);
   });
 
-  test("a recorded zero is honored, not overwritten by the live balance", () => {
-    const balanceData = balancesFor(500, [snapshot(`${thisMonth}-05`, 0)]);
+  test("a live balance of zero still wins the current month", () => {
+    const balanceData = balancesFor(0, [snapshot(`${thisMonth}-05`, 1000)]);
     expect(at(balanceData, thisMonth)).toBe(0);
   });
 
