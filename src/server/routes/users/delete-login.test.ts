@@ -1,11 +1,3 @@
-/**
- * Tests for DELETE /api/login.
- *
- * The route calls `req.session.destroy(cb)` and returns success.
- * If the callback receives an error, the route throws — the Route base
- * class catches it and returns a 500 error envelope.
- */
-
 import { describe, test, expect, beforeEach, afterAll } from "bun:test";
 import { TEST_ISSUER, startFakeIssuer } from "test-issuer";
 
@@ -40,10 +32,11 @@ function makeReq(
       id: "s-1",
       user: undefined,
       auth: opts.auth,
-      regenerate() {},
-      destroy(cb?: (err?: Error) => void) {
+      async regenerate() {},
+      async destroy() {
         destroyCalled = true;
-        cb?.(opts.destroyErr);
+        await Promise.resolve();
+        if (opts.destroyErr) throw opts.destroyErr;
       },
     },
     ip: "127.0.0.1",
@@ -75,7 +68,7 @@ describe("delete-login", () => {
     expect(result?.status).toBe("success");
   });
 
-  test("destroy callback error → Route layer surfaces 500 error envelope", async () => {
+  test("session store delete fails → 500 error envelope, not success", async () => {
     const { req } = makeReq({ destroyErr: new Error("session store down") });
     const res = fakeRes();
     const result = await deleteLoginRoute.execute(req, res);

@@ -43,8 +43,8 @@ beforeEach(() => {
 interface SessionStub {
   id: string;
   user?: { user_id: string; username: string };
-  regenerate: (cb: (err?: Error) => void) => void;
-  destroy: (cb?: (err?: Error) => void) => void;
+  regenerate: () => Promise<void>;
+  destroy: () => Promise<void>;
 }
 
 function makeReq(
@@ -54,10 +54,11 @@ function makeReq(
   const session: SessionStub = {
     id: "s-1",
     user: undefined,
-    regenerate(cb) {
-      cb(opts.regenerateErr);
+    async regenerate() {
+      await Promise.resolve();
+      if (opts.regenerateErr) throw opts.regenerateErr;
     },
-    destroy() {},
+    async destroy() {},
   };
   return {
     method: "POST",
@@ -150,11 +151,10 @@ describe("post-login auth outcomes", () => {
     const session: SessionStub = {
       id: "s-old",
       user: undefined,
-      regenerate(cb) {
+      async regenerate() {
         regenerateCalled = true;
-        cb();
       },
-      destroy() {},
+      async destroy() {},
     };
     const req = {
       method: "POST",
@@ -177,7 +177,7 @@ describe("post-login auth outcomes", () => {
     expect(session.user?.user_id).toBe("u-1");
   });
 
-  test("session.regenerate callback error → Route layer surfaces error envelope", async () => {
+  test("session.regenerate rejects → Route layer surfaces error envelope", async () => {
     mockUnsafe.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
     const ip = "198.51.100.7";
     const req = makeReq(

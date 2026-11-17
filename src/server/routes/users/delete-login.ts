@@ -9,12 +9,7 @@ export interface LoginDeleteResponse {
 
 export const deleteLoginRoute = new Route<LoginDeleteResponse>("DELETE", "/login", async (req) => {
   const { auth } = req.session;
-  req.session.destroy((error) => {
-    if (error) {
-      logger.error("Failed to destroy session", {}, error);
-      throw new Error("Failed to destroy session.");
-    }
-  });
+  await req.session.destroy();
 
   const sso = getSso();
   if (!auth || !sso) return { status: "success" };
