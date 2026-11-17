@@ -40,7 +40,7 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
       };
     }
 
-    const response = await plaid.getLinkToken(user, accessToken);
+    const response = await plaid.getLinkToken(user, accessToken, { maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS });
     if (!response) throw new Error("Server failed to get link token.");
 
     return {

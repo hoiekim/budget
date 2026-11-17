@@ -146,20 +146,63 @@ describe("shared Plaid concurrency gate", () => {
       plaidQueue.add = originalAdd;
     });
 
-    it("bounds the wait of calls made while a request is open", async () => {
+    it("passes the caller's bound through to the gate", async () => {
+      const bounded = { ...deps, maxWaitMs: PLAID_FOREGROUND_WAIT_MS };
+      await getLinkToken(user, undefined, bounded);
+      await exchangePublicToken(user, "public", bounded);
+      await getItem("access-0", bounded);
+      await deleteItem(user, items[0]!, bounded);
+
+      expect(waits).toStrictEqual(Array(4).fill(PLAID_FOREGROUND_WAIT_MS));
+    });
+
+    it("leaves a call unbounded when the caller passes no bound", async () => {
       await getLinkToken(user, undefined, deps);
       await exchangePublicToken(user, "public", deps);
       await getItem("access-0", deps);
       await deleteItem(user, items[0]!, deps);
       await getInstitutionsByIds(user, ["ins_0"], deps);
-
-      expect(waits).toStrictEqual(Array(5).fill(PLAID_FOREGROUND_WAIT_MS));
-    });
-
-    it("leaves background sync calls waiting for as long as it takes", async () => {
       await syncOneItem(items[0]!);
 
-      expect(waits).toStrictEqual(Array(4).fill(undefined));
+      expect(waits).toStrictEqual(Array(9).fill(undefined));
+    });
+  });
+
+  describe("institutions batch under a saturated gate", () => {
+    let releaseHolders: () => void = () => {};
+    let holders: Promise<unknown>[] = [];
+
+    beforeEach(() => {
+      const held = new Promise<void>((resolve) => (releaseHolders = resolve));
+      holders = Array.from({ length: PLAID_MAX_INFLIGHT }, () => plaidQueue.add(() => held));
+    });
+
+    afterEach(async () => {
+      releaseHolders();
+      await Promise.all(holders);
+    });
+
+    it("settles the whole batch within one bound and omits the shed ids", async () => {
+      const maxWaitMs = 50;
+      const startedAt = Date.now();
+
+      const institutions = await getInstitutionsByIds(user, institutionIds, { ...deps, maxWaitMs });
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(institutions).toStrictEqual([]);
+      expect(calls).toBe(0);
+      expect(elapsedMs).toBeLessThan(maxWaitMs * 2);
+    });
+
+    it("resolves ids whose slot frees up inside the bound", async () => {
+      setTimeout(releaseHolders, 10);
+
+      const institutions = await getInstitutionsByIds(user, institutionIds, {
+        ...deps,
+        maxWaitMs: 1_000,
+      });
+
+      expect(institutions.map((i) => i.institution_id)).toStrictEqual(institutionIds);
     });
   });
 });
