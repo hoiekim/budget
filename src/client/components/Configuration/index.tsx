@@ -77,16 +77,13 @@ export const Configuration = () => {
     call
       .delete<LoginDeleteResponse>("/api/login")
       .then(async (r) => {
-        if (r.status === "success" || r.status === "failed") {
-          // Clear local state even if server reports failure
-          setUser(undefined);
-          await clean();
-          // A single sign-on session also ends at the identity provider.
-          const logoutUrl = r.body?.logoutUrl;
-          if (logoutUrl) window.location.assign(logoutUrl);
-        } else {
-          console.error("Logout failed:", r.message);
-        }
+        // The server clears the session cookie whatever the outcome, so the local state goes too.
+        if (r.status !== "success") console.error("Logout failed:", r.message);
+        setUser(undefined);
+        await clean();
+        // A single sign-on session also ends at the identity provider.
+        const logoutUrl = r.body?.logoutUrl;
+        if (logoutUrl) window.location.assign(logoutUrl);
       })
       .catch((error) => {
         console.error("Logout request failed:", error);

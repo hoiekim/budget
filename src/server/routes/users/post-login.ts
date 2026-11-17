@@ -62,12 +62,7 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
     // valid login erase the guesses made against other accounts.
     loginRateLimiter.refund(req.ip);
     const maskedUser = maskUser(user);
-    await new Promise<void>((resolve, reject) => {
-      req.session.regenerate((err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
+    await req.session.regenerate();
     req.session.user = maskedUser;
     return { status: "success", body: maskedUser };
   }
