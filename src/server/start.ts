@@ -74,21 +74,17 @@ function makeSession(
     auth,
     _destroyed: false,
     _stored: user !== undefined,
-    regenerate(callback: (err?: Error) => void) {
+    async regenerate() {
       const oldId = session.id;
       session.id = randomUUID();
       session.user = undefined;
       session.auth = undefined;
       session._stored = false;
-      sessionStore().destroy(oldId).catch(() => undefined);
-      callback();
+      await sessionStore().destroy(oldId);
     },
-    destroy(callback?: (err?: Error) => void) {
+    async destroy() {
       session._destroyed = true;
-      sessionStore()
-        .destroy(session.id)
-        .then(() => callback?.())
-        .catch((err: Error) => callback?.(err));
+      await sessionStore().destroy(session.id);
     },
   };
   return session;

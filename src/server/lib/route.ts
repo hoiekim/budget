@@ -99,8 +99,8 @@ export interface ServerSession {
   /** Set on a session started by single sign-on. */
   auth?: SessionAuth;
   id: string;
-  regenerate(callback: (err?: Error) => void): void;
-  destroy(callback?: (err?: Error) => void): void;
+  regenerate(): Promise<void>;
+  destroy(): Promise<void>;
 }
 
 export interface ServerRequest {

@@ -65,7 +65,7 @@ export const getAuthCallbackRoute = new Route("GET", AUTH_CALLBACK_PATH, async (
     return signInPageRedirect(found.error, login.clearCookie);
   }
 
-  await new Promise<void>((resolve) => req.session.regenerate(() => resolve()));
+  await req.session.regenerate();
   const secure = isProduction();
   await sessionStore().set(
     req.session.id,
