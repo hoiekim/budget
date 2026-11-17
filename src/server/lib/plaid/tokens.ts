@@ -1,16 +1,14 @@
 import { CountryCode, LinkTokenCreateRequest, Products } from "plaid";
 import { MaskedUser } from "server";
 import { JSONItem } from "common";
-import { PLAID_FOREGROUND_WAIT_MS, PlaidClientDeps, getClient, plaidQueue } from "./util";
-
-const foreground = { maxWaitMs: PLAID_FOREGROUND_WAIT_MS };
+import { PlaidCallOptions, getClient, plaidQueue } from "./util";
 
 const { HOST_NAME } = process.env;
 
 export const getLinkToken = async (
   user: MaskedUser,
   access_token?: string,
-  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+  { getClient: getClientFn = getClient, maxWaitMs }: PlaidCallOptions = {},
 ) => {
   const client = getClientFn(user);
 
@@ -29,7 +27,7 @@ export const getLinkToken = async (
     request.update = { account_selection_enabled: true };
   } else request.products = [Products.Transactions];
 
-  const response = await plaidQueue.add(() => client.linkTokenCreate(request), foreground);
+  const response = await plaidQueue.add(() => client.linkTokenCreate(request), { maxWaitMs });
 
   return response.data;
 };
@@ -42,28 +40,28 @@ export const getLinkToken = async (
  * is registered keeps the mock — mocking the plaid util in this file leaked
  * into sibling test files (see transactions.test.ts).
  */
-export type ExchangePublicTokenDeps = PlaidClientDeps;
+export type ExchangePublicTokenDeps = PlaidCallOptions;
 
 export const exchangePublicToken = async (
   user: MaskedUser,
   public_token: string,
   deps: ExchangePublicTokenDeps = {},
 ) => {
-  const { getClient: getClientFn = getClient } = deps;
+  const { getClient: getClientFn = getClient, maxWaitMs } = deps;
   const client = getClientFn(user);
 
-  const response = await plaidQueue.add(() => client.itemPublicTokenExchange({ public_token }), foreground);
+  const response = await plaidQueue.add(() => client.itemPublicTokenExchange({ public_token }), { maxWaitMs });
 
   return response.data;
 };
 
 export const getItem = async (
   access_token: string,
-  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+  { getClient: getClientFn = getClient, maxWaitMs }: PlaidCallOptions = {},
 ) => {
   const client = getClientFn();
 
-  const response = await plaidQueue.add(() => client.itemGet({ access_token }), foreground);
+  const response = await plaidQueue.add(() => client.itemGet({ access_token }), { maxWaitMs });
 
   return response.data.item;
 };
@@ -71,11 +69,11 @@ export const getItem = async (
 export const deleteItem = async (
   user: MaskedUser,
   { access_token }: JSONItem,
-  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+  { getClient: getClientFn = getClient, maxWaitMs }: PlaidCallOptions = {},
 ) => {
   const client = getClientFn(user);
 
-  const response = await plaidQueue.add(() => client.itemRemove({ access_token }), foreground);
+  const response = await plaidQueue.add(() => client.itemRemove({ access_token }), { maxWaitMs });
 
   return response.data;
 };

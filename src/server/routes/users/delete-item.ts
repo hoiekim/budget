@@ -26,7 +26,7 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     // Without Plaid credentials the remote revocation can't run — still
     // delete locally; there's nothing reachable to clean up.
     if (plaid.isPlaidConfigured) {
-      await plaid.deleteItem(user, item);
+      await plaid.deleteItem(user, item, { maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS });
     }
   }
 

@@ -92,7 +92,9 @@ export const getInstitutionsRoute = new Route<InstitutionsGetResponse>(
     }
 
     institutionFallbackRateLimiter.consume(user.user_id, fetchable.length);
-    const fetched = await plaid.getInstitutionsByIds(user, fetchable);
+    const fetched = await plaid.getInstitutionsByIds(user, fetchable, {
+      maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS,
+    });
 
     if (fetched.length > 0) {
       // Off the latency path: only the next request's DB hit depends on the

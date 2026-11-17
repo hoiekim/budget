@@ -72,12 +72,22 @@ export const plaidQueue = new Queue({ maxInflight: PLAID_MAX_INFLIGHT });
  * a {@link plaidQueue} slot. Bun reaps a silent request after 10 s, so a call
  * that cannot start inside half of that fails with `QueueWaitTimeoutError`
  * instead of being dropped with no response.
+ *
+ * Only the route knows whether shedding is safe, so it passes this as
+ * {@link PlaidCallOptions.maxWaitMs}, and only on a request's first Plaid call:
+ * once a call has created state at Plaid, the calls after it must finish late
+ * rather than not at all.
  */
 export const PLAID_FOREGROUND_WAIT_MS = 5_000;
 
 /** Test seam: the Plaid client factory. Production callers pass nothing. */
 export interface PlaidClientDeps {
   getClient?: typeof getClient;
+}
+
+export interface PlaidCallOptions extends PlaidClientDeps {
+  /** Bound on the {@link plaidQueue} wait. Unset waits for as long as it takes. */
+  maxWaitMs?: number;
 }
 
 /**
