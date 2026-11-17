@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { restoreEnv, restoreLeaves } from "test-helpers";
 import type { SessionData } from "server/lib/postgres/models/session";
 
 // Mock fetch before importing the module under test, so the alarm POST
@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  delete process.env.DISCORD_ALARM_WEBHOOK;
+  restoreEnv();
   console.error = realConsoleError;
 });
 
