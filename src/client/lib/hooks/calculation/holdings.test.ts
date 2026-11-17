@@ -6,7 +6,6 @@ import {
   buildSecurityPriceIndex,
   foldCostBasis,
   getPriceForHolding,
-  getShareMovementDirection,
   inferCostBasis,
   getHoldingsValueData,
   getEarningsForPeriod,
@@ -523,46 +522,6 @@ describe("inferCostBasis", () => {
   });
 });
 
-describe("getShareMovementDirection", () => {
-  const directionOf = (type: InvestmentTransactionType, quantity: number) =>
-    getShareMovementDirection(
-      createInvestmentTransaction("acc1", "sec1", type, 10, quantity, "2026-01-10"),
-    );
-
-  test("a provider buy arrives, a provider sell leaves", () => {
-    expect(directionOf(InvestmentTransactionType.Buy, 10)).toBe("buy");
-    expect(directionOf(InvestmentTransactionType.Sell, -5)).toBe("sell");
-  });
-
-  test("a hand-entered sell leaves even though its quantity stays positive", () => {
-    expect(directionOf(InvestmentTransactionType.Sell, 5)).toBe("sell");
-  });
-
-  test("a reconciliation buy leaves: its negative quantity is a sale", () => {
-    expect(directionOf(InvestmentTransactionType.Buy, -5)).toBe("sell");
-  });
-
-  test("a zero quantity falls back to the type", () => {
-    expect(directionOf(InvestmentTransactionType.Buy, 0)).toBe("buy");
-    expect(directionOf(InvestmentTransactionType.Sell, 0)).toBe("sell");
-  });
-
-  test("a non-share-moving type has no direction", () => {
-    expect(
-      getShareMovementDirection(
-        createInvestmentTransaction(
-          "acc1",
-          "sec1",
-          InvestmentTransactionType.Cash,
-          0,
-          0,
-          "2026-01-10",
-        ),
-      ),
-    ).toBeNull();
-  });
-});
-
 describe("foldCostBasis direction", () => {
   const fold = (
     position: CostBasisPosition,
@@ -588,18 +547,13 @@ describe("foldCostBasis direction", () => {
     ).toEqual({ totalCost: 600, totalQuantity: 6 });
   });
 
-  test("a hand-entered sell removes basis even though its quantity is positive", () => {
-    // The literal sign-of-quantity reading would fold this as a buy
-    // ({totalCost: 250, totalQuantity: 15}); the type is what makes it a sale.
+  test("a sell with a positive quantity removes basis", () => {
     expect(
       fold({ totalCost: 100, totalQuantity: 10 }, InvestmentTransactionType.Sell, 30, 5),
     ).toEqual({ totalCost: 50, totalQuantity: 5 });
   });
 
-  test("a reconciliation buy removes basis instead of adding a negative cost", () => {
-    // A partial sale is what discriminates: the old type-only fold added
-    // -150 and clamped the basis to zero ({totalCost: 0, totalQuantity: 5});
-    // the sale removes half the basis.
+  test("a buy with a negative quantity removes basis for the shares leaving", () => {
     expect(
       fold({ totalCost: 100, totalQuantity: 10 }, InvestmentTransactionType.Buy, 30, -5),
     ).toEqual({ totalCost: 50, totalQuantity: 5 });

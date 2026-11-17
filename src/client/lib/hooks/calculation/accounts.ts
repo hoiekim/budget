@@ -3,7 +3,7 @@ import {
   InvestmentTransactionSubtype,
   InvestmentTransactionType,
 } from "common/lib/plaid-enums";
-import { getYearMonthString, LocalDate, ViewDate } from "common";
+import { getYearMonthString, LocalDate, shareMovementDirection, ViewDate } from "common";
 import {
   Account,
   AccountDictionary,
@@ -19,7 +19,7 @@ import {
   TransactionDictionary,
   useAppContext,
 } from "client";
-import { CostBasisPosition, foldCostBasis, getShareMovementDirection } from "./holdings";
+import { CostBasisPosition, foldCostBasis } from "./holdings";
 
 export const getAccountBalance = (account: Account) => {
   // Use `current` for all account types. For investment accounts, Plaid's
@@ -204,23 +204,23 @@ const addInvestmentCostBasis = (
         // right without having to recognise one — the sweep buy spends
         // exactly the cash its own deposit row brought in.
         //
-        // Direction comes from {@link getShareMovementDirection} — the same
+        // Direction comes from {@link shareMovementDirection} — the same
         // derivation the fold above uses, so the two legs cannot disagree:
-        // a reconciliation buy with a negative quantity is a sale to both,
-        // and a hand-entered sell with a positive quantity is a sale to
-        // both. A sale returns the size of its amount whatever the sign —
-        // proceeds are booked nowhere else — because the sign of `amount`
-        // does not carry direction: one provider signs a movement positive
-        // when the money arrives, and a manually entered row stores
-        // `quantity * price` with both entered positive, so its sale is
-        // indistinguishable from its purchase by sign alone.
+        // a buy row with a negative quantity is a sale to both, and a sell
+        // row with a positive quantity is a sale to both. A sale returns the
+        // size of its amount whatever the sign — proceeds are booked nowhere
+        // else — because the sign of `amount` does not carry direction: one
+        // provider signs a movement positive when the money arrives, and a
+        // hand-entered sale written before the canonical form stores
+        // `quantity * price` with both positive, so it is indistinguishable
+        // from a purchase by sign alone.
         //
         // A purchase spends only what it positively cost. Floored because
         // the cash a purchase spent may have arrived before the fetched
         // window, and an account that bought with money this never saw does
         // not thereby hold a negative balance.
         cash =
-          getShareMovementDirection(t) === "buy"
+          shareMovementDirection(t) === "buy"
             ? Math.max(0, cash - Math.max(0, amount))
             : cash + Math.abs(amount);
       } else {

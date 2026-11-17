@@ -13,6 +13,7 @@
 import { InvestmentTransactionType } from "./lib/plaid-enums";
 import { JSONInvestmentTransaction } from "./models";
 import { PLAN_STATEMENT_ID_PREFIX } from "./constants";
+import { shareMovementDirection } from "./investment-transaction-shape";
 
 export type Movement = Pick<JSONInvestmentTransaction, "date" | "type" | "quantity" | "amount" | "price"> &
   Partial<Pick<JSONInvestmentTransaction, "investment_transaction_id">>;
@@ -56,7 +57,7 @@ const byDate = <T extends { date: string }>(a: T, b: T) => (a.date < b.date ? -1
 const byId = (a = "", b = "") => (a < b ? -1 : a > b ? 1 : 0);
 /** Within a day, shares arrive before any leave, so a same-day sale isn't capped at what came earlier. */
 const buysFirst = (a: Movement, b: Movement) =>
-  Number(a.type !== InvestmentTransactionType.Buy) - Number(b.type !== InvestmentTransactionType.Buy);
+  Number(shareMovementDirection(a) !== "buy") - Number(shareMovementDirection(b) !== "buy");
 
 const addMonth = (yearMonth: string) => {
   const [y, m] = yearMonth.split("-").map(Number);
@@ -64,7 +65,7 @@ const addMonth = (yearMonth: string) => {
 };
 
 const applyMovement = (running: { quantity: number; costBasis: number | null }, m: Movement) => {
-  if (m.type === InvestmentTransactionType.Buy) {
+  if (shareMovementDirection(m) === "buy") {
     running.quantity += m.quantity;
     if (running.costBasis !== null) running.costBasis += m.amount;
   } else if (running.quantity > 0) {
