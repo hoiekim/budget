@@ -15,6 +15,26 @@ export interface ShareMovement {
 export const movesShares = (type: unknown): type is ShareMovingType =>
   type === InvestmentTransactionType.Buy || type === InvestmentTransactionType.Sell;
 
+export type ShareMovementDirection = "buy" | "sell";
+
+/**
+ * Whether a row's shares arrive or leave; null when its type moves no shares.
+ *
+ * Neither field alone is reliable on rows written before the canonical form:
+ * a sale recorded as `{buy, -q}` says purchase in `type` and sale in
+ * `quantity`, and a sale recorded as `{sell, +q, +amount}` says the reverse.
+ * Shares leave when EITHER signal says so and arrive only when both agree; a
+ * zero quantity leaves `type` as the only signal.
+ */
+export const shareMovementDirection = (row: {
+  type: unknown;
+  quantity: number | null | undefined;
+}): ShareMovementDirection | null => {
+  if (!movesShares(row.type)) return null;
+  if (row.type === InvestmentTransactionType.Sell || (row.quantity ?? 0) < 0) return "sell";
+  return "buy";
+};
+
 export const isNormalizableRow = <T extends { type: InvestmentTransactionType }>(
   source: string | null | undefined,
   row: T,

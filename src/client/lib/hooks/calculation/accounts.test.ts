@@ -654,11 +654,8 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-01")).toBeCloseTo(600, 2);
   });
 
-  // The reconciliation flow mints a buy row with a negative quantity — a
-  // sale of shares wearing a purchase's type. The balance chart's
-  // transaction tier used to read it as neither: the fold added a negative
-  // cost the clamp floored at zero, while the cash leg credited no
-  // proceeds, so the month rendered 150 for a 300 account.
+  // Rows written before the canonical form can record a sale as a buy with
+  // a negative quantity.
   test("a buy with a negative quantity is a sale, not neither", () => {
     const balanceData = balancesFor(300, [
       contribution("2022-01-10", 10),

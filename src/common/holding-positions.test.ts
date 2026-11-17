@@ -146,6 +146,19 @@ describe("derivePositions", () => {
     const movements = [tx("2026-10-06", "buy", 100, 5000, 50, "b"), tx("2026-10-06", "sell", -0.5, -25, 50, "a")];
     expect(last(derive({ movements, throughMonth: "2026-10" })).quantity).toBe(99.5);
   });
+
+  test("a buy with a negative quantity is a sale: it takes basis at the average cost", () => {
+    const movements = [
+      tx("2026-10-06", "buy", 10, 100, 10, "plan-statement-a"),
+      tx("2026-11-06", "buy", -5, -150, 30, "manual-r"),
+    ];
+    expect(last(derive({ movements, throughMonth: "2026-11" }))).toMatchObject({ quantity: 5, costBasis: 50 });
+  });
+
+  test("on one day, a buy with a negative quantity applies after the shares arriving", () => {
+    const movements = [tx("2026-10-06", "buy", 10, 100, 10, "b"), tx("2026-10-06", "buy", -5, -150, 30, "a")];
+    expect(last(derive({ movements, throughMonth: "2026-10" }))).toMatchObject({ quantity: 5, costBasis: 50 });
+  });
 });
 
 describe("positionBefore", () => {
