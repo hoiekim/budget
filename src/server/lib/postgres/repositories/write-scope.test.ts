@@ -154,6 +154,8 @@ const NOT_A_TABLE: Record<string, string> = {
     "a crypto Hash accumulating the raw body for signature comparison",
   'lib/postgres/repositories/api_keys.ts::createHash("sha256")':
     "an inline crypto Hash chain over the key plaintext",
+  'lib/auth-client.ts::createHash("sha256")':
+    "an inline crypto Hash chain in the vendored identity-provider client",
 };
 
 interface WriteCall {
