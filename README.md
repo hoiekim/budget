@@ -64,7 +64,7 @@ The post-logout redirect is always the origin of `AUTH_REDIRECT_URI` followed by
 The first time someone signs in, budget finds their account in this order:
 
 1. the account already linked to their SSO account;
-2. the account `AUTH_LINK_USERS` names for their SSO username, if it is not linked to anyone yet: it is linked now, and keeps its data and its password;
+2. the account `AUTH_LINK_USERS` names for their SSO username, if it is not linked to anyone yet: it is linked now and keeps its data. From then on it signs in only with SSO, even while `AUTH_LOCAL_LOGIN=true`;
 3. otherwise a new account named after their SSO username, with no password.
 
 Budget keeps no email addresses, so it never links by email. If the SSO username is already taken by an account that isn't linked, the `admin` and `demo` accounts included, the sign-in is refused (the sign-in page says the account exists) rather than guessing: link it with `AUTH_LINK_USERS`. `admin` and `demo` are still created at every start; without `AUTH_LOCAL_LOGIN` their passwords no longer sign in. Note that `demo` is pinned to Plaid's sandbox, so whoever is linked to it is too.
@@ -73,7 +73,7 @@ Budget keeps no email addresses, so it never links by email. If the SSO username
 
 - The sign-in page offers **Sign in with SSO**. Password sign-in is hidden, and `POST /api/login` answers `403`, unless `AUTH_LOCAL_LOGIN` is `true`.
 - Every ten minutes, a session started by single sign-on checks with the identity provider that the person still has access. If the provider can't be reached, the session keeps working and checks again on the next request, for up to an hour.
-- The provider's events end sessions right away: signing out of the provider, losing access to budget, and being disabled or deleted. Open real-time connections close within a minute, on every copy of budget. A deleted person's data stays in budget; removing it is up to the operator.
+- The provider's events end sessions right away: signing out of the provider, losing access to budget, and being disabled or deleted. Losing access, being disabled or being deleted also revokes the API keys budget itself issued to that account (access given back later doesn't restore them). Open real-time connections close within a minute, on every copy of budget. A deleted person's data stays in budget; removing it is up to the operator.
 - Signing out of budget also signs out of the provider.
 - API keys the provider issued for budget work on the routes that accept API keys, when their scopes include the route's and their owner has signed in to budget at least once. Budget's own API keys keep working as before.
 - Sessions that were signed in with a password end at their next request, unless `AUTH_LOCAL_LOGIN=true`.

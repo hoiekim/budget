@@ -39,7 +39,11 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
   }
   loginRateLimiter.consume(req.ip);
 
-  const user = await searchPasswordUser(usernameResult.data!).catch((error) => {
+  // While single sign-on is on, the provider governs a linked account: its
+  // password would otherwise outlive the provider disabling the person.
+  const user = await searchPasswordUser(usernameResult.data!, {
+    excludeLinked: ssoMode().enabled,
+  }).catch((error) => {
     // A lookup that fails isn't a failed login.
     loginRateLimiter.refund(req.ip);
     throw error;

@@ -31,10 +31,18 @@ export const searchUser = async (user: Partial<MaskedUser>): Promise<User | unde
   return model?.toUser();
 };
 
-/** The user `username` names, if they can sign in with a password: users created by single sign-on have none. */
-export const searchPasswordUser = async (username: string): Promise<User | undefined> => {
+/**
+ * The user `username` names, if they can sign in with a password: users
+ * created by single sign-on have none, and with `excludeLinked` an account
+ * linked to the identity provider signs in only through it.
+ */
+export const searchPasswordUser = async (
+  username: string,
+  { excludeLinked = false }: { excludeLinked?: boolean } = {},
+): Promise<User | undefined> => {
   const model = await usersTable.queryOne({ [USERNAME]: username });
-  return model?.password ? model.toUser() : undefined;
+  if (!model?.password || (excludeLinked && model.auth_sub !== null)) return undefined;
+  return model.toUser();
 };
 
 export const getUserByAuthSub = async (auth_sub: string): Promise<MaskedUser | undefined> => {

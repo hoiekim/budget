@@ -85,9 +85,10 @@ describe("handleAuthEvent", () => {
     expect(subscriberCount(ALICE_ID)).toBe(0);
   });
 
-  test("user.deleted keeps the user's data: sessions are all it deletes", async () => {
+  test("user.deleted keeps the user's data: sessions are all it deletes, besides budget's own keys", async () => {
     await handleAuthEvent(event("user.deleted", { sub: "usr_alice" }));
-    const writes = mockUnsafe.mock.calls.filter(([sql]) => !String(sql).startsWith("SELECT"));
+    // Alice has no live key here; access-ending.test.ts drives the revocation.
+    const writes = mockUnsafe.mock.calls.filter(([sql]) => !String(sql).trim().startsWith("SELECT"));
     expect(writes.map(([sql]) => String(sql).split(" WHERE")[0])).toEqual(["DELETE FROM sessions"]);
   });
 
