@@ -99,8 +99,6 @@ async function loadSession(request: Request): Promise<Session & ServerRequest["s
   const sid = cookies[SESSION_COOKIE_NAME];
 
   if (sid) {
-    // A store fault degrades to an anonymous session, but it is logged
-    // and alarmed inside readSessionData — never swallowed silently.
     const data = await readSessionData({ get: loadSessionData }, sid);
     if (data) return makeSession(sid, data.user, data.auth);
   }
