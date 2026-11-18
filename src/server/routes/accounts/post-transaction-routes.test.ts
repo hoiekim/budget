@@ -358,6 +358,34 @@ describe("post-transaction route", () => {
     expect(boundValue(upd!, "label_budget_id")).toBeNull();
   });
 
+  test("a body naming source never writes it — a synced row cannot be relabelled manual", async () => {
+    const result = await postTransactionRoute.execute(
+      makeReq(postTransactionRoute, { transaction_id: "t-1", source: "manual", amount: 1 }, "u-1"),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+
+    const upd = findUpdate("transactions");
+    expect(upd).not.toBeNull();
+    expect(boundValue(upd!, "amount")).toBe(1);
+    expect(boundValue(upd!, "source")).toBe(SENTINEL);
+  });
+
+  test("a null or over-length source is dropped rather than reaching the VARCHAR(20) NOT NULL column", async () => {
+    for (const source of [null, "x".repeat(21)]) {
+      mockUnsafe.mockClear();
+      const result = await postTransactionRoute.execute(
+        makeReq(postTransactionRoute, { transaction_id: "t-1", source, amount: 1 }, "u-1"),
+        fakeRes(),
+      );
+      expect(result?.status).toBe("success");
+      const upd = findUpdate("transactions");
+      expect(upd).not.toBeNull();
+      expect(boundValue(upd!, "source")).toBe(SENTINEL);
+    }
+    expect(mockSendAlarm).not.toHaveBeenCalled();
+  });
+
   test("excludes soft-deleted rows — updating one would report a change no user can see", async () => {
     const result = await postTransactionRoute.execute(
       makeReq(postTransactionRoute, { transaction_id: "t-1", label: { category_id: CATEGORY_UUID } }, "u-1"),
