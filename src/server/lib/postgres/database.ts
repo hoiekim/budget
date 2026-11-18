@@ -134,6 +134,7 @@ export function buildInsert(
   tableName: string,
   data: Record<string, ParamValue>,
   returning?: string[],
+  options: { onConflictDoNothing?: boolean } = {},
 ): PreparedQuery {
   const columns: string[] = ["updated"];
   const placeholders: string[] = ["CURRENT_TIMESTAMP"];
@@ -149,6 +150,8 @@ export function buildInsert(
   }
 
   let sql = `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders.join(", ")})`;
+
+  if (options.onConflictDoNothing) sql += " ON CONFLICT DO NOTHING";
 
   if (returning && returning.length > 0) {
     sql += ` RETURNING ${returning.join(", ")}`;

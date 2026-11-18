@@ -12,6 +12,8 @@ import {
   SSE_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
 } from "server";
+import { watchSession } from "server/lib/session";
+import { getSso } from "server/lib/sso";
 
 // Bound the number of concurrent tabs per user so a bug or abuse can't grow
 // the subscriber map without limit. Each sub holds a keepalive timer + stream
@@ -56,6 +58,7 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
   let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
   const encoder = new TextEncoder();
   let keepalive: ReturnType<typeof setInterval> | null = null;
+  let stopWatchingSession: (() => void) | null = null;
   let sub: Subscriber | null = null;
   let closed = false;
 
@@ -66,6 +69,7 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
       clearInterval(keepalive);
       keepalive = null;
     }
+    stopWatchingSession?.();
     if (sub) {
       unregisterSubscriber(userId, sub);
       sub = null;
@@ -133,8 +137,12 @@ export const getEventsRoute = new Route("GET", "/events", async (req, res) => {
           controller.enqueue(encoder.encode(formatSseBlock(event, payload, id)));
         },
         close: cleanup,
+        authSid: req.session.auth?.sid,
       };
       registerSubscriber(userId, sub);
+      // With single sign-on on, a session can end on another copy of the
+      // app, where this stream's subscriber cannot be reached.
+      if (getSso()) stopWatchingSession = watchSession(req.session.id, cleanup);
       logger.info("SSE subscribed", {
         userId,
         total: subscriberCount(userId),

@@ -1,5 +1,5 @@
 import { createContext, useContext, Dispatch, SetStateAction } from "react";
-import { MaskedUser } from "server";
+import { LoginGetResponse, MaskedUser } from "server";
 import { ViewDate } from "common";
 import { ClientRouter, Status, Data, Calculations, CapacityData } from "client";
 
@@ -23,6 +23,8 @@ export interface ContextType {
   status: Status;
   user: MaskedUser | undefined;
   setUser: Dispatch<SetStateAction<MaskedUser | undefined>>;
+  /** How people sign in, from the server's answer at page load. */
+  sso: LoginGetResponse["sso"];
   router: ClientRouter;
   viewDate: ViewDate;
   setViewDate: Dispatch<SetStateAction<ViewDate>>;

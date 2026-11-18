@@ -163,6 +163,18 @@ and one `sessionStorage` for the whole process, and `cleanup()` leaves
 both standing — a key a page's mount effect writes (the router's `"path"`,
 a cached order) is still there for whichever file bun runs next.
 
+### Testing single sign-on
+
+`scripts/test-issuer.ts` (imported as `test-issuer`) starts a fake OpenID Connect
+identity provider on a local port: discovery, an Ed25519 key set, and token,
+introspection and revocation endpoints whose answers a test replaces through
+`state`. Point the app at it with
+`configureSso(issuer.config(), { fetch: issuer.fetch })`, put it back with
+`configureSso(null)` in `afterAll`, and stop the server there too. Setting
+`state.down` makes the provider unreachable. `accessToken`, `idToken` and
+`eventToken` sign tokens the vendored client accepts. Tests pass settings to
+`parseSsoConfig` as an object rather than writing `process.env`.
+
 ## Test Requirements
 
 **Always write unit tests for new code files and lines.** This is a

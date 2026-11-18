@@ -1,7 +1,8 @@
-import { describe, test, expect, mock, afterAll } from "bun:test";
+import { describe, test, expect, mock, afterAll, jest } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
+import { startFakeIssuer } from "test-issuer";
 
-const { driver } = createFakeSql();
+const { driver, mockUnsafe } = createFakeSql();
 
 mock.module("../../lib/postgres/sql-driver", () => driver);
 
@@ -9,8 +10,17 @@ const { getEventsRoute } = await import("./get-events");
 const { SSE_KEEPALIVE_MS, SSE_IDLE_TIMEOUT_SECONDS, subscriberCount, emitToUser, currentEventId } =
   await import("server");
 const { TableName } = await import("common/constants");
+const { closeSubscribers } = await import("server/lib/realtime");
+const { SESSION_WATCH_INTERVAL_MS } = await import("server/lib/session");
+const { configureSso } = await import("server/lib/sso");
 
-afterAll(restoreLeaves);
+const issuer = startFakeIssuer();
+
+afterAll(() => {
+  configureSso(null);
+  issuer.stop();
+  restoreLeaves();
+});
 
 /**
  * Hands the route an already-aborted signal. Per the DOM spec
@@ -138,5 +148,68 @@ describe("get-events", () => {
 
     expect(text).not.toContain("retry-full");
     expect(text).toContain(`id: ${tip}\nevent: connected\ndata: {}`);
+  });
+
+  test("with single sign-on off, a stream never re-reads its session", async () => {
+    jest.useFakeTimers();
+    try {
+      const { req, close } = makeLiveReq("u-plain", {});
+      await readUntilConnected((await getEventsRoute.execute(req, fakeRes())) as Response);
+      mockUnsafe.mockClear();
+
+      jest.advanceTimersByTime(SESSION_WATCH_INTERVAL_MS * 2);
+      jest.useRealTimers();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(subscriberCount("u-plain")).toBe(1);
+      close();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  describe("with single sign-on on", () => {
+    const AUTH = { sid: "ses_9", refreshToken: "rt_9", recheckAt: new Date(Date.now() + 600_000) };
+
+    const openSsoStream = async (userId: string) => {
+      const { req, close } = makeLiveReq(userId, {});
+      req.session.auth = AUTH;
+      const response = (await getEventsRoute.execute(req, fakeRes())) as Response;
+      await readUntilConnected(response);
+      return close;
+    };
+
+    test("a stream closes when its sign-in ends at the identity provider", async () => {
+      configureSso(issuer.config(), { fetch: issuer.fetch });
+      const close = await openSsoStream("u-sso");
+      expect(subscriberCount("u-sso")).toBe(1);
+
+      closeSubscribers({ authSid: "ses_9" });
+      expect(subscriberCount("u-sso")).toBe(0);
+      close();
+      configureSso(null);
+    });
+
+    test("a stream closes within a minute of its session ending on another copy of the app", async () => {
+      configureSso(issuer.config(), { fetch: issuer.fetch });
+      jest.useFakeTimers();
+      try {
+        const close = await openSsoStream("u-watched");
+        mockUnsafe.mockClear();
+
+        jest.advanceTimersByTime(SESSION_WATCH_INTERVAL_MS);
+        await Promise.resolve();
+        jest.useRealTimers();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(mockUnsafe.mock.calls[0]?.[0]).toStartWith("SELECT * FROM sessions WHERE session_id = $1");
+        expect(subscriberCount("u-watched")).toBe(0);
+        close();
+      } finally {
+        jest.useRealTimers();
+        configureSso(null);
+      }
+    });
   });
 });

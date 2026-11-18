@@ -5,10 +5,11 @@ import { useData, useScreenType } from "./lib";
 
 interface Props {
   initialUser: ContextType["user"];
+  sso: ContextType["sso"];
   children?: ReactNode;
 }
 
-const AppContext = ({ initialUser, children }: Props) => {
+const AppContext = ({ initialUser, sso, children }: Props) => {
   const screenType = useScreenType();
   const [data, setData, calculations, calculate] = useData();
   const [user, setUser] = useState<MaskedUser | undefined>(initialUser);
@@ -27,6 +28,7 @@ const AppContext = ({ initialUser, children }: Props) => {
       status,
       user,
       setUser,
+      sso,
       router,
       viewDate,
       setViewDate,
@@ -40,6 +42,7 @@ const AppContext = ({ initialUser, children }: Props) => {
       calculate,
       status,
       user,
+      sso,
       router,
       viewDate,
       resetViewDate,

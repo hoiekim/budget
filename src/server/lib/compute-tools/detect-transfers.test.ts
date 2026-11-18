@@ -28,6 +28,7 @@ const userRow = (overrides: Record<string, unknown> = {}) => ({
   email: null,
   expiry: null,
   token: null,
+  auth_sub: null,
   updated: "2026-05-19T00:00:00.000Z",
   is_deleted: false,
   ...overrides,

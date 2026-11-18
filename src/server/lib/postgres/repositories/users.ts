@@ -1,5 +1,5 @@
 import { hashPassword } from "../../password";
-import { MaskedUser, User, usersTable, USER_ID } from "../models";
+import { MaskedUser, User, usersTable, USER_ID, USERNAME, AUTH_SUB } from "../models";
 
 export type IndexUserInput = Omit<User, "user_id"> & { user_id?: string };
 
@@ -29,6 +29,55 @@ export const searchUser = async (user: Partial<MaskedUser>): Promise<User | unde
 
   const model = await usersTable.queryOne(filters);
   return model?.toUser();
+};
+
+/** The user `username` names, if they can sign in with a password: users created by single sign-on have none. */
+export const searchPasswordUser = async (username: string): Promise<User | undefined> => {
+  const model = await usersTable.queryOne({ [USERNAME]: username });
+  return model?.password ? model.toUser() : undefined;
+};
+
+export const getUserByAuthSub = async (auth_sub: string): Promise<MaskedUser | undefined> => {
+  const model = await usersTable.queryOne({ [AUTH_SUB]: auth_sub });
+  return model?.toMaskedUser();
+};
+
+/**
+ * Links the account `username` names to the identity provider's `auth_sub`,
+ * unless it is already linked. `undefined` when there is no such account or
+ * it is linked already, including by a concurrent sign-in.
+ */
+export const linkUserToAuthSub = async (
+  username: string,
+  auth_sub: string,
+): Promise<MaskedUser | undefined> => {
+  const model = await usersTable.queryOne({ [USERNAME]: username });
+  if (!model || model.auth_sub !== null) return undefined;
+  const linked = await usersTable.update(
+    model.user_id,
+    { [AUTH_SUB]: auth_sub },
+    [USER_ID],
+    undefined,
+    undefined,
+    [{ column: AUTH_SUB, value: null }],
+  );
+  return linked ? model.toMaskedUser() : undefined;
+};
+
+/**
+ * Creates a user with no password for a single sign-on account. `undefined`
+ * when the username or `auth_sub` is taken.
+ */
+export const createSsoUser = async (
+  username: string,
+  auth_sub: string,
+): Promise<MaskedUser | undefined> => {
+  const row = await usersTable.insert(
+    { [USERNAME]: username, [AUTH_SUB]: auth_sub },
+    [USER_ID, USERNAME],
+    { onConflictDoNothing: true },
+  );
+  return row ? { user_id: row[USER_ID] as string, username: row[USERNAME] as string } : undefined;
 };
 
 export const getUserById = async (user_id: string): Promise<User | undefined> => {

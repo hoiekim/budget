@@ -3,10 +3,19 @@
  * `req.session.user` and the exported `version` constant.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, afterAll } from "bun:test";
+import { startFakeIssuer } from "test-issuer";
 
 import { version } from "server/lib/postgres/initialize";
+import { configureSso } from "server/lib/sso";
 import { getLoginRoute } from "./get-login";
+
+const issuer = startFakeIssuer();
+
+afterAll(() => {
+  configureSso(null);
+  issuer.stop();
+});
 
 function makeReq(
   user?: { user_id: string; username: string },
@@ -60,6 +69,22 @@ describe("get-login", () => {
     expect(result?.body?.user).toEqual(user);
     expect(result?.body?.app?.version).toBe(version);
     expect(result?.message).toBeUndefined();
+  });
+
+  test("with single sign-on off, password sign-in is the only way, as before", async () => {
+    configureSso(null);
+    const result = await getLoginRoute.execute(makeReq(undefined), fakeRes());
+    expect(result?.body?.sso).toEqual({ enabled: false, localLogin: true });
+  });
+
+  test.each([
+    [false, { enabled: true, localLogin: false }],
+    [true, { enabled: true, localLogin: true }],
+  ])("with single sign-on on and AUTH_LOCAL_LOGIN=%p, says so before anyone signs in", async (localLogin, sso) => {
+    configureSso(issuer.config({ localLogin }));
+    const result = await getLoginRoute.execute(makeReq(undefined), fakeRes());
+    expect(result?.body?.sso).toEqual(sso);
+    configureSso(null);
   });
 
   test("version field is a non-empty string", async () => {

@@ -108,6 +108,7 @@ export const buildContext = (overrides: Partial<ContextType> = {}): ContextType 
   status: new Status(),
   user: undefined,
   setUser: () => {},
+  sso: { enabled: false, localLogin: true },
   router: buildRouter(PATH.BUDGETS).router,
   viewDate: new ViewDate("month", new Date(2026, 0, 15)),
   setViewDate: () => {},

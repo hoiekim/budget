@@ -3,7 +3,6 @@ import { randomUUID } from "crypto";
 import type { ServerRequest, ServerResponse, ApiResponse } from "server";
 import {
   initializePostgres,
-  PostgresSessionStore,
   scheduledSync,
   stopScheduledSync,
   logger,
@@ -16,6 +15,7 @@ import {
   pool,
   getClientIp,
   SECURITY_HEADERS,
+  responseSecurityHeaders,
   MAX_REQUEST_BODY_SIZE,
   emitToUser,
   mutationEmitDomain,
@@ -25,8 +25,25 @@ import {
   isProduction,
 } from "server";
 import { resolveBearerAuth } from "server/lib/bearer-auth";
+import { Unavailable } from "server/lib/auth-client";
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_S,
+  buildSessionCookie,
+  loadSessionData,
+  parseCookies,
+  saveSession,
+  sessionStore,
+} from "server/lib/session";
+import {
+  AUTH_CALLBACK_PATH,
+  AUTH_EVENTS_PATH,
+  getSso,
+  initializeSso,
+  ssoPublicPathMethods,
+} from "server/lib/sso";
 import type { MaskedUser } from "server/lib/postgres/models/user";
-import type { SessionData } from "server/lib/postgres/models/session";
+import type { SessionAuth } from "server/lib/postgres/models/session";
 import * as routes from "server/routes";
 import { isApiPath } from "common/utils";
 
@@ -34,60 +51,41 @@ import { isApiPath } from "common/utils";
 // Session management
 // ---------------------------------------------------------------------------
 
-const sessionStore = new PostgresSessionStore();
-
-const COOKIE_NAME = "session_id";
-const COOKIE_MAX_AGE_S = 60 * 60 * 24 * 7; // 7 days in seconds
-const COOKIE_MAX_AGE_MS = COOKIE_MAX_AGE_S * 1000;
-
-function parseCookies(cookieHeader: string): Record<string, string> {
-  const cookies: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
-    const eqIdx = part.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = part.slice(0, eqIdx).trim();
-    const val = part.slice(eqIdx + 1).trim();
-    if (key) cookies[key] = decodeURIComponent(val);
-  }
-  return cookies;
-}
-
-function buildSetCookieHeader(sid: string, maxAge: number, secure: boolean): string {
-  const parts = [
-    `${COOKIE_NAME}=${encodeURIComponent(sid)}`,
-    `Max-Age=${maxAge}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Strict",
-  ];
-  if (secure) parts.push("Secure");
-  return parts.join("; ");
-}
-
 interface Session {
   id: string;
   user?: MaskedUser;
+  auth?: SessionAuth;
   _destroyed: boolean;
+  // True when the session's row was read from the store on this request.
+  _stored: boolean;
   // True when the request authenticated via Authorization: Bearer (API key).
   // Bearer auth is stateless — we must not write a session cookie back.
   _bearer?: boolean;
 }
 
-function makeSession(id: string, user: MaskedUser | undefined): Session & ServerRequest["session"] {
+function makeSession(
+  id: string,
+  user: MaskedUser | undefined,
+  auth?: SessionAuth,
+): Session & ServerRequest["session"] {
   const session: Session & ServerRequest["session"] = {
     id,
     user,
+    auth,
     _destroyed: false,
+    _stored: user !== undefined,
     regenerate(callback: (err?: Error) => void) {
       const oldId = session.id;
       session.id = randomUUID();
       session.user = undefined;
-      sessionStore.destroy(oldId).catch(() => undefined);
+      session.auth = undefined;
+      session._stored = false;
+      sessionStore().destroy(oldId).catch(() => undefined);
       callback();
     },
     destroy(callback?: (err?: Error) => void) {
       session._destroyed = true;
-      sessionStore
+      sessionStore()
         .destroy(session.id)
         .then(() => callback?.())
         .catch((err: Error) => callback?.(err));
@@ -99,11 +97,11 @@ function makeSession(id: string, user: MaskedUser | undefined): Session & Server
 async function loadSession(request: Request): Promise<Session & ServerRequest["session"]> {
   const cookieHeader = request.headers.get("cookie") ?? "";
   const cookies = parseCookies(cookieHeader);
-  const sid = cookies[COOKIE_NAME];
+  const sid = cookies[SESSION_COOKIE_NAME];
 
   if (sid) {
-    const data = await sessionStore.get(sid).catch(() => null);
-    if (data) return makeSession(sid, data.user);
+    const data = await loadSessionData(sid).catch(() => null);
+    if (data) return makeSession(sid, data.user, data.auth);
   }
 
   return makeSession(randomUUID(), undefined);
@@ -112,27 +110,15 @@ async function loadSession(request: Request): Promise<Session & ServerRequest["s
 async function persistSession(session: Session, secure: boolean): Promise<string | null> {
   if (session._destroyed) {
     // Clear the cookie regardless of whether the session existed
-    return buildSetCookieHeader("", 0, secure);
+    return buildSessionCookie("", 0, secure);
   }
   // Bearer-authenticated requests are stateless: never bind a session cookie
   // to the holder of an API key.
   if (session._bearer) return null;
   if (!session.user) return null;
 
-  const sessionData: SessionData = {
-    user: session.user,
-    cookie: {
-      originalMaxAge: COOKIE_MAX_AGE_MS,
-      maxAge: COOKIE_MAX_AGE_MS,
-      expires: new Date(Date.now() + COOKIE_MAX_AGE_MS),
-      httpOnly: true,
-      path: "/",
-      secure,
-      sameSite: "strict",
-    },
-  };
-  await sessionStore.set(session.id, sessionData);
-  return buildSetCookieHeader(session.id, COOKIE_MAX_AGE_S, secure);
+  await saveSession(session.id, session.user, secure, session._stored);
+  return buildSessionCookie(session.id, SESSION_MAX_AGE_S, secure);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +236,17 @@ process.on("uncaughtException", async (error) => {
   process.exit(1);
 });
 
+// Settings only: nothing here contacts the identity provider, so the app
+// starts whether or not it is reachable. A bad setting stops the start.
+initializeSso();
+const sso = getSso();
+if (sso) {
+  logger.info("Single sign-on is on", {
+    issuer: sso.config.issuer,
+    localLogin: sso.config.localLogin,
+  });
+}
+
 // No logDroppedConnections call: Bun.sql has no attach-after-construction
 // hook, so dropped-connection logging is wired into the client's own
 // `onclose` at construction (see postgres/client.ts).
@@ -312,6 +309,9 @@ async function handleApiRequest(
     } catch {
       // leave body undefined on parse failure
     }
+  } else if (apiPath === AUTH_EVENTS_PATH) {
+    // A security event token arrives as `application/secevent+jwt`.
+    rawBody = await request.text();
   }
   const bodyFields = payloadHint(body);
   if (bodyFields) log.bodyFields = bodyFields;
@@ -328,7 +328,8 @@ async function handleApiRequest(
       query[key] = value;
     }
   });
-  if (Object.keys(query).length > 0) log.query = query;
+  // The callback's query carries a one-time authorization code.
+  if (Object.keys(query).length > 0 && apiPath !== AUTH_CALLBACK_PATH) log.query = query;
 
   // Load or create session
   const session = await loadSession(request);
@@ -357,11 +358,21 @@ async function handleApiRequest(
   // Bearer auth: only attempted when the matched route declares a
   // requiredScope, and only as a fallback when no cookie session is
   // present. Cookie sessions remain authoritative for everything.
-  const bearerResult = await resolveBearerAuth({
-    authorizationHeader: headers["authorization"],
-    hasCookieSession: !!session.user,
-    requiredScope: matchedRoute?.requiredScope,
-  });
+  let bearerResult: Awaited<ReturnType<typeof resolveBearerAuth>>;
+  try {
+    bearerResult = await resolveBearerAuth({
+      authorizationHeader: headers["authorization"],
+      hasCookieSession: !!session.user,
+      requiredScope: matchedRoute?.requiredScope,
+      ip,
+    });
+  } catch (error) {
+    if (!(error instanceof Unavailable)) throw error;
+    return jsonResponse(
+      { status: "failed", message: "Cannot check the API key right now. Try again later." },
+      503,
+    );
+  }
   if (bearerResult) {
     session.user = bearerResult.user;
     (session as Session)._bearer = true;
@@ -370,7 +381,7 @@ async function handleApiRequest(
   }
 
   // Auth check — reject unauthenticated requests except on public paths
-  const entry = PUBLIC_PATH_METHODS.find(([p]) => p === apiPath);
+  const entry = [...PUBLIC_PATH_METHODS, ...ssoPublicPathMethods()].find(([p]) => p === apiPath);
   const isPublic = !!entry && (!entry[1] || entry[1].has(request.method));
   if (!isPublic && !session.user) {
     return jsonResponse({ status: "failed", message: "Not authenticated." }, 401);
@@ -453,10 +464,7 @@ async function finalResponseHeaders(
   } catch (error) {
     logger.error("Session persist failed", {}, error);
   }
-  const responseHeaders: Record<string, string> = { ...SECURITY_HEADERS };
-  if (isProduction()) {
-    responseHeaders["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
-  }
+  const responseHeaders = responseSecurityHeaders();
   if (setCookieValue) responseHeaders["Set-Cookie"] = setCookieValue;
   if (contentType) responseHeaders["Content-Type"] = contentType;
   return responseHeaders;

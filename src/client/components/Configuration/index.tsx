@@ -1,5 +1,5 @@
 import { ItemProvider, ItemStatus, toUpperCamelCase } from "common";
-import { PublicTokenPostResponse } from "server";
+import { LoginDeleteResponse, PublicTokenPostResponse } from "server";
 import {
   Data,
   Item,
@@ -61,12 +61,15 @@ export const Configuration = () => {
 
   const logout = () => {
     call
-      .delete("/api/login")
-      .then((r) => {
+      .delete<LoginDeleteResponse>("/api/login")
+      .then(async (r) => {
         if (r.status === "success" || r.status === "failed") {
           // Clear local state even if server reports failure
           setUser(undefined);
-          clean();
+          await clean();
+          // A single sign-on session also ends at the identity provider.
+          const logoutUrl = r.body?.logoutUrl;
+          if (logoutUrl) window.location.assign(logoutUrl);
         } else {
           console.error("Logout failed:", r.message);
         }

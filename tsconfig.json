@@ -27,7 +27,8 @@
       "common": ["./common"],
       "common/*": ["./common/*"],
       "test-helpers": ["../scripts/test-helpers.ts"],
-      "test-render": ["../scripts/test-render.tsx"]
+      "test-render": ["../scripts/test-render.tsx"],
+      "test-issuer": ["../scripts/test-issuer.ts"]
     },
     "types": ["bun-types"]
   },

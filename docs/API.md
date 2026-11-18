@@ -48,6 +48,8 @@ const PUBLIC_PATH_METHODS: [string, Set<string> | null][] = [
 
 When adding a new public endpoint, add an entry to `PUBLIC_PATH_METHODS`. Pass `null` to allow all HTTP methods, or a `Set` to scope the exemption to specific methods. All other routes automatically return 401 if no session exists.
 
+The single sign-on routes (`/auth/login`, `/auth/callback`, `/auth/events`) are public only while single sign-on is on, and answer like unknown routes while it is off. `GET /login` tells the sign-in page which way to sign in, before anyone has: its body carries `sso: { enabled, localLogin }` (`{ enabled: false, localLogin: true }` while single sign-on is off), and `DELETE /login` answers a single sign-on session with `body.logoutUrl`, the identity provider's sign-out page. See `docs/SECURITY.md#single-sign-on`.
+
 ### Opting a route into API-key bearer auth
 
 For routes that need to accept calls from an external client (e.g. a daily-cron LLM agent labelling transactions), pass a `requiredScope` in the `Route` options:
@@ -66,6 +68,7 @@ Behaviour:
 - Cookie-session auth is still accepted (and remains more privileged).
 - `Authorization: Bearer <api_key>` is consulted **only** as a fallback, and only on routes that declare a `requiredScope`. The presented key's `scopes` array must contain the declared scope.
 - Bearer-authenticated requests are stateless — no session cookie is written back.
+- With single sign-on on, a key budget did not issue is checked with the identity provider; the provider being unreachable answers `503`.
 
 See `docs/SECURITY.md` for the full bearer-auth contract.
 

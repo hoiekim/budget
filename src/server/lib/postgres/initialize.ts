@@ -76,17 +76,20 @@ export const initializePostgres = async (): Promise<void> => {
     for (const table of tables) {
       const createTableSql = buildCreateTable(table.name, table.schema, table.constraints);
       await pool.query(createTableSql);
+    }
+    logger.info("Database tables created/verified successfully");
 
+    // Run automatic schema migrations to add any missing columns
+    await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
+
+    // After the migrations, so an index can cover a column they just added.
+    for (const table of tables) {
       for (const idx of table.indexes) {
         const columns = "columns" in idx ? idx.columns : idx.column;
         const createIndexSql = buildCreateIndex(table.name, columns);
         await pool.query(createIndexSql);
       }
     }
-    logger.info("Database tables created/verified successfully");
-
-    // Run automatic schema migrations to add any missing columns
-    await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
   } catch (error: unknown) {
     logger.error("Failed to create tables", {}, error);
     throw new Error("Failed to setup PostgreSQL tables.");

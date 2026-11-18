@@ -8,11 +8,12 @@ import "./variables.css";
 
 interface Props {
   initialUser: ContextType["user"];
+  sso: ContextType["sso"];
 }
 
-export const App = ({ initialUser }: Props) => {
+export const App = ({ initialUser, sso }: Props) => {
   return (
-    <AppContext initialUser={initialUser}>
+    <AppContext initialUser={initialUser} sso={sso}>
       <Utility />
       <ErrorBoundary>
         <Header />

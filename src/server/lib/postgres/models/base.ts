@@ -196,12 +196,21 @@ export abstract class Table<
     return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
   }
 
-  async insert(data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
+  /**
+   * `onConflictDoNothing` turns a row that would break any unique constraint
+   * into no row written, resolving to `null`, rather than an error.
+   */
+  async insert(
+    data: QueryData,
+    returning?: string[],
+    options: { onConflictDoNothing?: boolean } = {},
+  ): Promise<Record<string, unknown> | null> {
     this._assertSimplePrimaryKey("insert");
     const { sql, values } = buildInsert(
       this.name,
       data as Record<string, ParamValue>,
       returning ?? [this.primaryKey],
+      options,
     );
     const result = await pool.query(sql, values);
     return result.rows.length > 0 ? result.rows[0] : null;

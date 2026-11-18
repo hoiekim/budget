@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { restoreLeaves } from "test-helpers";
+import { json, startFakeIssuer } from "test-issuer";
 import * as realApiKeys from "./postgres/repositories/api_keys";
 import * as realUsers from "./postgres/repositories/users";
 import type { ResolvedApiKey } from "./postgres/repositories/api_keys";
@@ -26,6 +27,9 @@ const mockVerifyApiKey = mock(async (_plaintext: string): Promise<ResolvedApiKey
 const mockGetMaskedUserById = mock(
   async (_id: string): Promise<MaskedUser | undefined> => undefined,
 );
+const mockGetUserByAuthSub = mock(
+  async (_sub: string): Promise<MaskedUser | undefined> => undefined,
+);
 
 mock.module("./postgres/repositories/api_keys", () => ({
   ...realApiKeysSnap,
@@ -34,11 +38,18 @@ mock.module("./postgres/repositories/api_keys", () => ({
 mock.module("./postgres/repositories/users", () => ({
   ...realUsersSnap,
   getMaskedUserById: mockGetMaskedUserById,
+  getUserByAuthSub: mockGetUserByAuthSub,
 }));
 
 const { resolveBearerAuth } = await import("./bearer-auth");
+const { configureSso } = await import("./sso");
+const { Unavailable } = await import("./auth-client");
+
+const issuer = startFakeIssuer();
 
 afterAll(() => {
+  configureSso(null);
+  issuer.stop();
   mock.module("./postgres/repositories/api_keys", () => realApiKeysSnap);
   mock.module("./postgres/repositories/users", () => realUsersSnap);
   restoreLeaves();
@@ -47,8 +58,12 @@ afterAll(() => {
 beforeEach(() => {
   mockVerifyApiKey.mockReset();
   mockGetMaskedUserById.mockReset();
+  mockGetUserByAuthSub.mockReset();
   mockVerifyApiKey.mockImplementation(async () => null);
   mockGetMaskedUserById.mockImplementation(async () => undefined);
+  mockGetUserByAuthSub.mockImplementation(async () => undefined);
+  configureSso(null);
+  issuer.reset();
 });
 
 describe("resolveBearerAuth — short-circuit gates (verifyApiKey must NOT be called)", () => {
@@ -204,5 +219,75 @@ describe("resolveBearerAuth — key resolution", () => {
       requiredScope: "transactions:suggest",
     });
     expect(result).toBeNull();
+  });
+});
+
+describe("resolveBearerAuth — keys the identity provider issued", () => {
+  const SCOPE = "transactions:suggest";
+  const activeKey = (scope = SCOPE) =>
+    json(200, { active: true, sub: "usr_alice", username: "alice", role: "user", scope, jti: "key_1" });
+  const resolve = (ip?: string) =>
+    resolveBearerAuth({
+      authorizationHeader: "Bearer abc_key_1_secret",
+      hasCookieSession: false,
+      requiredScope: SCOPE,
+      ip,
+    });
+
+  beforeEach(() => {
+    configureSso(issuer.config(), { fetch: issuer.fetch });
+    mockGetUserByAuthSub.mockImplementation(async (sub) => (sub === "usr_alice" ? aliceUser : undefined));
+  });
+
+  test("an active key with the route's scope, owned by a linked user, authenticates as that user", async () => {
+    issuer.state.introspect = () => activeKey(`other:scope ${SCOPE}`);
+    expect(await resolve("198.51.100.4")).toEqual({ user: aliceUser });
+    const [call] = issuer.seen("/oauth/introspect");
+    expect(call.form.get("token")).toBe("abc_key_1_secret");
+    expect(call.headers.get("x-real-ip")).toBe("198.51.100.4");
+    expect(mockGetUserByAuthSub).toHaveBeenCalledWith("usr_alice");
+  });
+
+  test("an address that is not an IP is not passed on", async () => {
+    issuer.state.introspect = () => activeKey();
+    expect(await resolve("unknown")).toEqual({ user: aliceUser });
+    expect(issuer.seen("/oauth/introspect")[0].headers.get("x-real-ip")).toBeNull();
+  });
+
+  test("a key without the route's scope is refused", async () => {
+    issuer.state.introspect = () => activeKey("transactions:read");
+    expect(await resolve()).toBeNull();
+  });
+
+  test("a key whose owner has no user here is refused", async () => {
+    issuer.state.introspect = () =>
+      json(200, { active: true, sub: "usr_bob", username: "bob", role: "user", scope: SCOPE });
+    expect(await resolve()).toBeNull();
+  });
+
+  test("an inactive key is refused", async () => {
+    expect(await resolve()).toBeNull();
+    expect(issuer.seen("/oauth/introspect")).toHaveLength(1);
+  });
+
+  test("an unreachable provider is reported, not taken as a refusal", async () => {
+    issuer.state.down = true;
+    await expect(resolve()).rejects.toBeInstanceOf(Unavailable);
+  });
+
+  test("budget's own keys are checked locally and never sent to the provider", async () => {
+    mockVerifyApiKey.mockImplementation(async () => aliceKey);
+    mockGetMaskedUserById.mockImplementation(async () => aliceUser);
+    expect(await resolve()).toEqual({ user: aliceUser });
+
+    mockVerifyApiKey.mockImplementation(async () => ({ ...aliceKey, scopes: [] }));
+    expect(await resolve()).toBeNull();
+    expect(issuer.state.seen).toEqual([]);
+  });
+
+  test("with single sign-on off, a key budget does not know is simply refused", async () => {
+    configureSso(null);
+    expect(await resolve()).toBeNull();
+    expect(issuer.state.seen).toEqual([]);
   });
 });

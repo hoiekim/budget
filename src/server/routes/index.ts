@@ -1,5 +1,6 @@
 export * from "./accounts";
 export * from "./api-keys";
+export * from "./auth";
 export * from "./budgets";
 export * from "./charts";
 export * from "./client-error";

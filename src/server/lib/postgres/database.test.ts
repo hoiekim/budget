@@ -130,6 +130,15 @@ describe("buildInsert", () => {
       "INSERT INTO transactions (updated, id) VALUES (CURRENT_TIMESTAMP, $1) RETURNING id, updated",
     );
   });
+
+  it("puts ON CONFLICT DO NOTHING before the RETURNING clause when asked", () => {
+    const { sql } = buildInsert("users", { username: "alice" }, ["user_id"], {
+      onConflictDoNothing: true,
+    });
+    expect(sql).toBe(
+      "INSERT INTO users (updated, username) VALUES (CURRENT_TIMESTAMP, $1) ON CONFLICT DO NOTHING RETURNING user_id",
+    );
+  });
 });
 
 describe("buildUpdate", () => {

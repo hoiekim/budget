@@ -65,6 +65,7 @@ const userRow = (overrides: Record<string, unknown> = {}) => ({
   email: null,
   expiry: null,
   token: null,
+  auth_sub: null,
   updated: null,
   is_deleted: false,
   ...overrides,

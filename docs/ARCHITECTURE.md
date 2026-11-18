@@ -26,10 +26,12 @@ budget/
 │   │   │   ├── postgres/     # PostgreSQL client and operations
 │   │   │   ├── plaid/        # Plaid API integration
 │   │   │   ├── simple-fin/   # SimpleFin API integration
+│   │   │   ├── sso/          # Optional single sign-on: settings, account linking, events
 │   │   │   └── compute-tools/  # Data processing utilities
 │   │   └── routes/           # API endpoints
 │   │       ├── accounts/     # Account management
 │   │       ├── api-keys/     # Scoped API key management
+│   │       ├── auth/         # Single sign-on: sign-in, callback, identity provider events
 │   │       ├── budgets/      # Budget management
 │   │       ├── charts/       # Chart data
 │   │       ├── client-error.ts  # Client-error reporting endpoint

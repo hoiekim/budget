@@ -247,6 +247,16 @@ describe("Table.insert", () => {
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     expect(await widgetsTable.insert({ widget_id: "w-1" })).toBeNull();
   });
+
+  test("onConflictDoNothing makes a conflicting row a null result instead of an error", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    expect(
+      await widgetsTable.insert({ widget_id: "w-1" }, undefined, { onConflictDoNothing: true }),
+    ).toBeNull();
+    expect(lastCall().sql).toBe(
+      "INSERT INTO widgets (updated, widget_id) VALUES (CURRENT_TIMESTAMP, $1) ON CONFLICT DO NOTHING RETURNING widget_id",
+    );
+  });
 });
 
 describe("Table.update", () => {

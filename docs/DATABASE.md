@@ -35,6 +35,10 @@ const result = await pool.query("SELECT * FROM users WHERE user_id = $1", [userI
 
 Use direct SQL for: complex joins or aggregations, performance-critical bulk operations, one-off migrations.
 
+## Schema Changes
+
+Tables are created from the schema objects in `src/server/lib/postgres/models/` at every start (`initialize.ts`). A column added to a schema is added to the existing table by `runMigrations` (`migration.ts`), which never drops or changes a column (a type mismatch stops the start instead), so the previous release keeps working against the new schema while both run. Indexes are created after the migrations, so an index may cover a column added in the same release.
+
 ## Repository Pattern
 
 Higher-level helpers live in `src/server/lib/postgres/repositories/` and wrap the table singletons (e.g. `searchUser`, `writeUser`, `getUserById`, `deleteUser`). Import them from the `server` alias:

@@ -86,3 +86,20 @@ export const BENCHMARK_TICKER = "VOO";
 
 /** The last row of the benchmark's static daily history (`voo_price_history.csv`). */
 export const BENCHMARK_HISTORY_THROUGH = "2026-10-13";
+
+/** The query parameter that brings a failed single sign-on back to the sign-in page. */
+export const SSO_ERROR_PARAM = "sso_error";
+
+/** Why a single sign-on came back to the sign-in page, as `SSO_ERROR_PARAM` carries it. */
+export enum SsoError {
+  /** The username is taken by a local account that is not linked to this person. */
+  AccountExists = "account_exists",
+  /** The identity provider grants this person no access to the app. */
+  NoAccess = "no_access",
+  /** The sign-in took too long, or started in another browser. */
+  Expired = "expired",
+  /** The identity provider could not be reached. */
+  Unavailable = "unavailable",
+  /** The identity provider's answer did not check out. */
+  Failed = "failed",
+}

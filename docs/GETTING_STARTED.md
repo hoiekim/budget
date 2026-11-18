@@ -70,5 +70,15 @@ Copy `.env.example` to `.env.local` and fill in values. `Required` means the val
 | `NODE_ENV` | No | `production` turns on the production posture: the session cookie carries `Secure`, API route responses carry `Strict-Transport-Security`, and logs are JSON lines. Read at runtime, so a prebuilt image takes it from the deployment's environment. Set it only behind HTTPS — off localhost, browsers refuse a `Secure` cookie over plain HTTP, so login stops working. |
 | `LOG_LEVEL` | No | Log verbosity, one of `debug`, `info`, `warn` or `error` (default: `info`, or `error` when `NODE_ENV=test`) |
 | `DISCORD_ALARM_WEBHOOK` | No | Discord webhook URL for server error alerts |
+| `AUTH_ISSUER` | No | Issuer URL of an OpenID Connect identity provider. Set, it turns on single sign-on; unset or empty, budget signs in with its own passwords only. |
+| `AUTH_CLIENT_ID` | With `AUTH_ISSUER` | OAuth client id registered for budget |
+| `AUTH_CLIENT_SECRET` | With `AUTH_ISSUER` | That client's secret |
+| `AUTH_REDIRECT_URI` | With `AUTH_ISSUER`, when `HOST_NAME` is unset | Callback URL registered for the client (default: `https://$HOST_NAME/api/auth/callback`) |
+| `AUTH_BACKCHANNEL_URL` | No | Private-network URL of the same issuer, for server-to-server calls |
+| `AUTH_AUDIENCE` | No | The service name in tokens' `aud`, when it differs from the client id |
+| `AUTH_LOCAL_LOGIN` | No | `true` keeps password sign-in next to single sign-on (default: `false`) |
+| `AUTH_LINK_USERS` | No | `<local username>=<SSO username>` pairs, comma-separated, linking existing accounts on their first SSO sign-in |
 
 > **Plaid is all-or-nothing.** The integration turns on only when `PLAID_CLIENT_ID` and `PLAID_SECRET_SANDBOX` are both set **and** at least one of `PLAID_SECRET_PRODUCTION` or `PLAID_SECRET_DEVELOPMENT` is set. Any other combination leaves Plaid off for every user, with one `Plaid is not configured` warning at startup and every authenticated link-token request failing with `Plaid integration is not configured on this server.`
+
+> **Single sign-on is optional.** See [Single sign-on (optional)](../README.md#single-sign-on-optional) for what it changes, what to register with the identity provider, and how existing accounts are linked.

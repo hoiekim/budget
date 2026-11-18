@@ -1,6 +1,6 @@
 import {
   Route,
-  searchUser,
+  searchPasswordUser,
   MaskedUser,
   maskUser,
   requireBodyObject,
@@ -10,10 +10,16 @@ import {
   preSessionShedMessage,
   verifyPassword,
 } from "server";
+import { ssoMode } from "server/lib/sso";
 
 export type LoginPostResponse = MaskedUser;
 
 export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", async (req, res) => {
+  if (!ssoMode().localLogin) {
+    res.status(403);
+    return { status: "failed", message: "Password sign-in is turned off. Sign in with SSO." };
+  }
+
   const bodyResult = requireBodyObject(req);
   if (!bodyResult.success) return validationError(bodyResult.error!);
 
@@ -33,7 +39,7 @@ export const postLoginRoute = new Route<LoginPostResponse>("POST", "/login", asy
   }
   loginRateLimiter.consume(req.ip);
 
-  const user = await searchUser({ username: usernameResult.data! }).catch((error) => {
+  const user = await searchPasswordUser(usernameResult.data!).catch((error) => {
     // A lookup that fails isn't a failed login.
     loginRateLimiter.refund(req.ip);
     throw error;
