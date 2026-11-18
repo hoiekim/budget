@@ -16,6 +16,7 @@ import {
   getClientIp,
   SECURITY_HEADERS,
   responseSecurityHeaders,
+  serveStatic,
   MAX_REQUEST_BODY_SIZE,
   emitToSharingGroup,
   originTabPayload,
@@ -476,13 +477,7 @@ const server = Bun.serve({
 
     // Serve static files for non-API paths. `isApiPath` rejects /api-anything
     // (e.g. /api-key-detail SPA route) so those fall through to the SPA.
-    if (!isApiPath(fullPath)) {
-      const filePath = path.join(clientPath, fullPath === "/" ? "index.html" : fullPath);
-      const file = Bun.file(filePath);
-      if (await file.exists()) return new Response(file);
-      // SPA fallback
-      return new Response(Bun.file(path.join(clientPath, "index.html")));
-    }
+    if (!isApiPath(fullPath)) return serveStatic(clientPath, fullPath);
 
     // Strip /api prefix to get the route path
     const apiPath = fullPath.slice(4) || "/";
