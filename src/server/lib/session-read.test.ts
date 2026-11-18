@@ -61,6 +61,9 @@ const fakeSession = (overrides?: Partial<SessionData>): SessionData => ({
   ...overrides,
 });
 
+const SID_1 = "3f2b8c1e-9d4a-4e6f-8b2c-1a5d7e9f0b3c";
+const SID_2 = "7c1e4a9b-2f6d-4b8e-a3c5-9e0d1f2a4b6c";
+
 const alarmBody = (): { title: string; description: string } => {
   const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
   const parsed = JSON.parse(String(options.body));
@@ -73,7 +76,7 @@ describe("readSessionData", () => {
     const session = fakeSession();
     const store = { get: mock(() => Promise.resolve(session)) };
 
-    const result = await sessionRead.readSessionData(store, "sid-1");
+    const result = await sessionRead.readSessionData(store, SID_1);
 
     expect(result).toBe(session);
     expect(mockFetch).not.toHaveBeenCalled();
@@ -83,7 +86,7 @@ describe("readSessionData", () => {
   test("returns null when the store has no row, with no log or alarm", async () => {
     const store = { get: mock(() => Promise.resolve(null)) };
 
-    const result = await sessionRead.readSessionData(store, "sid-1");
+    const result = await sessionRead.readSessionData(store, SID_1);
 
     expect(result).toBeNull();
     expect(mockFetch).not.toHaveBeenCalled();
@@ -95,7 +98,7 @@ describe("readSessionData", () => {
       get: mock(() => Promise.reject(new Error("connection terminated"))),
     };
 
-    const result = await sessionRead.readSessionData(store, "sid-1");
+    const result = await sessionRead.readSessionData(store, SID_1);
 
     expect(result).toBeNull();
     expect(errorLines.join("\n")).toContain("Session store read fault");
@@ -105,8 +108,8 @@ describe("readSessionData", () => {
     expect(description).toContain("connection terminated");
     // The session id is a bearer-equivalent credential: it must appear
     // in neither the log line nor the alarm.
-    expect(errorLines.join("\n")).not.toContain("sid-1");
-    expect(description).not.toContain("sid-1");
+    expect(errorLines.join("\n")).not.toContain(SID_1);
+    expect(description).not.toContain(SID_1);
   });
 
   test("a brownout alarms once a minute, but every fault is still logged", async () => {
@@ -114,11 +117,27 @@ describe("readSessionData", () => {
       get: mock(() => Promise.reject(new Error("connection terminated"))),
     };
 
-    await sessionRead.readSessionData(store, "sid-1");
+    await sessionRead.readSessionData(store, SID_1);
     advance(10_000);
-    await sessionRead.readSessionData(store, "sid-2");
+    await sessionRead.readSessionData(store, SID_2);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(errorLines.filter((line) => line.includes("Session store read fault"))).toHaveLength(2);
   });
+
+  test.each(["\u0000", "a\u0000b", "not-a-session", ""])(
+    "a sid without the issued shape is no session, with no store read, log or alarm (%p)",
+    async (sid) => {
+      const store = {
+        get: mock(() => Promise.reject(new Error('invalid byte sequence for encoding "UTF8": 0x00'))),
+      };
+
+      const result = await sessionRead.readSessionData(store, sid);
+
+      expect(result).toBeNull();
+      expect(store.get).not.toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(errorLines.join("\n")).not.toContain("Session store read fault");
+    },
+  );
 });
