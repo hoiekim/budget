@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, afterAll } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
+import type { IndexDefinition } from "./base";
 
 const { driver } = createFakeSql();
 
@@ -7,7 +8,6 @@ mock.module("../sql-driver", () => driver);
 
 const models = await import("./index");
 const { USER_ID, UPDATED } = models;
-type IndexDefinition = { column: string } | { columns: string[] };
 
 afterAll(restoreLeaves);
 
@@ -26,7 +26,7 @@ const isTable = (v: unknown): v is IndexedTable =>
 const tables = Object.values(models).filter(isTable);
 
 const columnsOf = (idx: IndexDefinition): string[] =>
-  "columns" in idx ? idx.columns : [idx.column];
+  "expression" in idx ? [idx.expression] : "columns" in idx ? idx.columns : [idx.column];
 
 describe("index definitions carry no leftmost-prefix redundancy", () => {
   // Guards the derivation above: if the barrel filter silently matched nothing,

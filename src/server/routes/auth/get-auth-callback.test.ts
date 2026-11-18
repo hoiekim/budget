@@ -10,8 +10,28 @@ import {
 
 /** Usernames held by unlinked local accounts. */
 let localAccounts = new Set<string>();
+/** The unlinked local account that has an email, by that email in lower case. */
+let emailAccounts = new Map<string, { user_id: string; username: string }>();
 
 const { driver, mockUnsafe, resetSqlMocks } = createFakeSql(async (sql: string, values?: unknown[]) => {
+  if (sql.startsWith("SELECT * FROM users WHERE lower(email) = lower($1)")) {
+    const account = emailAccounts.get(String(values?.[0]).toLowerCase());
+    if (!account) return { rows: [], rowCount: 0 };
+    const row = {
+      ...account,
+      password: "$2b$10$hash",
+      email: values?.[0],
+      expiry: null,
+      token: null,
+      auth_sub: null,
+      updated: null,
+      is_deleted: false,
+    };
+    return { rows: [row], rowCount: 1 };
+  }
+  if (sql.startsWith("UPDATE users SET")) {
+    return { rows: [{ user_id: values?.[1] }], rowCount: 1 };
+  }
   if (sql.startsWith("INSERT INTO users")) {
     const [username] = values as string[];
     if (localAccounts.has(username)) return { rows: [], rowCount: 0 };
@@ -36,6 +56,7 @@ beforeEach(() => {
   resetSqlMocks();
   issuer.reset();
   localAccounts = new Set(["admin", "demo"]);
+  emailAccounts = new Map();
   configureSso(issuer.config(), { fetch: issuer.fetch });
 });
 
@@ -44,7 +65,7 @@ beforeEach(() => {
  * token endpoint answer for it. Returns the login cookie and the state the
  * provider would send back.
  */
-const begin = async (claims: object = {}, returnTo = "/budgets") => {
+const begin = async (claims: object = {}, returnTo = "/budgets", idClaims: object = {}) => {
   const { redirectUrl, loginCookie } = await getSso()!.client.startLogin(
     new Request("https://budget.example.test/api/auth/login"),
     { returnTo },
@@ -54,7 +75,7 @@ const begin = async (claims: object = {}, returnTo = "/budgets") => {
   issuer.state.token = () =>
     json(200, {
       access_token: accessToken(claims),
-      id_token: idToken({ nonce }),
+      id_token: idToken({ nonce, ...idClaims }),
       refresh_token: "rt_1",
       token_type: "Bearer",
     });
@@ -144,6 +165,40 @@ describe("GET /api/auth/callback", () => {
       auth_refresh_token: "rt_1",
     });
     expect(new Date(row.auth_recheck_at as string).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  test("a new person's user keeps the ID token's email", async () => {
+    const { cookie, state } = await begin({}, "/", { email: "alice@example.com" });
+    await callback({ code: "c1", state }, cookie);
+
+    const [[sql, values]] = mockUnsafe.mock.calls.filter(([sql]) =>
+      String(sql).startsWith("INSERT INTO users"),
+    ) as unknown as [string, unknown[]][];
+    const columns = sql.match(/\(([^)]*)\)/)![1].split(", ").slice(1);
+    expect(Object.fromEntries(columns.map((column, i) => [column, values[i]]))).toEqual({
+      username: "alice",
+      auth_sub: "usr_alice",
+      email: "alice@example.com",
+    });
+  });
+
+  test("the account with the ID token's email signs in, even when the provider has not verified it", async () => {
+    emailAccounts.set("alice@example.com", { user_id: "u-admin", username: "admin" });
+    const { cookie, state } = await begin({}, "/", {
+      email: "Alice@Example.com",
+      email_verified: false,
+    });
+    const response = await callback({ code: "c1", state }, cookie);
+
+    expect(response.headers.get("Location")).toBe("/");
+    const [[sql, values]] = sessionWrites() as unknown as [string, unknown[]][];
+    const columns = sql.match(/\(([^)]*)\)/)![1].split(", ").slice(1);
+    expect(Object.fromEntries(columns.map((column, i) => [column, values[i]]))).toMatchObject({
+      user_user_id: "u-admin",
+      user_username: "admin",
+    });
+    const links = mockUnsafe.mock.calls.filter(([sql]) => String(sql).startsWith("UPDATE users SET"));
+    expect(links.map(([, values]) => values)).toEqual([["usr_alice", "u-admin"]]);
   });
 
   test("a username taken by an unlinked local account is refused, with no session", async () => {

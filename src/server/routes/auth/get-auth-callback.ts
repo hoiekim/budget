@@ -55,7 +55,11 @@ export const getAuthCallbackRoute = new Route("GET", AUTH_CALLBACK_PATH, async (
   // Budget has no roles of its own: any role is access.
   if (!login.claims.role) return signInPageRedirect(SsoError.NoAccess, login.clearCookie);
 
-  const found = await findOrCreateSsoUser(login.claims, sso.config.linkUsers);
+  const { sub, username } = login.claims;
+  const found = await findOrCreateSsoUser(
+    { sub, username, email: login.idClaims.email },
+    sso.config.linkUsers,
+  );
   if ("error" in found) {
     logger.warn("Single sign-on refused", { component: "sso", refusal: found.error });
     return signInPageRedirect(found.error, login.clearCookie);

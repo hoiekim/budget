@@ -174,6 +174,14 @@ describe("Table.query", () => {
     expect(lastCall().values).toEqual(["2026-01-05", "2026-02-01"]);
   });
 
+  test("equalsIgnoringCase compares the lowered column with the lowered value", async () => {
+    await widgetsTable.query({}, { equalsIgnoringCase: { column: "label", value: "Ab" } });
+    expect(lastCall().sql).toBe(
+      "SELECT * FROM widgets WHERE lower(label) = lower($1) AND (is_deleted IS NULL OR is_deleted = FALSE)",
+    );
+    expect(lastCall().values).toEqual(["Ab"]);
+  });
+
   test("after keyset pagination appends after the soft-delete predicate", async () => {
     await widgetsTable.query({}, { after: { column: "widget_id", value: "w-9" } });
     expect(lastCall().sql).toBe(

@@ -43,7 +43,16 @@ export type Constraints = string[];
 
 export type RowValueType = string | number | Date | boolean | null | Object;
 
-export type IndexDefinition = { column: string } | { columns: string[] };
+export type IndexDefinition = (
+  | { column: string }
+  | { columns: string[] }
+  // An expression such as `lower(email)` makes no index name of its own.
+  | { expression: string; name: string }
+) & {
+  unique?: boolean;
+  /** Makes the index partial: it covers only the rows this predicate holds for. */
+  where?: string;
+};
 
 export type PropertyChecker<T> = {
   [K in keyof T]: (value: unknown) => boolean;
@@ -143,6 +152,7 @@ export abstract class Table<
       user_id: options.user_id,
       primaryKey: options.primaryKey,
       inFilters: options.inFilters,
+      equalsIgnoringCase: options.equalsIgnoringCase,
       dateRange: options.dateRange,
       after: options.after,
       orderBy: options.orderBy,

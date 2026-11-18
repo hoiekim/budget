@@ -65,9 +65,20 @@ The first time someone signs in, budget finds their account in this order:
 
 1. the account already linked to their SSO account;
 2. the account `AUTH_LINK_USERS` names for their SSO username, if it is not linked to anyone yet: it is linked now and keeps its data. From then on it signs in only with SSO, even while `AUTH_LOCAL_LOGIN=true`;
-3. otherwise a new account named after their SSO username, with no password.
+3. the account whose email is the email in their SSO ID token, in any letter case, if it is not linked to anyone yet: it is linked the same way;
+4. otherwise a new account named after their SSO username, with no password, and with their email unless another account already has it.
 
-Budget keeps no email addresses, so it never links by email. If the SSO username is already taken by an account that isn't linked, the `admin` and `demo` accounts included, the sign-in is refused (the sign-in page says the account exists) rather than guessing: link it with `AUTH_LINK_USERS`. `admin` and `demo` are still created at every start; without `AUTH_LOCAL_LOGIN` their passwords no longer sign in. Note that `demo` is pinned to Plaid's sandbox, so whoever is linked to it is too.
+So before turning single sign-on on, give each existing account the email its owner has at the identity provider, for example:
+
+```sql
+UPDATE users SET email = 'alice@example.com' WHERE username = 'admin';
+```
+
+Leave the shared `demo` account without one. Emails must be unique, ignoring letter case; budget refuses to start while two accounts share one, and names the shared addresses.
+
+Budget matches the email whether or not the provider marked it verified. The operator filled in these addresses, and the auth identity service sets an address a person chose only after they confirm it (an unverified address there was entered by its administrator), so a match is as trustworthy as `AUTH_LINK_USERS`. A provider that lets people claim addresses they have not confirmed must not be used this way: with such a provider, leave the accounts' emails empty and use `AUTH_LINK_USERS`.
+
+If the SSO username is already taken by an account that isn't linked and none of the above found theirs, the `admin` and `demo` accounts included, the sign-in is refused (the sign-in page says the account exists) rather than guessing: link it with its email or `AUTH_LINK_USERS`. `admin` and `demo` are still created at every start; without `AUTH_LOCAL_LOGIN` their passwords no longer sign in. Note that `demo` is pinned to Plaid's sandbox, so whoever is linked to it is too.
 
 ### What changes while it is on
 

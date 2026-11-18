@@ -81,6 +81,14 @@ export const usersTable = createTable({
   name: USERS,
   primaryKey: USER_ID,
   schema: userSchema,
+  indexes: [
+    {
+      expression: `lower(${EMAIL})`,
+      name: "idx_users_lower_email",
+      unique: true,
+      where: `${EMAIL} IS NOT NULL`,
+    },
+  ],
   ModelClass: UserModel,
 });
 
