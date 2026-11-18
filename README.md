@@ -76,7 +76,7 @@ Budget keeps no email addresses, so it never links by email. If the SSO username
 - The provider's events end sessions right away: signing out of the provider, losing access to budget, and being disabled or deleted. Open real-time connections close within a minute, on every copy of budget. A deleted person's data stays in budget; removing it is up to the operator.
 - Signing out of budget also signs out of the provider.
 - API keys the provider issued for budget work on the routes that accept API keys, when their scopes include the route's and their owner has signed in to budget at least once. Budget's own API keys keep working as before.
-- Sessions that were signed in with a password before single sign-on was turned on stay valid until they go unused for seven days. To end them at once: `DELETE FROM sessions WHERE auth_sid IS NULL;`.
+- Sessions that were signed in with a password end at their next request, unless `AUTH_LOCAL_LOGIN=true`.
 
 ### Turning it off
 

@@ -116,9 +116,24 @@ describe("saveSession", () => {
 
 describe("recheckSession", () => {
   test("a password session is served as read, with no query and no call to the provider", async () => {
+    configureSso({ ...issuer.config(), localLogin: true }, { fetch: issuer.fetch });
     const data = buildSessionData(USER, false);
     expect(await recheckSession("s-1", data)).toBe(data);
     expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(issuer.state.seen).toEqual([]);
+  });
+
+  test("with single sign-on off, a password session is served as read, as before", async () => {
+    configureSso(null);
+    const data = buildSessionData(USER, false);
+    expect(await recheckSession("s-1", data)).toBe(data);
+    expect(mockUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("a password session ends while single sign-on is the only way in", async () => {
+    scriptRows(null);
+    expect(await recheckSession("s-1", buildSessionData(USER, false))).toBeNull();
+    expect(statements()).toEqual(["DELETE FROM sessions WHERE session_id = $1 RETURNING session_id"]);
     expect(issuer.state.seen).toEqual([]);
   });
 
@@ -263,6 +278,7 @@ describe("watchSession", () => {
   });
 
   test("stays quiet while the session is there, until stopped", async () => {
+    configureSso({ ...issuer.config(), localLogin: true }, { fetch: issuer.fetch });
     scriptRows(sessionRow());
     let ended = 0;
     const stop = watchSession("s-1", () => ended++, 5);

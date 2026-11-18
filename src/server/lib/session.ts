@@ -133,12 +133,15 @@ const rechecks = new Map<string, Promise<SessionData | null>>();
  * due costs anything beyond the row already read: one refresh with the
  * identity provider, shared by the session's concurrent requests. A single
  * sign-on session outlives neither single sign-on being turned off nor an
- * hour of the provider being unreachable past its re-check.
+ * hour of the provider being unreachable past its re-check, and a password
+ * session doesn't outlive password sign-in being turned off.
  */
 export function recheckSession(sid: string, data: SessionData): Promise<SessionData | null> {
   const { auth } = data;
-  if (!auth) return Promise.resolve(data);
   const sso = getSso();
+  // A password session ends while single sign-on is the only way in: its
+  // expiry slides forward on every use, so it would otherwise never end.
+  if (!auth) return sso && !sso.config.localLogin ? endSession(sid) : Promise.resolve(data);
   if (!sso) return endSession(sid);
   if (auth.recheckAt.getTime() > Date.now()) return Promise.resolve(data);
   let pending = rechecks.get(sid);
