@@ -74,15 +74,16 @@ See `docs/SECURITY.md` for the full bearer-auth contract.
 
 ## Security Headers
 
-Security response headers are set globally in `start.ts`:
+Security response headers are defined in `src/server/lib/security-headers.ts` and stamped on every response — API responses and the static client files, including the SPA document, which is the response a browser enforces CSP and `X-Frame-Options` from:
 
-- **Content-Security-Policy** — restricts script/style/image sources to `'self'`
+- **Content-Security-Policy** — `'self'` by default, with Plaid Link's script/frame/connect origins allowlisted
 - **X-Content-Type-Options: nosniff** — prevents MIME type sniffing
 - **X-Frame-Options: DENY** — prevents clickjacking
 - **X-XSS-Protection** — legacy XSS filter (defense-in-depth)
 - **Referrer-Policy: strict-origin-when-cross-origin**
+- **Strict-Transport-Security** — production only, on route responses and static files
 
-When adding frontend features that load external resources (fonts, images, scripts), update the CSP directives in `start.ts` rather than disabling CSP.
+When adding frontend features that load external resources (fonts, images, scripts), update the CSP directives in `security-headers.ts` rather than disabling CSP.
 
 ## Input Validation
 
