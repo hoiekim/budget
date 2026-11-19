@@ -278,7 +278,11 @@ const getBalanceDataFromSnapshots = (
     const { date } = snapshot;
     if (!account.balances.current && account.balances.current !== 0) return;
     const snapshotDate = new LocalDate(date);
-    if (today < snapshotDate) return;
+    // BalanceHistory is keyed by year-month, so a snapshot dated later in
+    // the current month still belongs to it — the snapshot forms pre-fill
+    // the last day of the viewed period, which is in the future most of
+    // the month. Only snapshots in a future month are skipped.
+    if (getYearMonthString(snapshotDate) > getYearMonthString(today)) return;
     const key = getYearMonthString(snapshotDate);
     const existing = snapshotHistory[key];
     if (existing) {
@@ -303,8 +307,13 @@ const getBalanceDataFromSnapshots = (
     }
   });
 
-  // makes sure today's balance takes priority over snapshots.
-  accounts.forEach((a) => balanceData.set(a.id, today, getAccountBalance(a)));
+  // The live balance is the latest balance of the current month, so it wins
+  // that month over any snapshot. An account with no live balance (a manual
+  // account never given one) keeps its snapshot instead of reading $0.00.
+  accounts.forEach((a) => {
+    if (!a.balances.current && a.balances.current !== 0) return;
+    balanceData.set(a.id, today, getAccountBalance(a));
+  });
 
   return balanceData;
 };
@@ -336,7 +345,9 @@ const getBalanceDataFromHoldingSnapshots = (
     if (!accounts.has(account_id)) return;
 
     const snapshotDate = new LocalDate(date);
-    if (today < snapshotDate) return;
+    // Same month-granularity as the account-snapshot tier above: a holding
+    // snapshot dated later in the current month still belongs to it.
+    if (getYearMonthString(snapshotDate) > getYearMonthString(today)) return;
 
     const key = getYearMonthString(snapshotDate);
 
