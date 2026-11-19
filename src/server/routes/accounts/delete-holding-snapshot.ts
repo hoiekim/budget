@@ -22,7 +22,12 @@ export const deleteHoldingSnapshotRoute = new Route(
     }
 
     try {
-      await deleteSnapshotById(user, snapshot_id);
+      // The delete's answer is the truth: the row can vanish between the
+      // lookup and the delete, and only the soft-delete's row count knows.
+      const deleted = await deleteSnapshotById(user, snapshot_id);
+      if (!deleted) {
+        return { status: "failed", message: "Snapshot not found or access denied." };
+      }
       return { status: "success" };
     } catch (error: unknown) {
       logger.error("Failed to delete holding snapshot", { snapshot_id }, error);

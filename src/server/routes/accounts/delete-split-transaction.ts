@@ -20,7 +20,10 @@ export const deleteSplitTransactionRoute = new Route(
     const idCheck = validateFields(req.query, [{ path: "id", type: "uuid", required: true }]);
     if (!idCheck.success) return validationError(idCheck.error!);
 
-    await deleteSplitTransactions(user, [idResult.data!]);
+    const { deleted } = await deleteSplitTransactions(user, [idResult.data!]);
+    if (!deleted) {
+      return { status: "failed", message: "Split transaction not found." };
+    }
 
     return { status: "success" };
   }
