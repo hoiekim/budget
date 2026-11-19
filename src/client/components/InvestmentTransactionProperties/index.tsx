@@ -3,6 +3,7 @@ import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/
 import {
   currencyCodeToSymbol,
   LocalDate,
+  movesShares,
   shapePatchFor,
   numberToCommaString,
   toTitleCase,
@@ -454,9 +455,13 @@ export const InvestmentTransactionProperties = ({ investmentTransaction }: Props
         <KeyValue name="Amount">
           {/* Derived from quantity * price on manual rows (both branches
               render as a span). Plaid rows show the synced amount as
-              before. */}
+              before. Display follows the list row: the absolute value,
+              with a `+` when cash arrives and no sign on a trade — a
+              trade swaps cash for shares inside the account, so it is
+              neither money in nor money out. */}
           <span>
-            {currencySymbol}&nbsp;{numberToCommaString(amount)}
+            {!movesShares(type) && amount < 0 && <>+&nbsp;</>}
+            {currencySymbol}&nbsp;{numberToCommaString(Math.abs(amount))}
           </span>
         </KeyValue>
         <KeyValue name="Account">
