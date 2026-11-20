@@ -1,6 +1,6 @@
 import { pool } from "./client";
 import { searchUser, writeUser } from "./repositories";
-import { buildCreateTable, buildCreateIndex } from "./database";
+import { buildCreateTable, buildCreateIndex, buildSelectDuplicateKeys } from "./database";
 import { runMigrations } from "./migration";
 import { logger } from "server";
 import {
@@ -54,6 +54,27 @@ const tables: Table<unknown, Schema>[] = [
   cpiSnapshotsTable,
 ];
 
+/**
+ * Stops the start when existing rows share a key a unique index is about to
+ * forbid, naming every shared key and nothing else of those rows. Postgres
+ * refuses such an index too, but names only the first key it meets.
+ */
+const refuseDuplicateKeys = async (
+  tableName: string,
+  key: string | string[],
+  where?: string,
+): Promise<void> => {
+  const { rows } = await pool.query(buildSelectDuplicateKeys(tableName, key, where));
+  if (rows.length === 0) return;
+  const keyName = Array.isArray(key) ? `(${key.join(", ")})` : key;
+  const duplicates = rows.map((row) => `- ${Object.values(row).join(", ")}`);
+  const message =
+    `These values of ${keyName} are shared by more than one ${tableName} row, and must be unique.` +
+    ` Change the rows so no two match, then start again:\n${duplicates.join("\n")}`;
+  logger.error(message);
+  throw new Error(message);
+};
+
 export const initializePostgres = async (): Promise<void> => {
   logger.info("Initialization started");
 
@@ -76,17 +97,23 @@ export const initializePostgres = async (): Promise<void> => {
     for (const table of tables) {
       const createTableSql = buildCreateTable(table.name, table.schema, table.constraints);
       await pool.query(createTableSql);
-
-      for (const idx of table.indexes) {
-        const columns = "columns" in idx ? idx.columns : idx.column;
-        const createIndexSql = buildCreateIndex(table.name, columns);
-        await pool.query(createIndexSql);
-      }
     }
     logger.info("Database tables created/verified successfully");
 
     // Run automatic schema migrations to add any missing columns
     await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));
+
+    // After the migrations, so an index can cover a column they just added.
+    for (const table of tables) {
+      for (const idx of table.indexes) {
+        const key =
+          "expression" in idx ? idx.expression : "columns" in idx ? idx.columns : idx.column;
+        if (idx.unique) await refuseDuplicateKeys(table.name, key, idx.where);
+        const name = "name" in idx ? idx.name : undefined;
+        const createIndexSql = buildCreateIndex(table.name, key, name, idx);
+        await pool.query(createIndexSql);
+      }
+    }
   } catch (error: unknown) {
     logger.error("Failed to create tables", {}, error);
     throw new Error("Failed to setup PostgreSQL tables.");

@@ -15,6 +15,9 @@ import {
   COOKIE_SAME_SITE,
   CREATED_AT,
   UPDATED,
+  AUTH_SID,
+  AUTH_REFRESH_TOKEN,
+  AUTH_RECHECK_AT,
 } from "./common";
 import { SESSIONS } from "common/constants";
 
@@ -32,9 +35,20 @@ export interface SessionCookie {
   sameSite?: boolean | "lax" | "strict" | "none";
 }
 
+/** What a session started by single sign-on keeps about its sign-in at the identity provider. */
+export interface SessionAuth {
+  /** The provider's session id (`sid`), which `session.ended` names. */
+  sid: string;
+  refreshToken: string | null;
+  /** When the next request must re-check the sign-in with the provider. */
+  recheckAt: Date;
+}
+
 export interface SessionData {
   user: MaskedUser;
   cookie: SessionCookie;
+  /** Absent on a session started by the app's own password sign-in. */
+  auth?: SessionAuth;
 }
 
 const isValidSameSiteValue = (v: unknown): boolean => {
@@ -61,6 +75,9 @@ const sessionSchema = {
   [COOKIE_SAME_SITE]: "VARCHAR(50)",
   [CREATED_AT]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+  [AUTH_SID]: "TEXT",
+  [AUTH_REFRESH_TOKEN]: "TEXT",
+  [AUTH_RECHECK_AT]: "TIMESTAMPTZ",
 };
 
 type SessionSchema = typeof sessionSchema;
@@ -81,6 +98,9 @@ export class SessionModel extends Model<SessionData, SessionSchema> implements S
   declare cookie_same_site: boolean | "lax" | "strict" | "none" | null;
   declare created_at: string | null;
   declare updated: string | null;
+  declare auth_sid: string | null;
+  declare auth_refresh_token: string | null;
+  declare auth_recheck_at: string | null;
 
   static typeChecker = {
     session_id: isString,
@@ -97,6 +117,9 @@ export class SessionModel extends Model<SessionData, SessionSchema> implements S
     cookie_same_site: isValidSameSiteValue,
     created_at: isNullableString,
     updated: isNullableString,
+    auth_sid: isNullableString,
+    auth_refresh_token: isNullableString,
+    auth_recheck_at: isNullableString,
   };
 
   constructor(data: unknown) {
@@ -104,7 +127,7 @@ export class SessionModel extends Model<SessionData, SessionSchema> implements S
   }
 
   toJSON(): SessionData {
-    return {
+    const data: SessionData = {
       user: { user_id: this.user_user_id, username: this.user_username },
       cookie: {
         originalMaxAge: this.cookie_original_max_age,
@@ -118,10 +141,19 @@ export class SessionModel extends Model<SessionData, SessionSchema> implements S
         sameSite: this.cookie_same_site || undefined,
       },
     };
+    if (this.auth_sid !== null) {
+      data.auth = {
+        sid: this.auth_sid,
+        refreshToken: this.auth_refresh_token,
+        recheckAt: new Date(this.auth_recheck_at ?? 0),
+      };
+    }
+    return data;
   }
 
+  /** Leaves the `auth_*` columns out when `data` has no `auth`, so writing it keeps what the row holds. */
   static fromSessionData(sid: string, data: SessionData): Partial<SessionRow> {
-    return {
+    const row: Partial<SessionRow> = {
       session_id: sid,
       user_user_id: data.user.user_id,
       user_username: data.user.username,
@@ -135,6 +167,16 @@ export class SessionModel extends Model<SessionData, SessionSchema> implements S
       cookie_secure: typeof data.cookie.secure === "boolean" ? data.cookie.secure : null,
       cookie_same_site: data.cookie.sameSite?.toString() ?? null,
     };
+    if (data.auth) Object.assign(row, SessionModel.fromSessionAuth(data.auth));
+    return row;
+  }
+
+  static fromSessionAuth(auth: SessionAuth): Partial<SessionRow> {
+    return {
+      auth_sid: auth.sid,
+      auth_refresh_token: auth.refreshToken,
+      auth_recheck_at: auth.recheckAt,
+    };
   }
 }
 
@@ -143,6 +185,7 @@ export const sessionsTable = createTable({
   primaryKey: SESSION_ID,
   schema: sessionSchema,
   ModelClass: SessionModel,
+  indexes: [{ column: USER_USER_ID }, { column: AUTH_SID }],
   supportsSoftDelete: false,
 });
 

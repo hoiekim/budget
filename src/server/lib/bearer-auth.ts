@@ -1,11 +1,15 @@
+import { isIP } from "net";
 import { verifyApiKey } from "./postgres/repositories/api_keys";
-import { getMaskedUserById } from "./postgres/repositories/users";
+import { getMaskedUserById, getUserByAuthSub } from "./postgres/repositories/users";
 import type { MaskedUser } from "./postgres/models/user";
+import { getSso } from "./sso/state";
 
 export interface BearerAuthInput {
   authorizationHeader: string | string[] | undefined;
   hasCookieSession: boolean;
   requiredScope: string | undefined;
+  /** The caller's address, passed on to the identity provider's introspection. */
+  ip?: string;
 }
 
 export interface BearerAuthResult {
@@ -13,6 +17,28 @@ export interface BearerAuthResult {
 }
 
 const BEARER_PREFIX = "Bearer ";
+
+/**
+ * A key budget's own store does not hold, checked with the identity
+ * provider instead. Accepted when the provider says it is active, its owner
+ * is linked to a local user, and its scopes include the route's. Throws
+ * `Unavailable` when the provider cannot answer.
+ */
+const resolveIntrospectedKey = async (
+  plaintext: string,
+  requiredScope: string,
+  ip: string | undefined,
+): Promise<BearerAuthResult | null> => {
+  const sso = getSso();
+  if (!sso) return null;
+  const answer = await sso.client.introspect(
+    plaintext,
+    ip !== undefined && isIP(ip) !== 0 ? { ip } : {},
+  );
+  if (!answer || !answer.scopes.includes(requiredScope)) return null;
+  const user = await getUserByAuthSub(answer.sub);
+  return user ? { user } : null;
+};
 
 /**
  * Resolve Authorization: Bearer credentials against the API-key store.
@@ -24,6 +50,9 @@ const BEARER_PREFIX = "Bearer ";
  * - `verifyApiKey` returns a non-null, non-revoked, non-expired record
  * - The resolved scopes include the route's `requiredScope`
  * - The user_id maps to an existing MaskedUser
+ *
+ * With single sign-on on, a key `verifyApiKey` does not know is checked with
+ * the identity provider instead (`resolveIntrospectedKey`).
  *
  * Returns `null` for every other case. Callers should treat `null` as
  * "no bearer credentials applied" and continue to the normal auth check.
@@ -43,7 +72,7 @@ export const resolveBearerAuth = async (
   if (!plaintext) return null;
 
   const resolved = await verifyApiKey(plaintext);
-  if (!resolved) return null;
+  if (!resolved) return resolveIntrospectedKey(plaintext, input.requiredScope, input.ip);
   if (!resolved.scopes.includes(input.requiredScope)) return null;
 
   const user = await getMaskedUserById(resolved.user_id);

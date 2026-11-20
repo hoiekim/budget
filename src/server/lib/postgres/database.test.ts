@@ -13,6 +13,7 @@ import {
   buildSelectWithFilters,
   buildCreateTable,
   buildCreateIndex,
+  buildSelectDuplicateKeys,
   successResult,
   errorResult,
   noChangeResult,
@@ -128,6 +129,15 @@ describe("buildInsert", () => {
     ]);
     expect(sql).toBe(
       "INSERT INTO transactions (updated, id) VALUES (CURRENT_TIMESTAMP, $1) RETURNING id, updated",
+    );
+  });
+
+  it("puts ON CONFLICT DO NOTHING before the RETURNING clause when asked", () => {
+    const { sql } = buildInsert("users", { username: "alice" }, ["user_id"], {
+      onConflictDoNothing: true,
+    });
+    expect(sql).toBe(
+      "INSERT INTO users (updated, username) VALUES (CURRENT_TIMESTAMP, $1) ON CONFLICT DO NOTHING RETURNING user_id",
     );
   });
 });
@@ -403,6 +413,22 @@ describe("buildSelectWithFilters", () => {
     ]);
   });
 
+  it("matches equalsIgnoringCase by lowering both sides, numbered between the IN filters and the date range", () => {
+    const { sql, values } = buildSelectWithFilters("users", "*", {
+      filters: { auth_sub: null, username: "alice" },
+      inFilters: { user_id: ["u1"] },
+      equalsIgnoringCase: { column: "email", value: "Alice@Example.com" },
+      dateRange: { column: "updated", start: "2026-01-01" },
+      limit: 1,
+    });
+    expect(sql).toBe(
+      "SELECT * FROM users WHERE auth_sub IS NULL AND username = $1 AND user_id IN ($2)" +
+        " AND lower(email) = lower($3) AND updated >= $4" +
+        ` AND ${SOFT_DELETE_CONDITION} LIMIT $5`,
+    );
+    expect(values).toEqual(["alice", "u1", "Alice@Example.com", "2026-01-01", 1]);
+  });
+
   it("skips empty IN filters without consuming a param index", () => {
     const { sql, values } = buildSelectWithFilters("transactions", "*", {
       inFilters: { category_id: [] },
@@ -484,6 +510,31 @@ describe("DDL builders", () => {
     // A single-element array matches the scalar form exactly (no trailing comma/space).
     expect(buildCreateIndex("things", ["name"])).toBe(
       buildCreateIndex("things", "name"),
+    );
+  });
+
+  it("buildCreateIndex builds a unique index over an expression, partial when given a predicate", () => {
+    expect(
+      buildCreateIndex("users", "lower(email)", "idx_users_lower_email", {
+        unique: true,
+        where: "email IS NOT NULL",
+      }),
+    ).toBe(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_lower_email ON users(lower(email)) WHERE email IS NOT NULL",
+    );
+    expect(buildCreateIndex("things", "name", undefined, { unique: true })).toBe(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_things_name ON things(name)",
+    );
+  });
+
+  it("buildSelectDuplicateKeys selects only the shared keys of the rows the index would cover", () => {
+    expect(buildSelectDuplicateKeys("users", "lower(email)", "email IS NOT NULL")).toBe(
+      "SELECT lower(email) FROM users WHERE lower(email) IS NOT NULL AND (email IS NOT NULL)" +
+        " GROUP BY lower(email) HAVING COUNT(*) > 1 ORDER BY lower(email)",
+    );
+    expect(buildSelectDuplicateKeys("things", ["a", "b"])).toBe(
+      "SELECT a, b FROM things WHERE a IS NOT NULL AND b IS NOT NULL" +
+        " GROUP BY a, b HAVING COUNT(*) > 1 ORDER BY a, b",
     );
   });
 });

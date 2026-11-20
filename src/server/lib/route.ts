@@ -1,6 +1,7 @@
 import { logger } from "server/lib/logger";
 import { sendAlarm } from "server/lib/alarm";
 import type { MaskedUser } from "./postgres/models/user";
+import type { SessionAuth } from "./postgres/models/session";
 
 export type Method = "GET" | "POST" | "DELETE";
 
@@ -95,6 +96,8 @@ export class JsonStream<T = unknown> {
 
 export interface ServerSession {
   user?: MaskedUser;
+  /** Set on a session started by single sign-on. */
+  auth?: SessionAuth;
   id: string;
   regenerate(callback: (err?: Error) => void): void;
   destroy(callback?: (err?: Error) => void): void;

@@ -6,6 +6,7 @@ import {
   EMAIL,
   EXPIRY,
   TOKEN,
+  AUTH_SUB,
   UPDATED,
   IS_DELETED,
 } from "./common";
@@ -27,6 +28,7 @@ const userSchema = {
   [EMAIL]: "VARCHAR(255)",
   [EXPIRY]: "TIMESTAMPTZ",
   [TOKEN]: "VARCHAR(255)",
+  [AUTH_SUB]: "TEXT UNIQUE",
   [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
   [IS_DELETED]: "BOOLEAN DEFAULT FALSE",
 };
@@ -41,6 +43,7 @@ export class UserModel extends Model<MaskedUser, UserSchema> implements UserRow 
   declare email: string | null;
   declare expiry: string | null;
   declare token: string | null;
+  declare auth_sub: string | null;
   declare updated: string;
   declare is_deleted: boolean;
 
@@ -51,6 +54,7 @@ export class UserModel extends Model<MaskedUser, UserSchema> implements UserRow 
     email: isNullableString,
     expiry: isNullableString,
     token: isNullableString,
+    auth_sub: isNullableString,
     updated: isNullableString,
     is_deleted: isNullableBoolean,
   };
@@ -77,6 +81,14 @@ export const usersTable = createTable({
   name: USERS,
   primaryKey: USER_ID,
   schema: userSchema,
+  indexes: [
+    {
+      expression: `lower(${EMAIL})`,
+      name: "idx_users_lower_email",
+      unique: true,
+      where: `${EMAIL} IS NOT NULL`,
+    },
+  ],
   ModelClass: UserModel,
 });
 

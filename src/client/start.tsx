@@ -20,7 +20,7 @@ call.get<LoginGetResponse>("/api/login").then((r) => {
   }
   root.render(
     <React.StrictMode>
-      <App initialUser={r.body?.user} />
+      <App initialUser={r.body?.user} sso={r.body?.sso ?? { enabled: false, localLogin: true }} />
     </React.StrictMode>
   );
 });

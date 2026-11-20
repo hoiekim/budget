@@ -134,6 +134,12 @@ const SERVER_KEYED: Record<string, string> = {
     "the sid is honoured only because the store already holds a row for it, read back just above and found expired; the delete removes that same server-held row",
   "lib/postgres/repositories/session.ts::touch::sessionsTable.update":
     "session_id is server-issued: the cookie's sid is honoured only if the store already holds it, and otherwise a random UUID is minted",
+  "lib/postgres/repositories/session.ts::updateSessionAuth::sessionsTable.update":
+    "the sid is the server-held row the request's own cookie resolved to, read back by the store just before its re-check",
+  "lib/postgres/repositories/session.ts::deleteSessionsByAuthSid::sessionsTable.hardDeleteByColumn":
+    "the identity provider's session id comes from a security event verified against the provider's keys; no caller can name it",
+  "lib/postgres/repositories/session.ts::deleteSessionsByUserId::sessionsTable.hardDeleteByColumn":
+    "the user_id is read back from the users row linked to a verified security event's subject; no caller can name it",
   "lib/postgres/repositories/users.ts::writeUser::usersTable.upsert":
     "seeds the admin and demo users at boot; no route writes a user",
 };
@@ -154,6 +160,8 @@ const NOT_A_TABLE: Record<string, string> = {
     "a crypto Hash accumulating the raw body for signature comparison",
   'lib/postgres/repositories/api_keys.ts::createHash("sha256")':
     "an inline crypto Hash chain over the key plaintext",
+  'lib/auth-client.ts::createHash("sha256")':
+    "an inline crypto Hash chain in the vendored identity-provider client",
 };
 
 interface WriteCall {

@@ -16,6 +16,8 @@ import { logger } from "./logger";
 export interface Subscriber {
   send: (event: string, payload: unknown, id?: string) => void;
   close: () => void;
+  /** The identity provider's session id, on a connection opened by a single sign-on session. */
+  authSid?: string;
 }
 
 /** Gap between `: keepalive` blocks on an otherwise-quiet SSE stream. */
@@ -258,6 +260,23 @@ export const emitToUser = (
       } catch {
         // swallow
       }
+    }
+  }
+};
+
+/** Closes this process's connections of a user whose access ended, or of one single sign-on session. */
+export const closeSubscribers = (which: { userId: string } | { authSid: string }): void => {
+  const matches = (sub: Subscriber) => "userId" in which || sub.authSid === which.authSid;
+  const userIds = "userId" in which ? [which.userId] : [...subscribers.keys()];
+  for (const userId of userIds) {
+    for (const sub of [...(subscribers.get(userId) ?? [])]) {
+      if (!matches(sub)) continue;
+      try {
+        sub.close();
+      } catch {
+        // swallow
+      }
+      unregisterSubscriber(userId, sub);
     }
   }
 };

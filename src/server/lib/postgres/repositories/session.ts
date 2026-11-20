@@ -1,4 +1,13 @@
-import { sessionsTable, SessionModel, SessionData, SESSION_ID, COOKIE_EXPIRES } from "../models";
+import {
+  sessionsTable,
+  SessionModel,
+  SessionData,
+  SessionAuth,
+  SESSION_ID,
+  COOKIE_EXPIRES,
+  USER_USER_ID,
+  AUTH_SID,
+} from "../models";
 import { logger } from "../../logger";
 
 /**
@@ -7,6 +16,20 @@ import { logger } from "../../logger";
  */
 export async function purgeSessions(): Promise<number> {
   return sessionsTable.deleteByCondition(COOKIE_EXPIRES, "<=", new Date());
+}
+
+/** Stores a single sign-on session's re-check outcome; `false` when the session is gone. */
+export async function updateSessionAuth(sid: string, auth: SessionAuth): Promise<boolean> {
+  const updated = await sessionsTable.update(sid, SessionModel.fromSessionAuth(auth));
+  return updated !== null;
+}
+
+export async function deleteSessionsByAuthSid(authSid: string): Promise<number> {
+  return sessionsTable.hardDeleteByColumn(AUTH_SID, authSid);
+}
+
+export async function deleteSessionsByUserId(userId: string): Promise<number> {
+  return sessionsTable.hardDeleteByColumn(USER_USER_ID, userId);
 }
 
 export class PostgresSessionStore {

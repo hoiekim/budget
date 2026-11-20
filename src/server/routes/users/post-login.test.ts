@@ -1,6 +1,7 @@
 // Password hash + compare run unmocked.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
+import { startFakeIssuer } from "test-issuer";
 
 const { driver, mockUnsafe, resetSqlMocks } = createFakeSql();
 
@@ -8,8 +9,15 @@ mock.module("../../lib/postgres/sql-driver", () => driver);
 
 const { postLoginRoute } = await import("./post-login");
 const { loginRateLimiter } = await import("server/lib/rate-limit");
+const { configureSso } = await import("server/lib/sso");
 
-afterAll(restoreLeaves);
+const issuer = startFakeIssuer();
+
+afterAll(() => {
+  configureSso(null);
+  issuer.stop();
+  restoreLeaves();
+});
 
 const REAL_PASSWORD = "correct-horse-battery-staple";
 const REAL_HASH = await Bun.password.hash(REAL_PASSWORD, { algorithm: "bcrypt", cost: 10 });
@@ -22,6 +30,7 @@ const userRow = (overrides: Record<string, unknown> = {}) => ({
   email: null,
   expiry: null,
   token: null,
+  auth_sub: null,
   updated: "2026-05-19T00:00:00.000Z",
   is_deleted: false,
   ...overrides,
@@ -112,7 +121,7 @@ describe("post-login validation", () => {
 
 describe("post-login auth outcomes", () => {
   test("unknown user → generic failure (no enumeration leak)", async () => {
-    // searchUser → usersTable.queryOne → pool.query → empty rows
+    // searchPasswordUser → usersTable.queryOne → pool.query → empty rows
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
     const result = await postLoginRoute.execute(
       makeReq({ username: "ghost", password: REAL_PASSWORD }),
@@ -120,7 +129,7 @@ describe("post-login auth outcomes", () => {
     );
     expect(result?.status).toBe("failed");
     expect(result?.message).toBe("Invalid username or password.");
-    // searchUser was attempted (DUMMY_HASH timing path still issues one SELECT)
+    // searchPasswordUser was attempted (DUMMY_HASH timing path still issues one SELECT)
     expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
@@ -266,5 +275,46 @@ describe("post-login rate-limiter wiring", () => {
     const result = await postLoginRoute.execute(makeReq({ username: "alice", password: REAL_PASSWORD }, { ip }), fakeRes());
     expect(result?.status).toBe("error");
     expect(loginRateLimiter.remaining(ip)).toBe(5);
+  });
+});
+
+describe("post-login with single sign-on", () => {
+  afterAll(() => configureSso(null));
+
+  test("without AUTH_LOCAL_LOGIN, password sign-in is refused before anything is read", async () => {
+    configureSso(issuer.config({ localLogin: false }));
+    const ip = "203.0.113.9";
+    const res = fakeRes();
+    const result = await postLoginRoute.execute(
+      makeReq({ username: "alice", password: REAL_PASSWORD }, { ip }),
+      res,
+    );
+    expect((res as { statusCode: number }).statusCode).toBe(403);
+    expect(result).toEqual({
+      status: "failed",
+      message: "Password sign-in is turned off. Sign in with SSO.",
+    });
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(loginRateLimiter.remaining(ip)).toBe(5);
+  });
+
+  test("with AUTH_LOCAL_LOGIN, a local password still signs in", async () => {
+    configureSso(issuer.config({ localLogin: true }));
+    mockUnsafe.mockResolvedValueOnce({ rows: [userRow()], rowCount: 1 });
+    const result = await postLoginRoute.execute(
+      makeReq({ username: "alice", password: REAL_PASSWORD }, { ip: "203.0.113.10" }),
+      fakeRes(),
+    );
+    expect(result?.status).toBe("success");
+  });
+
+  test("a user single sign-on created has no password, and fails like an unknown user", async () => {
+    configureSso(issuer.config({ localLogin: true }));
+    mockUnsafe.mockResolvedValueOnce({ rows: [userRow({ password: null })], rowCount: 1 });
+    const result = await postLoginRoute.execute(
+      makeReq({ username: "alice", password: REAL_PASSWORD }, { ip: "203.0.113.11" }),
+      fakeRes(),
+    );
+    expect(result).toEqual({ status: "failed", message: "Invalid username or password." });
   });
 });

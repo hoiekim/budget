@@ -37,6 +37,9 @@ const sessionRow = (overrides: Record<string, unknown> = {}) => ({
   cookie_same_site: null,
   created_at: null,
   updated: null,
+  auth_sid: null,
+  auth_refresh_token: null,
+  auth_recheck_at: null,
   ...overrides,
 });
 

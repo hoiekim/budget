@@ -90,10 +90,33 @@ export function buildCreateIndex(
   tableName: string,
   column: string | string[],
   indexName?: string,
+  { unique = false, where }: { unique?: boolean; where?: string } = {},
 ): string {
   const columns = Array.isArray(column) ? column : [column];
   const name = indexName || `idx_${tableName}_${columns.join("_")}`;
-  return `CREATE INDEX IF NOT EXISTS ${name} ON ${tableName}(${columns.join(", ")})`;
+  const kind = unique ? "UNIQUE INDEX" : "INDEX";
+  const predicate = where ? ` WHERE ${where}` : "";
+  return `CREATE ${kind} IF NOT EXISTS ${name} ON ${tableName}(${columns.join(", ")})${predicate}`;
+}
+
+/**
+ * The keys more than one row shares, among the rows a unique index on `key`
+ * with predicate `where` would cover: what stops that index from being
+ * created. Rows with a NULL in the key are left out, since a unique index
+ * never counts them as equal.
+ */
+export function buildSelectDuplicateKeys(
+  tableName: string,
+  key: string | string[],
+  where?: string,
+): string {
+  const keys = Array.isArray(key) ? key : [key];
+  const list = keys.join(", ");
+  const conditions = [...keys.map((k) => `${k} IS NOT NULL`), ...(where ? [`(${where})`] : [])];
+  return (
+    `SELECT ${list} FROM ${tableName} WHERE ${conditions.join(" AND ")}` +
+    ` GROUP BY ${list} HAVING COUNT(*) > 1 ORDER BY ${list}`
+  );
 }
 
 export function prepareParamValue(value: ParamValue): ParamValue {
@@ -134,6 +157,7 @@ export function buildInsert(
   tableName: string,
   data: Record<string, ParamValue>,
   returning?: string[],
+  options: { onConflictDoNothing?: boolean } = {},
 ): PreparedQuery {
   const columns: string[] = ["updated"];
   const placeholders: string[] = ["CURRENT_TIMESTAMP"];
@@ -149,6 +173,8 @@ export function buildInsert(
   }
 
   let sql = `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders.join(", ")})`;
+
+  if (options.onConflictDoNothing) sql += " ON CONFLICT DO NOTHING";
 
   if (returning && returning.length > 0) {
     sql += ` RETURNING ${returning.join(", ")}`;
@@ -368,6 +394,8 @@ export interface SearchFilters {
     end?: string | Date;
   };
   excludeDeleted?: boolean;
+  /** Only rows whose `column` equals `value` in any letter case: `lower(column) = lower($N)`. */
+  equalsIgnoringCase?: { column: string; value: string };
   /** Keyset pagination: only rows whose `column` sorts after `value`. */
   after?: { column: string; value: ParamValue };
   orderBy?: string;
@@ -385,6 +413,7 @@ export function buildSelectWithFilters(
     primaryKey,
     filters = {},
     inFilters = {},
+    equalsIgnoringCase,
     dateRange,
     excludeDeleted = true,
     after,
@@ -425,6 +454,11 @@ export function buildSelectWithFilters(
     conditions.push(`${column} IN (${placeholders})`);
     values.push(...valueArray);
     paramIndex += valueArray.length;
+  }
+
+  if (equalsIgnoringCase) {
+    conditions.push(`lower(${equalsIgnoringCase.column}) = lower($${paramIndex++})`);
+    values.push(equalsIgnoringCase.value);
   }
 
   if (dateRange) {

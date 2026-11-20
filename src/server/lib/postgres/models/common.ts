@@ -16,6 +16,7 @@ export const PASSWORD = "password";
 export const EMAIL = "email";
 export const EXPIRY = "expiry";
 export const TOKEN = "token";
+export const AUTH_SUB = "auth_sub";
 
 export const SESSION_ID = "session_id";
 export const USER_USER_ID = "user_user_id";
@@ -30,6 +31,9 @@ export const COOKIE_DOMAIN = "cookie_domain";
 export const COOKIE_SECURE = "cookie_secure";
 export const COOKIE_SAME_SITE = "cookie_same_site";
 export const CREATED_AT = "created_at";
+export const AUTH_SID = "auth_sid";
+export const AUTH_REFRESH_TOKEN = "auth_refresh_token";
+export const AUTH_RECHECK_AT = "auth_recheck_at";
 
 export const ITEM_ID = "item_id";
 export const ACCESS_TOKEN = "access_token";

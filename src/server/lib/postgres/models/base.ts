@@ -43,7 +43,16 @@ export type Constraints = string[];
 
 export type RowValueType = string | number | Date | boolean | null | Object;
 
-export type IndexDefinition = { column: string } | { columns: string[] };
+export type IndexDefinition = (
+  | { column: string }
+  | { columns: string[] }
+  // An expression such as `lower(email)` makes no index name of its own.
+  | { expression: string; name: string }
+) & {
+  unique?: boolean;
+  /** Makes the index partial: it covers only the rows this predicate holds for. */
+  where?: string;
+};
 
 export type PropertyChecker<T> = {
   [K in keyof T]: (value: unknown) => boolean;
@@ -143,6 +152,7 @@ export abstract class Table<
       user_id: options.user_id,
       primaryKey: options.primaryKey,
       inFilters: options.inFilters,
+      equalsIgnoringCase: options.equalsIgnoringCase,
       dateRange: options.dateRange,
       after: options.after,
       orderBy: options.orderBy,
@@ -196,12 +206,21 @@ export abstract class Table<
     return result.rows.length > 0 ? new this.ModelClass(result.rows[0]) : null;
   }
 
-  async insert(data: QueryData, returning?: string[]): Promise<Record<string, unknown> | null> {
+  /**
+   * `onConflictDoNothing` turns a row that would break any unique constraint
+   * into no row written, resolving to `null`, rather than an error.
+   */
+  async insert(
+    data: QueryData,
+    returning?: string[],
+    options: { onConflictDoNothing?: boolean } = {},
+  ): Promise<Record<string, unknown> | null> {
     this._assertSimplePrimaryKey("insert");
     const { sql, values } = buildInsert(
       this.name,
       data as Record<string, ParamValue>,
       returning ?? [this.primaryKey],
+      options,
     );
     const result = await pool.query(sql, values);
     return result.rows.length > 0 ? result.rows[0] : null;

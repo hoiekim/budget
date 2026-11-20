@@ -1,3 +1,5 @@
+import { isProduction } from "server/lib/node-env";
+
 /**
  * Baseline security headers stamped on every HTTP response the app emits.
  * Kept in one place so routes that own their own `Response` (e.g. the
@@ -21,3 +23,9 @@ export const SECURITY_HEADERS: Record<string, string> = {
     "base-uri 'self'",
   ].join("; "),
 };
+
+/** `SECURITY_HEADERS`, plus HSTS under the production posture. */
+export const responseSecurityHeaders = (): Record<string, string> =>
+  isProduction()
+    ? { ...SECURITY_HEADERS, "Strict-Transport-Security": "max-age=31536000; includeSubDomains" }
+    : { ...SECURITY_HEADERS };
