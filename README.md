@@ -38,7 +38,7 @@ Budget checks these at start and refuses to start, listing every problem, when o
 
 ### Registering budget with the identity provider
 
-With the auth identity service, add budget to its services file. Budget has no roles of its own: any role on the service lets the person in, so one role is enough. The API key scope is the one budget's routes accept (`transactions:suggest`).
+With the auth identity service, register budget on its admin page (the **Services** tab), or in its services file if the deployment keeps one. Once the client's secret is made, the admin page lists the `AUTH_*` lines to paste into budget's environment. Budget has no roles of its own: any role on the service lets the person in, so one role is enough. The API key scope is the one budget's routes accept (`transactions:suggest`). The definition, as the services file takes it:
 
 ```json
 {
