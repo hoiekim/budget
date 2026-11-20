@@ -194,6 +194,21 @@ function jsonResponse(
   });
 }
 
+/**
+ * Answers a request whose handling threw outside any route's own catch, with
+ * the same log, alarm and JSON body a failing route produces. The alarm key is
+ * fixed because the path is caller-controlled.
+ */
+function unhandledRequestError(error: unknown, method?: string, path?: string): Response {
+  logger.error("Unhandled request error", { method, path }, error);
+  const where = method && path ? `**Request:** ${method} ${path}\n` : "";
+  sendAlarm(
+    "Unhandled Request Error",
+    `${where}**Error:** ${error instanceof Error ? error.message : String(error)}`,
+  ).catch(() => undefined);
+  return jsonResponse({ status: "error", message: "Internal server error" }, 500);
+}
+
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
@@ -484,14 +499,19 @@ const server = Bun.serve({
 
     const startTime = performance.now();
     const log: RequestLogContext = { method: request.method, path: fullPath };
-    const response = await handleApiRequest(
-      request,
-      url,
-      apiPath,
-      log,
-      server.requestIP(request)?.address,
-      (seconds) => server.timeout(request, seconds),
-    );
+    let response: Response;
+    try {
+      response = await handleApiRequest(
+        request,
+        url,
+        apiPath,
+        log,
+        server.requestIP(request)?.address,
+        (seconds) => server.timeout(request, seconds),
+      );
+    } catch (error) {
+      response = unhandledRequestError(error, request.method, fullPath);
+    }
 
     // /health is polled constantly by uptime checks and carries no debugging
     // value — keep it out of the log as before.
@@ -502,6 +522,12 @@ const server = Bun.serve({
     }
 
     return response;
+  },
+
+  // Without this, Bun answers with its development error page, which carries
+  // server paths and source lines whenever NODE_ENV is not "production".
+  error(error) {
+    return unhandledRequestError(error);
   },
 });
 
