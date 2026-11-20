@@ -228,8 +228,6 @@ describe("translateInvestmentTransaction", () => {
     const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
 
     expect(invTransaction.investment_transaction_id).toBe("inv-txn-001");
-    // SimpleFin signs positive when money arrives; the app signs
-    // investment amounts positive when money leaves.
     expect(invTransaction.amount).toBe(-500);
     expect(invTransaction.quantity).toBe(0);
     expect(invTransaction.price).toBe(0);
@@ -281,6 +279,38 @@ describe("translateInvestmentTransaction", () => {
     expect(invTransaction.amount).toBe(-3.21);
     expect(invTransaction.type).toBe(InvestmentTransactionType.Cash);
     expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Interest);
+  });
+
+  test("matches the plural dividends keyword", () => {
+    const sfTransaction = createMockSimpleFinTransaction({
+      amount: "12.00",
+      description: "Quarterly dividends",
+    });
+    const sfAccount = createMockSimpleFinAccount();
+
+    const invTransaction = translateInvestmentTransaction(sfTransaction, sfAccount);
+
+    expect(invTransaction.subtype).toBe(InvestmentTransactionSubtype.Dividend);
+  });
+
+  test("ignores the keyword when money leaves, so the subtype agrees with the sign", () => {
+    const cases = [
+      { amount: "-5.00", description: "Margin interest charged" },
+      { amount: "-40.00", description: "Dividend reinvestment" },
+      { amount: "-1.20", description: "Foreign tax withheld on dividend" },
+    ];
+    const sfAccount = createMockSimpleFinAccount();
+
+    const results = cases.map((c) => {
+      const invTransaction = translateInvestmentTransaction(createMockSimpleFinTransaction(c), sfAccount);
+      return [invTransaction.amount, invTransaction.subtype];
+    });
+
+    expect(results).toEqual([
+      [5, InvestmentTransactionSubtype.Withdrawal],
+      [40, InvestmentTransactionSubtype.Withdrawal],
+      [1.2, InvestmentTransactionSubtype.Withdrawal],
+    ]);
   });
 
   test("a zero amount stays zero, not negative zero", () => {
