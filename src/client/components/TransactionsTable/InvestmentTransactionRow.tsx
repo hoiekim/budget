@@ -1,7 +1,6 @@
 import { InvestmentTransaction, PATH, useAppContext } from "client";
 import { RightArrowIcon, TransactionRowInfo } from "client/components";
-import { movesShares } from "common";
-import { InvestmentTransactionType } from "common/lib/plaid-enums";
+import { movesShares, shareMovementDirection } from "common";
 
 interface Props {
   investmentTransaction: InvestmentTransaction;
@@ -30,7 +29,7 @@ const InvestmentTransactionRow = ({ investmentTransaction }: Props) => {
   if (movesShares(type)) {
     const security = security_id ? securities.get(security_id) : undefined;
     const holding = security?.ticker_symbol || security?.name || "Shares";
-    const isBuy = type === InvestmentTransactionType.Buy;
+    const isBuy = shareMovementDirection(investmentTransaction) === "buy";
     const [from, to] = isBuy ? ["Cash", holding] : [holding, "Cash"];
     return (
       <div className="TransactionRow">

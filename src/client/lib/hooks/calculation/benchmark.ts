@@ -1,4 +1,5 @@
 import { InvestmentTransactionType } from "common/lib/plaid-enums";
+import { shareMovementDirection } from "common";
 import { InvestmentTransactionDictionary, HoldingSnapshotDictionary, SecuritySnapshotDictionary } from "../../models/Data";
 import { BENCHMARK_TICKER } from "common/constants";
 
@@ -400,7 +401,7 @@ const txnDerivedQtyBySecurity = (params: {
     const txnDate = t.date.slice(0, 10);
     if (txnDate <= windowStart) return;
     if (txnDate > date) return;
-    const signed = t.type === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
+    const signed = shareMovementDirection(t) === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
     qtyBySec.set(t.security_id, (qtyBySec.get(t.security_id) ?? 0) + signed);
   });
 
@@ -418,7 +419,7 @@ const txnDerivedQtyBySecurity = (params: {
     if (anchorSnapDate.has(t.security_id)) return; // anchor came from holding snap
     const txnDate = t.date.slice(0, 10);
     if (txnDate > windowStart) return; // already counted in step 2
-    const signed = t.type === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
+    const signed = shareMovementDirection(t) === "buy" ? Math.abs(t.quantity) : -Math.abs(t.quantity);
     qtyBySec.set(t.security_id, (qtyBySec.get(t.security_id) ?? 0) + signed);
   });
 
