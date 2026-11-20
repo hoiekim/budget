@@ -52,7 +52,7 @@ let holdingsRows: Array<{ security_id: string }> = [];
 let securitiesRows: Array<Record<string, unknown>> = [];
 let recentBySecurity = new Set<string>();
 let latestSnapshotDate: Record<string, string> = {};
-let latestStoredClose: Record<string, number | null> = {};
+let latestStoredClose: Record<string, { price: number; date: string }> = {};
 const upsertCalls: Array<{ sql: string; values: unknown[] }> = [];
 const securityInserts: Array<Record<string, unknown>> = [];
 
@@ -93,13 +93,12 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
     return { rows: [{ date: latestSnapshotDate[params[0] as string] ?? null }], rowCount: 1 };
   }
 
-  // Sanity-gate probe — the most recent stored close for a security
-  // (`… ORDER BY snapshot_date DESC LIMIT 1`).
+  // Sanity-gate probe — the most recent stored close for a security dated
+  // on or after `$2` (`… ORDER BY snapshot_date DESC LIMIT 1`).
   if (/ORDER\s+BY\s+snapshot_date\s+DESC/i.test(sql)) {
-    return {
-      rows: [{ close_price: latestStoredClose[params[0] as string] ?? null }],
-      rowCount: 1,
-    };
+    const stored = latestStoredClose[params[0] as string];
+    const inWindow = stored && stored.date >= (params[1] as string);
+    return { rows: inWindow ? [{ close_price: stored.price }] : [], rowCount: inWindow ? 1 : 0 };
   }
 
   // Cadence-gate probe — `… updated > NOW() - INTERVAL 'N hours' …`.
@@ -570,7 +569,7 @@ describe("refreshActiveSecuritySnapshots", () => {
 });
 
 describe("isAnomalousClose", () => {
-  test("the #771 shape — a 2,000x single-step drop — is anomalous", () => {
+  test("a 2,000x single-step drop is anomalous", () => {
     expect(isAnomalousClose(27, 67890)).toBe(true);
   });
 
@@ -585,10 +584,17 @@ describe("isAnomalousClose", () => {
     expect(isAnomalousClose(2000.01, 100)).toBe(true);
   });
 
-  test("a previous close of zero or less carries no ratio — nothing is anomalous", () => {
-    expect(isAnomalousClose(0, 0)).toBe(false);
+  test("a previous close of zero or less carries no ratio — no positive close is anomalous against it", () => {
     expect(isAnomalousClose(1000000, 0)).toBe(false);
     expect(isAnomalousClose(100, -5)).toBe(false);
+    expect(isAnomalousClose(100, null)).toBe(false);
+  });
+
+  test("a fetched close of zero or less is anomalous with or without a previous close", () => {
+    expect(isAnomalousClose(0, null)).toBe(true);
+    expect(isAnomalousClose(-1, null)).toBe(true);
+    expect(isAnomalousClose(0, 0)).toBe(true);
+    expect(isAnomalousClose(0, 100)).toBe(true);
   });
 });
 
@@ -598,7 +604,7 @@ describe("refreshActiveSecuritySnapshots sanity gate", () => {
     securitiesRows = [
       securityRow({ security_id: "sec-btc", ticker_symbol: "BTC", type: "cryptocurrency" }),
     ];
-    latestStoredClose = { "sec-btc": 67890.0625 };
+    latestStoredClose = { "sec-btc": { price: 67890.0625, date: "2026-08-31" } };
     setPolygonResponse({ results: [{ c: 27.44, t: Date.UTC(2026, 8, 1) }] });
 
     const r = await refreshActiveSecuritySnapshots();
@@ -614,7 +620,7 @@ describe("refreshActiveSecuritySnapshots sanity gate", () => {
     securitiesRows = [
       securityRow({ security_id: "sec-btc", ticker_symbol: "BTC", type: "cryptocurrency" }),
     ];
-    latestStoredClose = { "sec-btc": 67890.0625 };
+    latestStoredClose = { "sec-btc": { price: 67890.0625, date: "2026-08-31" } };
     setPolygonResponse({ results: [{ c: 70000, t: Date.UTC(2026, 8, 1) }] });
 
     const r = await refreshActiveSecuritySnapshots();
@@ -638,7 +644,7 @@ describe("refreshActiveSecuritySnapshots sanity gate", () => {
   test("a benchmark range with one anomalous day writes the rest and counts the anomaly", async () => {
     recentBySecurity = new Set();
     latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
-    latestStoredClose = { [BENCHMARK_SECURITY_ID]: 700 };
+    latestStoredClose = { [BENCHMARK_SECURITY_ID]: { price: 700, date: "2026-10-05" } };
     setPolygonResponse({
       results: [
         { c: 706, t: Date.UTC(2026, 9, 6) },
@@ -657,5 +663,61 @@ describe("refreshActiveSecuritySnapshots sanity gate", () => {
     expect(written).not.toContain(`${BENCHMARK_SECURITY_ID}-20261008`);
     expect(r.anomalous).toBe(1);
     expect(r.refreshed).toBe(1);
+  });
+
+  test("each close is judged against the previous kept close, not the stored seed", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    latestStoredClose = { [BENCHMARK_SECURITY_ID]: { price: 1, date: "2026-10-05" } };
+    setPolygonResponse({
+      results: [
+        { c: 15, t: Date.UTC(2026, 9, 6) },
+        { c: 300, t: Date.UTC(2026, 9, 7) },
+      ],
+    });
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261006`);
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261007`);
+    expect(r.anomalous).toBe(0);
+  });
+
+  test("a wrong stored close rejects fetched closes only until it ages out of the seed window", async () => {
+    holdingsRows = [{ security_id: "sec-rs" }];
+    securitiesRows = [securityRow({ security_id: "sec-rs", ticker_symbol: "RSPLT" })];
+    latestStoredClose = { "sec-rs": { price: 2, date: "2026-08-31" } };
+
+    setPolygonResponse({ results: [{ c: 50, t: Date.UTC(2026, 8, 1) }] });
+    const rejected = await refreshActiveSecuritySnapshots();
+    expect(upsertCalls).toHaveLength(0);
+    expect(rejected.anomalous).toBe(1);
+
+    clearPriceCache();
+    clearYahooCache();
+    setPolygonResponse({ results: [{ c: 50, t: Date.UTC(2026, 8, 6) }] });
+    const recovered = await refreshActiveSecuritySnapshots();
+    expect(upsertCalls).toHaveLength(1);
+    expect(recovered.anomalous).toBe(0);
+    expect(recovered.refreshed).toBe(1);
+  });
+
+  test("a first-ever fetched close of zero is rejected, not written as the seed", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    setPolygonResponse({
+      results: [
+        { c: 0, t: Date.UTC(2026, 9, 6) },
+        { c: 700, t: Date.UTC(2026, 9, 7) },
+      ],
+    });
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    expect(written).not.toContain(`${BENCHMARK_SECURITY_ID}-20261006`);
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261007`);
+    expect(r.anomalous).toBe(1);
   });
 });
