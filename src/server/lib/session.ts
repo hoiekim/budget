@@ -29,16 +29,32 @@ let store: PostgresSessionStore | undefined;
 /** Built on first use: constructing the store arms its hourly expiry sweep. */
 export const sessionStore = (): PostgresSessionStore => (store ??= new PostgresSessionStore());
 
+/**
+ * Parses a `Cookie` request header into a name → value map.
+ *
+ * A value that is not valid percent-encoding is dropped rather than thrown:
+ * the app never issues such a value, so it is treated the same as an absent
+ * cookie.
+ */
 export function parseCookies(cookieHeader: string): Record<string, string> {
   const cookies: Record<string, string> = {};
   for (const part of cookieHeader.split(";")) {
     const eqIdx = part.indexOf("=");
     if (eqIdx === -1) continue;
     const key = part.slice(0, eqIdx).trim();
-    const val = part.slice(eqIdx + 1).trim();
-    if (key) cookies[key] = decodeURIComponent(val);
+    if (!key) continue;
+    const value = decodeCookieValue(part.slice(eqIdx + 1).trim());
+    if (value !== undefined) cookies[key] = value;
   }
   return cookies;
+}
+
+function decodeCookieValue(raw: string): string | undefined {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return undefined;
+  }
 }
 
 export function buildSessionCookie(sid: string, maxAge: number, secure: boolean): string {
