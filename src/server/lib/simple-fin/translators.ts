@@ -164,13 +164,11 @@ export const translateTransaction = (
 };
 
 /**
- * What a SimpleFin description says about a cash movement, when it says
- * anything more specific than the direction of the money. Whole-word
- * matches only, so a payee name can't trip it. Anything else falls back
- * to the direction inference in `inferCashSubtype` below.
+ * Subtypes a SimpleFin description can name for money arriving in the
+ * account. Whole-word matches only, so a payee name can't trip it.
  */
-const CASH_SUBTYPE_BY_KEYWORD: [RegExp, InvestmentTransactionSubtype][] = [
-  [/\bdividend\b/i, InvestmentTransactionSubtype.Dividend],
+const ARRIVING_CASH_SUBTYPE_BY_KEYWORD: [RegExp, InvestmentTransactionSubtype][] = [
+  [/\bdividends?\b/i, InvestmentTransactionSubtype.Dividend],
   [/\binterest\b/i, InvestmentTransactionSubtype.Interest],
 ];
 
@@ -178,13 +176,11 @@ const inferCashSubtype = (
   description: string,
   rawAmount: number,
 ): InvestmentTransactionSubtype => {
-  for (const [pattern, subtype] of CASH_SUBTYPE_BY_KEYWORD) {
-    if (pattern.test(description)) return subtype;
+  if (rawAmount > 0) {
+    for (const [pattern, subtype] of ARRIVING_CASH_SUBTYPE_BY_KEYWORD) {
+      if (pattern.test(description)) return subtype;
+    }
   }
-  // SimpleFin signs amounts positive when money arrives; the app signs
-  // investment amounts positive when money leaves, so a positive raw
-  // amount is a deposit and a negative one a withdrawal. Zero carries no
-  // direction and defaults to deposit.
   return rawAmount >= 0 ? InvestmentTransactionSubtype.Deposit : InvestmentTransactionSubtype.Withdrawal;
 };
 
@@ -194,14 +190,7 @@ export const translateInvestmentTransaction = (
 ): JSONInvestmentTransaction => {
   const { id: transactionId, posted, amount: amountString, description } = simpleFinTransaction;
 
-  // A SimpleFin investment-account row carries no security and no share
-  // movement, so it is a cash row, not a buy: quantity 0, no per-share
-  // price, and the amount flipped to the app's sign convention (positive
-  // when money leaves — Plaid's convention; see the cash fold in
-  // client/lib/hooks/calculation/accounts.ts). SimpleFin signs the other
-  // way round, positive when money arrives. As a cash row it renders with
-  // a sign, lands in the Deposits/Expenses filters, and folds into the
-  // balance tier's cash instead of its cost basis.
+  // SimpleFin signs positive when money arrives; investment amounts are positive when money leaves.
   const rawAmount = +amountString;
   const amount = rawAmount === 0 ? 0 : -rawAmount;
   return {
