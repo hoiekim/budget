@@ -586,6 +586,49 @@ describe("valueAt (asset-only, txn-derived qty)", () => {
     ).toBe(15 * 600); // 9000 (10 anchor + 5 buys), NOT 60000
   });
 
+  const legacySaleCases = [
+    { label: "canonical {sell, -5}", type: InvestmentTransactionType.Sell },
+    { label: "legacy {buy, -5}", type: InvestmentTransactionType.Buy },
+  ];
+
+  test.each(legacySaleCases)("in-window $label removes 5 shares from the snapshot anchor", ({ type }) => {
+    const hs = new HoldingSnapshotDictionary();
+    hs.set("h1", mkHoldingSnap(VOO, 10, 30, 300, "2026-01-01"));
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t1", mkTxn({ date: "2026-03-10", type, security_id: VOO, amount: -150, quantity: -5, price: 30 }));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    expect(
+      valueAt({
+        date: "2026-06-01",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(5 * 30);
+  });
+
+  test.each(legacySaleCases)("pre-window $label removes 5 shares from a txn-built anchor", ({ type }) => {
+    const hs = new HoldingSnapshotDictionary();
+    const itxns = new InvestmentTransactionDictionary();
+    itxns.set("t0", mkTxn({ date: "2025-06-01", security_id: VOO, amount: 300, quantity: 10, price: 30 }));
+    itxns.set("t1", mkTxn({ date: "2025-09-10", type, security_id: VOO, amount: -150, quantity: -5, price: 30 }));
+    const priceAt = buildPriceAt(new SecuritySnapshotDictionary(), itxns);
+
+    expect(
+      valueAt({
+        date: "2026-01-01",
+        windowStart: "2026-01-01",
+        accountId: ACCT,
+        holdingSnapshots: hs,
+        investmentTransactions: itxns,
+        priceAt,
+      }),
+    ).toBe(5 * 30);
+  });
+
   test("returns 0 when only cash-shape holdings exist", () => {
     const hs = new HoldingSnapshotDictionary();
     hs.set("h1", mkHoldingSnap(CASH, 5000, 1, null, "2026-01-01"));
