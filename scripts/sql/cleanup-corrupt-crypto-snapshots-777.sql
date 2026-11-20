@@ -30,24 +30,37 @@
 -- it. Securities with no institution history in 2026 are left untouched
 -- (no evidence either way), as are rows outside the window.
 --
--- Why a hard DELETE, not a soft-delete
--- ------------------------------------
--- Security snapshot ids are deterministic
--- (`${security_id}-${YYYYMMDD}`), and `upsertSnapshots` does NOT clear
--- `is_deleted` for security rows (unlike account/holding rows, which
--- explicitly revive tombstones). A soft-deleted row would keep
--- `is_deleted = TRUE` while receiving the corrected close on
--- repopulation, staying invisible to every reader — and the refresh
--- cadence gate even comments on the resulting soft-deleted-snapshot
--- loop. Hard-deleting frees the month, so the next backfill/refresh
--- repopulates it from Polygon's crypto namespace (`X:BTCUSD`).
+-- Why a split: soft-delete most rows, hard-delete the backfill ids
+-- ------------------------------------------------------------------
+-- Clients cache security snapshots (in memory and IndexedDB) and evict a
+-- cached row only when it arrives on the delta sync as an `is_deleted`
+-- tombstone. A hard-deleted row never arrives, so a warm client would keep
+-- the corrupt close indefinitely. Most candidates are therefore
+-- SOFT-deleted (`is_deleted = TRUE, updated = CURRENT_TIMESTAMP`, the same
+-- shape as `Table.bulkSoftDelete`), which every client receives as a
+-- tombstone on its next sync.
+--
+-- The exception is the one id per month that backfill rewrites:
+-- `${security_id}-YYYYMM15`. `upsertSnapshots` does NOT clear `is_deleted`
+-- for security rows (unlike account/holding rows), so a soft-deleted row at
+-- that id would receive the corrected close but stay invisible. Those ids
+-- are HARD-deleted; backfill (whose `haveMonth` ignores soft-deleted rows)
+-- then writes the corrected close under the same id, and that row replaces
+-- the cached corrupt one on the next delta sync. If Polygon returns no data
+-- for that month, the cached copy stays until the client's next cold sync.
+--
+-- Assumes the server runs in UTC (the container default): backfill builds
+-- the id from the 15th in the server's local time zone.
 --
 -- How to run (the maintainer runs this on prod; never run blind)
 -- ----------------------------------------------------
--- 1. Run Step 0 (the preview SELECT) on its own first and eyeball every
---    row it lists: ticker, date, stored close, and the institution band
---    it was judged against. If any row surprises you, stop — do not run
---    the DELETE.
+-- 1. Preview without writing: run the whole file with its final COMMIT
+--    swapped for ROLLBACK, and eyeball every row Step 0 lists (ticker,
+--    date, stored close, the institution band it was judged against, and
+--    the action). If any row surprises you, stop.
+--      sed 's/^COMMIT;$/ROLLBACK;/' \
+--        scripts/sql/cleanup-corrupt-crypto-snapshots-777.sql \
+--        | psql -v ON_ERROR_STOP=1
 -- 2. Run the whole file: `psql -v ON_ERROR_STOP=1 -f
 --    scripts/sql/cleanup-corrupt-crypto-snapshots-777.sql`.
 -- 3. Check the Step 2 output: `remaining` must be 0. Step 3 lists any
@@ -55,21 +68,12 @@
 --    test — if it returns rows, the window missed corrupt writes; do not
 --    widen the window silently, file a follow-up.
 --
--- Idempotency: re-running the file deletes 0 rows (the rows are gone) and
--- the Step 2 count stays 0. No application code is added or changed by
--- this file; it follows the bulk-data-recovery pattern (no temporary
--- cleanup code in the app).
+-- Idempotency: re-running the file touches 0 rows (soft-deleted rows no
+-- longer match, hard-deleted rows are gone) and the Step 2 count stays 0.
+-- No application code is added or changed by this file; it follows the
+-- bulk-data-recovery pattern (no temporary cleanup code in the app).
 --
--- Dry-run evidence (scratch Postgres 16.15 DB seeded with rows mirroring
--- #771's evidence): the preview listed exactly 7 rows (the 6 corrupt
--- in-band BTC closes plus one high-side row priced about 25x above the
--- institution maximum), the DELETE
--- removed exactly those 7, the verification count was 0, and a second run
--- deleted 0 rows (idempotent). 8 security rows survived untouched
--- (pre-band institution closes, the post-fix 2026-09-08 close, the USDT
--- $1 close, the no-history DOGE close, an equity-ETF close, and the NULL
--- close). Step 3 flagged exactly 1 out-of-band row (2026-05-15, $28)
--- for follow-up. See the PR body for the full counts.
+-- Dry-run evidence: see the PR body.
 
 BEGIN;
 
@@ -93,23 +97,28 @@ WITH institution_band AS (
 )
 SELECT
   s.snapshot_id,
+  s.security_id,
   sec.ticker_symbol,
   sec.name AS security_name,
   s.snapshot_date,
   s.close_price,
   b.min_price AS institution_min,
-  b.max_price AS institution_max
+  b.max_price AS institution_max,
+  s.snapshot_id = s.security_id || '-'
+    || to_char(s.snapshot_date AT TIME ZONE 'UTC', 'YYYYMM') || '15'
+    AS backfill_rewrites
 FROM snapshots s
 JOIN securities sec ON sec.security_id = s.security_id
 JOIN institution_band b ON b.security_id = s.security_id
 WHERE s.snapshot_type = 'security'
   AND sec.type = 'cryptocurrency'
+  AND (s.is_deleted IS NULL OR s.is_deleted = FALSE)
   AND s.snapshot_date >= TIMESTAMPTZ '2026-06-09 00:00:00Z'
   AND s.snapshot_date < TIMESTAMPTZ '2026-09-07 00:00:00Z'
   AND s.close_price IS NOT NULL
   AND (s.close_price < b.min_price / 20 OR s.close_price > b.max_price * 20);
 
--- Step 0 — preview: every row the DELETE below will remove.
+-- Step 0 — preview: every row Step 1 will touch, and how.
 SELECT
   snapshot_id,
   ticker_symbol,
@@ -117,14 +126,24 @@ SELECT
   snapshot_date,
   close_price,
   institution_min,
-  institution_max
+  institution_max,
+  CASE WHEN backfill_rewrites THEN 'hard-delete' ELSE 'soft-delete' END
+    AS action
 FROM corrupt_crypto_snapshots_777
 ORDER BY ticker_symbol, snapshot_date;
 
--- Step 1 — delete exactly the previewed rows.
+-- Step 1a — hard-delete the ids backfill rewrites.
 DELETE FROM snapshots s
 USING corrupt_crypto_snapshots_777 c
-WHERE s.snapshot_id = c.snapshot_id;
+WHERE s.snapshot_id = c.snapshot_id
+  AND c.backfill_rewrites;
+
+-- Step 1b — soft-delete the rest so clients receive them as tombstones.
+UPDATE snapshots s
+SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
+FROM corrupt_crypto_snapshots_777 c
+WHERE s.snapshot_id = c.snapshot_id
+  AND NOT c.backfill_rewrites;
 
 -- Step 2 — verify: the candidate set must now be empty.
 SELECT count(*) AS remaining FROM corrupt_crypto_snapshots_777;
