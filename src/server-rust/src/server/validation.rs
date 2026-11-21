@@ -361,4 +361,13 @@ mod tests {
         assert_eq!(validate_fields(&obj(json!({ "date": "2026-02-30" })), &specs), Err("Field date must be a date".into()));
         assert_eq!(validate_fields(&obj(json!({ "date": "2026-02-03Tjunk" })), &specs), Err("Field date must be a date".into()));
     }
+
+    #[test]
+    fn trimming_follows_javascript_on_what_white_space_is() {
+        assert_eq!(js_trim(" \t\n\u{b}\u{c}\r\u{a0}\u{1680}\u{2003}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}\u{feff}x y\u{feff} "), "x y");
+        // U+0085 (next line) is white space to Unicode and not to JavaScript; a zero-width space is neither.
+        assert_eq!(js_trim("\u{85}x\u{85}"), "\u{85}x\u{85}");
+        assert_eq!(js_trim(" \u{85} "), "\u{85}");
+        assert_eq!(js_trim("\u{200b}x"), "\u{200b}x");
+    }
 }

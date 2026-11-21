@@ -29,6 +29,7 @@ export class FakeIssuer {
   private readonly privateKey: KeyObject;
   private readonly jwk: Record<string, unknown>;
   private server: ReturnType<typeof Bun.serve>;
+  private unreachable = false;
   readonly port: number;
   state!: { token: Handler; introspect: Handler; revoke: Handler; down: boolean; discovery: Record<string, unknown> };
 
@@ -106,6 +107,8 @@ export class FakeIssuer {
 
   /** Stops accepting connections, the way an unreachable provider looks; `false` brings it back. */
   setUnreachable(unreachable: boolean): void {
+    if (unreachable === this.unreachable) return;
+    this.unreachable = unreachable;
     if (unreachable) this.server.stop(true);
     else this.server = this.listen(this.port);
   }

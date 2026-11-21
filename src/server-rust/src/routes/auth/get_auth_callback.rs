@@ -75,3 +75,27 @@ async fn get_auth_callback(ctx: &mut Ctx) -> HandlerResult {
 pub fn routes() -> Vec<Route> {
     vec![crate::route!("GET", "/auth/callback", get_auth_callback)]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_refusal_of_the_client_has_its_word_for_the_sign_in_page() {
+        let login = |code: &'static str, error: Option<&str>| AuthError::Login { code, error: error.map(str::to_string) };
+        assert_eq!(refusal_of(&AuthError::Unavailable("auth is unreachable".into())), Some("unavailable"));
+        assert_eq!(refusal_of(&login("authorization_error", Some("access_denied"))), Some("no_access"));
+        assert_eq!(refusal_of(&login("authorization_error", Some("server_error"))), Some("failed"));
+        assert_eq!(refusal_of(&login("authorization_error", Some(""))), Some("failed"));
+        assert_eq!(refusal_of(&login("missing_code", None)), Some("failed"));
+        // Only an authorization error can mean "no access".
+        assert_eq!(refusal_of(&login("missing_code", Some("access_denied"))), Some("failed"));
+        for code in ["no_login_cookie", "login_expired", "state_mismatch"] {
+            assert_eq!(refusal_of(&login(code, None)), Some("expired"), "{code}");
+        }
+        assert_eq!(refusal_of(&AuthError::InvalidToken("bad signature".into())), Some("failed"));
+        assert_eq!(refusal_of(&AuthError::InvalidGrant("the provider refused the grant".into())), Some("failed"));
+        // Anything else is a fault here, not a refusal.
+        assert_eq!(refusal_of(&AuthError::Other("the discovery document names a different issuer".into())), None);
+    }
+}

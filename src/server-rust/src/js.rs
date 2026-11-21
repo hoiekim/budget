@@ -907,6 +907,17 @@ mod tests {
     }
 
     #[test]
+    fn an_iso_date_time_is_read_as_written() {
+        // White space around the ISO form with a `T` is not skipped: JavaScriptCore reads NaN.
+        assert!(date_parse(" 2024-01-05T10:11:12Z").is_nan());
+        assert!(date_parse("2024-01-05T10:11:12Z ").is_nan());
+        assert!(date_parse("\t2024-01-05T10:11:12.123+02:00\n").is_nan());
+        // The legacy forms skip it.
+        assert_eq!(date_parse(" Fri, 05 Jan 2024 10:11:12 GMT "), 1_704_449_472_000.0);
+        assert_eq!(date_parse("  2024-01-05 10:11:12 +02:00 "), 1_704_442_272_000.0);
+    }
+
+    #[test]
     fn iso_string_round_trips() {
         assert_eq!(JsDate(1_704_449_472_123.0).to_iso_string().unwrap(), "2024-01-05T10:11:12.123Z");
         assert_eq!(JsDate(-1.0).to_iso_string().unwrap(), "1969-12-31T23:59:59.999Z");

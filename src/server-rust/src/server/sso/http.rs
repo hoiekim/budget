@@ -48,3 +48,48 @@ pub fn unknown_route(ctx: &mut Ctx) -> ApiResponse {
     ctx.status = 404;
     ApiResponse::error("Not Found")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn raw(reply: Reply) -> RawResponse {
+        match reply {
+            Reply::Raw(raw) => raw,
+            _ => panic!("expected a response the route builds itself"),
+        }
+    }
+
+    fn values<'a>(response: &'a RawResponse, name: &str) -> Vec<&'a str> {
+        response.headers.iter().filter(|(header, _)| header == name).map(|(_, value)| value.as_str()).collect()
+    }
+
+    #[test]
+    fn a_redirect_carries_the_location_each_cookie_and_the_security_headers() {
+        let response = raw(redirect_response("/budgets?x=1", &["a=1; Path=/", "b=2; Path=/"]).unwrap());
+        assert_eq!(response.status, 302);
+        assert!(matches!(response.body, RawBody::Empty));
+        assert_eq!(values(&response, "Location"), ["/budgets?x=1"]);
+        assert_eq!(values(&response, "Set-Cookie"), ["a=1; Path=/", "b=2; Path=/"]);
+        assert_eq!(values(&response, "X-Content-Type-Options"), ["nosniff"]);
+        assert_eq!(values(&response, "X-Frame-Options"), ["DENY"]);
+    }
+
+    #[test]
+    fn a_location_no_header_can_carry_is_refused() {
+        assert!(redirect_response("/é?x=ü", &[]).is_ok());
+        assert_eq!(redirect_response("/日本", &[]).err().map(|error| error.to_string()).as_deref(), Some("Header 'Location' has invalid value"));
+        assert!(redirect_response("/🔑", &[]).is_err());
+    }
+
+    #[test]
+    fn the_sign_in_page_redirect_says_why_and_deletes_the_login_cookie() {
+        let response = raw(sign_in_page_redirect("expired", None));
+        assert_eq!(response.status, 302);
+        assert_eq!(values(&response, "Location"), ["/login?sso_error=expired"]);
+        assert_eq!(values(&response, "Set-Cookie"), [CLEAR_LOGIN_COOKIE]);
+        let response = raw(sign_in_page_redirect("no_access", Some("__Host-login=; Max-Age=0")));
+        assert_eq!(values(&response, "Location"), ["/login?sso_error=no_access"]);
+        assert_eq!(values(&response, "Set-Cookie"), ["__Host-login=; Max-Age=0"]);
+    }
+}

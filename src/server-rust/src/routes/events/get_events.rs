@@ -241,3 +241,30 @@ async fn get_events(ctx: &mut Ctx) -> HandlerResult {
 pub fn routes() -> Vec<Route> {
     vec![crate::route!("GET", "/events", get_events)]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_block_puts_the_id_first_and_ends_with_a_blank_line() {
+        assert_eq!(
+            format_sse_block("budgets-updated", &json!({ "originTabId": "tab \"A\"" }), Some("1700000000001")),
+            "id: 1700000000001\nevent: budgets-updated\ndata: {\"originTabId\":\"tab \\\"A\\\"\"}\n\n"
+        );
+        assert_eq!(format_sse_block("retry-full", &json!({}), None), "event: retry-full\ndata: {}\n\n");
+    }
+
+    #[test]
+    fn the_stream_is_marked_as_one_no_proxy_should_buffer_or_cache() {
+        let headers = sse_headers();
+        let value = |name: &str| headers.iter().find(|(header, _)| header == name).map(|(_, value)| value.as_str());
+        assert_eq!(value("Content-Type"), Some("text/event-stream"));
+        assert_eq!(value("Cache-Control"), Some("no-cache, no-transform"));
+        assert_eq!(value("Connection"), Some("keep-alive"));
+        assert_eq!(value("X-Accel-Buffering"), Some("no"));
+        assert_eq!(value("X-Content-Type-Options"), Some("nosniff"));
+        // The baseline headers only: transport security is the session routes' to add.
+        assert_eq!(value("Strict-Transport-Security"), None);
+    }
+}

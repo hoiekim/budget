@@ -5,9 +5,13 @@
  * "Not authenticated.") or let through to it. What the route then does with
  * its body belongs to its own test file.
  */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { createUser, createUserClient, startStack, type ApiClient, type ApiResult, type SeededUser, type Stack } from "../harness";
+
+// Tests here start, restart and wait on real server processes: give each the suite's 30 seconds
+// rather than the runner's default of five.
+setDefaultTimeout(30_000);
 
 let stack: Stack;
 beforeAll(async () => {
@@ -88,11 +92,11 @@ describe("a key that authenticates", () => {
     const before = Date.now();
     expectReached(await suggest(`Bearer ${key.plaintext}`));
     const used = await stack.waitFor(() => lastUsedAt(key.key_id), { what: "last_used_at to be written" });
-    expect(used.getTime()).toBeGreaterThanOrEqual(before - 1000);
-    expect(used.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+    expect(used?.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(used?.getTime()).toBeLessThanOrEqual(Date.now() + 1000);
     // And the list shows it.
     const listed = await client.get<{ api_keys: { key_id: string; last_used_at: string | null }[] }>("/api-keys");
-    expect(listed.body.api_keys.find((k) => k.key_id === key.key_id)?.last_used_at).toBe(used.toISOString());
+    expect(listed.body.api_keys.find((k) => k.key_id === key.key_id)?.last_used_at).toBe(used?.toISOString());
   });
 
   test("keeps working request after request, and for each of a user's keys", async () => {

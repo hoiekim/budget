@@ -238,3 +238,289 @@ pub fn close_all_subscribers() {
         (subscriber.close)();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::MutexGuard;
+
+    use super::*;
+
+    /// The registry is one for the process, and `close_all_subscribers` spares
+    /// nobody: the tests here take turns.
+    static TURN: Mutex<()> = Mutex::new(());
+
+    fn turn() -> MutexGuard<'static, ()> {
+        TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    static USERS: AtomicUsize = AtomicUsize::new(0);
+
+    /// A user id no other test uses.
+    fn user() -> String {
+        format!("realtime-test-user-{}", USERS.fetch_add(1, Ordering::SeqCst))
+    }
+
+    /// What a subscriber was sent, and whether it was closed.
+    #[derive(Default)]
+    struct Recorder {
+        sent: Mutex<Vec<(String, Json, Option<String>)>>,
+        closed: AtomicBool,
+    }
+
+    fn subscriber(recorder: &Arc<Recorder>, auth_sid: Option<&str>, fail_on_send: bool) -> Arc<Subscriber> {
+        let (sending, closing) = (recorder.clone(), recorder.clone());
+        Arc::new(Subscriber {
+            send: Box::new(move |event, payload, id| {
+                if fail_on_send {
+                    return Err(());
+                }
+                sending.sent.lock().unwrap().push((event.to_string(), payload.clone(), id.map(str::to_string)));
+                Ok(())
+            }),
+            close: Box::new(move || closing.closed.store(true, Ordering::SeqCst)),
+            auth_sid: auth_sid.map(str::to_string),
+        })
+    }
+
+    fn recorded(user_id: &str, auth_sid: Option<&str>) -> (Arc<Recorder>, Arc<Subscriber>) {
+        let recorder = Arc::new(Recorder::default());
+        let subscriber = subscriber(&recorder, auth_sid, false);
+        register_subscriber(user_id, subscriber.clone());
+        (recorder, subscriber)
+    }
+
+    fn plus(id: &str, n: f64) -> String {
+        crate::js::number_to_string(parse_int(id).unwrap() + n)
+    }
+
+    #[test]
+    fn subscribers_are_counted_per_user_and_dropped_one_at_a_time() {
+        let _turn = turn();
+        let (one, other) = (user(), user());
+        assert_eq!(subscriber_count(&one), 0);
+        let (_, first) = recorded(&one, None);
+        let (_, second) = recorded(&one, None);
+        let (_, theirs) = recorded(&other, None);
+        assert_eq!((subscriber_count(&one), subscriber_count(&other)), (2, 1));
+        unregister_subscriber(&one, &first);
+        assert_eq!((subscriber_count(&one), subscriber_count(&other)), (1, 1));
+        // Dropping one that is already gone, or a user's last, is harmless.
+        unregister_subscriber(&one, &first);
+        unregister_subscriber(&one, &second);
+        unregister_subscriber(&one, &second);
+        assert_eq!(subscriber_count(&one), 0);
+        unregister_subscriber(&other, &theirs);
+    }
+
+    #[test]
+    fn an_emit_reaches_every_subscriber_of_that_user_only_with_its_id_and_payload() {
+        let _turn = turn();
+        let (one, other) = (user(), user());
+        let (first, _a) = recorded(&one, None);
+        let (second, _b) = recorded(&one, None);
+        let (theirs, _c) = recorded(&other, None);
+        let base = current_event_id(&one);
+
+        emit_to_user(&one, "transactions", Some("tab-1"));
+        emit_to_user(&one, "accounts", None);
+
+        let expected = vec![
+            ("transactions-updated".to_string(), json!({ "originTabId": "tab-1" }), Some(plus(&base, 1.0))),
+            ("accounts-updated".to_string(), json!({}), Some(plus(&base, 2.0))),
+        ];
+        assert_eq!(*first.sent.lock().unwrap(), expected);
+        assert_eq!(*second.sent.lock().unwrap(), expected);
+        assert!(theirs.sent.lock().unwrap().is_empty());
+        // The other user's ids did not move.
+        assert_eq!(current_event_id(&other), base);
+        assert_eq!(current_event_id(&one), plus(&base, 2.0));
+    }
+
+    #[test]
+    fn a_subscriber_that_fails_is_closed_and_does_not_hold_back_the_others() {
+        let _turn = turn();
+        let user_id = user();
+        let failing = Arc::new(Recorder::default());
+        register_subscriber(&user_id, subscriber(&failing, None, true));
+        let (healthy, _keep) = recorded(&user_id, None);
+
+        emit_to_user(&user_id, "charts", None);
+
+        assert_eq!(healthy.sent.lock().unwrap().len(), 1);
+        assert!(failing.closed.load(Ordering::SeqCst));
+        assert!(!healthy.closed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn events_are_buffered_whether_or_not_anyone_is_listening_and_outlive_the_last_subscriber() {
+        let _turn = turn();
+        let user_id = user();
+        let base = current_event_id(&user_id);
+        // Nobody listening: a new stream with no id has nothing to catch up on.
+        let fresh = get_events_since(&user_id, None);
+        assert!(fresh.events.is_empty() && !fresh.overflow);
+
+        emit_to_user(&user_id, "budgets", Some("t1"));
+        let (_, listener) = recorded(&user_id, None);
+        emit_to_user(&user_id, "sections", None);
+        unregister_subscriber(&user_id, &listener);
+        emit_to_user(&user_id, "categories", None);
+
+        let since = get_events_since(&user_id, Some(&base));
+        assert!(!since.overflow);
+        let replay: Vec<(&str, &str, &Json)> = since.events.iter().map(|e| (e.id.as_str(), e.domain.as_str(), &e.payload)).collect();
+        let ids = [plus(&base, 1.0), plus(&base, 2.0), plus(&base, 3.0)];
+        assert_eq!(
+            replay,
+            [
+                (ids[0].as_str(), "budgets", &json!({ "originTabId": "t1" })),
+                (ids[1].as_str(), "sections", &json!({})),
+                (ids[2].as_str(), "categories", &json!({})),
+            ]
+        );
+        // Only what came after the id asked for.
+        let later = get_events_since(&user_id, Some(&ids[1]));
+        assert_eq!(later.events.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), [ids[2].as_str()]);
+    }
+
+    #[test]
+    fn what_a_reconnect_gets_depends_on_where_its_id_sits() {
+        let _turn = turn();
+        let user_id = user();
+        let base = current_event_id(&user_id);
+        let overflow = |id: Option<&str>| get_events_since(&user_id, id).overflow;
+        let covered_with = |id: &str| {
+            let since = get_events_since(&user_id, Some(id));
+            assert!(!since.overflow, "{id}");
+            since.events.len()
+        };
+
+        // Before any event: the starting id is the tip; anything else cannot be placed.
+        assert_eq!(covered_with(&base), 0);
+        assert!(overflow(Some(&plus(&base, -1.0))));
+        assert!(overflow(Some(&plus(&base, 1.0))));
+        assert!(overflow(Some("not-an-id")));
+        assert!(!overflow(None));
+
+        for _ in 0..3 {
+            emit_to_user(&user_id, "transactions", None);
+        }
+        let tip = plus(&base, 3.0);
+        assert_eq!(covered_with(&tip), 0);
+        assert_eq!(covered_with(&plus(&base, 2.0)), 1);
+        assert_eq!(covered_with(&base), 3);
+        // An id is read as a whole number, like `parseInt`.
+        assert_eq!(covered_with(&format!(" {}.9abc", plus(&base, 1.0))), 2);
+        // Above the tip, before the first buffered event, unreadable, or none at all while events exist.
+        assert!(overflow(Some(&plus(&tip, 1.0))));
+        assert!(overflow(Some(&plus(&base, -1.0))));
+        assert!(overflow(Some("0")));
+        assert!(overflow(Some("")));
+        assert!(overflow(Some("abc")));
+        assert!(overflow(None));
+    }
+
+    #[test]
+    fn the_buffer_keeps_the_newest_events_up_to_its_limit() {
+        let _turn = turn();
+        let user_id = user();
+        let base = current_event_id(&user_id);
+        let total = RING_BUFFER_MAX_ENTRIES + 5;
+        for _ in 0..total {
+            emit_to_user(&user_id, "transactions", None);
+        }
+        let tip = plus(&base, total as f64);
+        assert_eq!(current_event_id(&user_id), tip);
+        // The oldest five are gone: an id from before them cannot be replayed from.
+        assert!(get_events_since(&user_id, Some(&base)).overflow);
+        assert!(get_events_since(&user_id, Some(&plus(&base, 4.0))).overflow);
+        // From the last evicted id on, everything kept is replayed.
+        let kept = get_events_since(&user_id, Some(&plus(&base, 5.0)));
+        assert!(!kept.overflow);
+        assert_eq!(kept.events.len(), RING_BUFFER_MAX_ENTRIES);
+        assert_eq!(kept.events.first().map(|e| e.id.clone()), Some(plus(&base, 6.0)));
+        assert_eq!(kept.events.last().map(|e| e.id.clone()), Some(tip));
+    }
+
+    #[test]
+    fn closing_by_user_or_by_sign_in_closes_those_streams_and_no_others() {
+        let _turn = turn();
+        let (one, other) = (user(), user());
+        let (laptop, _a) = recorded(&one, Some("ses_laptop"));
+        let (phone, _b) = recorded(&one, Some("ses_phone"));
+        let (password, _c) = recorded(&one, None);
+        let (theirs, _d) = recorded(&other, Some("ses_theirs"));
+        let closed = |recorder: &Arc<Recorder>| recorder.closed.load(Ordering::SeqCst);
+
+        close_subscribers(Which::AuthSid("ses_laptop"));
+        assert_eq!((closed(&laptop), closed(&phone), closed(&password), closed(&theirs)), (true, false, false, false));
+        assert_eq!((subscriber_count(&one), subscriber_count(&other)), (2, 1));
+        close_subscribers(Which::AuthSid("ses_nobody"));
+        assert_eq!((subscriber_count(&one), subscriber_count(&other)), (2, 1));
+
+        close_subscribers(Which::UserId(&one));
+        assert_eq!((closed(&phone), closed(&password), closed(&theirs)), (true, true, false));
+        assert_eq!((subscriber_count(&one), subscriber_count(&other)), (0, 1));
+
+        close_all_subscribers();
+        assert!(closed(&theirs));
+        assert_eq!(subscriber_count(&other), 0);
+    }
+
+    #[test]
+    fn a_path_emits_for_its_table_only_under_a_verb_that_writes() {
+        assert_eq!(mutation_emit_domain("POST", "/transaction"), Some("transactions"));
+        assert_eq!(mutation_emit_domain("DELETE", "/transaction"), Some("transactions"));
+        assert_eq!(mutation_emit_domain("POST", "/account"), Some("accounts"));
+        assert_eq!(mutation_emit_domain("DELETE", "/account"), Some("accounts"));
+        assert_eq!(mutation_emit_domain("POST", "/budget"), Some("budgets"));
+        assert_eq!(mutation_emit_domain("POST", "/section"), Some("sections"));
+        assert_eq!(mutation_emit_domain("POST", "/category"), Some("categories"));
+        assert_eq!(mutation_emit_domain("POST", "/chart"), Some("charts"));
+        assert_eq!(mutation_emit_domain("POST", "/split-transaction"), Some("split_transactions"));
+        assert_eq!(mutation_emit_domain("POST", "/investment-transaction"), Some("investment_transactions"));
+        assert_eq!(mutation_emit_domain("POST", "/snapshot"), Some("snapshots"));
+        // A `/new-*` insert is a write, though a GET performs it.
+        assert_eq!(mutation_emit_domain("GET", "/new-transaction"), Some("transactions"));
+        assert_eq!(mutation_emit_domain("GET", "/new-budget"), Some("budgets"));
+        assert_eq!(mutation_emit_domain("GET", "/new-chart"), Some("charts"));
+        // Writes that touch several tables name the one a re-sync is keyed on.
+        assert_eq!(mutation_emit_domain("POST", "/public-token"), Some("accounts"));
+        assert_eq!(mutation_emit_domain("DELETE", "/item"), Some("accounts"));
+        assert_eq!(mutation_emit_domain("POST", "/suggest-category"), Some("transactions"));
+        // A read on a path that also has a write verb does not emit.
+        assert_eq!(mutation_emit_domain("GET", "/snapshots/holding"), None);
+        assert_eq!(mutation_emit_domain("POST", "/snapshots/holding"), Some("snapshots"));
+        assert_eq!(mutation_emit_domain("GET", "/transfers"), None);
+        assert_eq!(mutation_emit_domain("DELETE", "/transfers"), Some("transaction_pairs"));
+        assert_eq!(mutation_emit_domain("POST", "/transfers/pair"), Some("transaction_pairs"));
+        // Reads, and writes that are not to a data table.
+        for (method, path) in [
+            ("GET", "/transactions"),
+            ("GET", "/accounts"),
+            ("POST", "/login"),
+            ("DELETE", "/login"),
+            ("POST", "/api-keys"),
+            ("DELETE", "/api-keys"),
+            ("POST", "/validate-ticker"),
+            ("POST", "/client-error"),
+            ("POST", "/does-not-exist"),
+        ] {
+            assert_eq!(mutation_emit_domain(method, path), None, "{method} {path}");
+        }
+    }
+
+    #[test]
+    fn an_import_and_a_recurrings_write_also_emit_the_tables_they_change_on_the_side() {
+        assert_eq!(mutation_emit_domain("POST", "/plan-statement/import"), Some("investment_transactions"));
+        assert_eq!(mutation_side_effect_domains("POST", "/plan-statement/import"), ["accounts", "snapshots"]);
+        assert_eq!(mutation_emit_domain("POST", "/recurrings"), Some("recurrings"));
+        assert_eq!(mutation_side_effect_domains("POST", "/recurrings"), ["transactions", "split_transactions"]);
+        // An ordinary write changes nothing beyond its own table, and a read nothing at all.
+        assert!(mutation_side_effect_domains("POST", "/investment-transaction").is_empty());
+        assert!(mutation_side_effect_domains("DELETE", "/investment-transaction").is_empty());
+        assert!(mutation_side_effect_domains("GET", "/plan-statement/import").is_empty());
+        assert!(mutation_side_effect_domains("GET", "/recurrings").is_empty());
+    }
+}

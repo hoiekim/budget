@@ -171,7 +171,9 @@ fn parse_link_users(raw: &Option<String>, problems: &mut Vec<String>) -> IndexMa
         let parts: Vec<&str> = trimmed.split('=').map(trim).collect();
         let local_account = parts.first().copied().unwrap_or("");
         let auth_username = parts.get(1).copied().unwrap_or("");
-        let has_space = parts.concat().chars().any(|c| c.is_whitespace() || c == '\u{feff}');
+        // `\s` in a JavaScript regular expression: Unicode white space, without
+        // U+0085 (next line) and with the byte-order mark.
+        let has_space = parts.concat().chars().any(|c| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}');
         if parts.len() != 2 || local_account.is_empty() || auth_username.is_empty() || has_space {
             problems.push(format!("AUTH_LINK_USERS entry \"{trimmed}\" is not of the form <local account>=<auth username>"));
         } else if links.contains_key(auth_username) {
@@ -228,5 +230,190 @@ pub fn parse_sso_config(env: &SsoEnv) -> Result<Option<SsoConfig>, SsoConfigErro
             }))
         }
         _ => Err(SsoConfigError { problems }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid() -> SsoEnv {
+        SsoEnv {
+            auth_issuer: Some("https://auth.example.com".into()),
+            auth_client_id: Some("budget".into()),
+            auth_client_secret: Some("s3cret".into()),
+            host_name: Some("budget.example.com".into()),
+            ..Default::default()
+        }
+    }
+
+    fn some(text: &str) -> Option<String> {
+        Some(text.to_string())
+    }
+
+    fn problems_of(env: SsoEnv) -> Vec<String> {
+        match parse_sso_config(&env) {
+            Err(error) => error.problems,
+            Ok(_) => panic!("expected the configuration to be refused"),
+        }
+    }
+
+    fn config_of(env: SsoEnv) -> SsoConfig {
+        parse_sso_config(&env).expect("a valid configuration").expect("single sign-on to be on")
+    }
+
+    #[test]
+    fn an_unset_empty_or_blank_issuer_turns_single_sign_on_off_whatever_else_is_set() {
+        for issuer in [None, some(""), some("   ")] {
+            let env = SsoEnv { auth_issuer: issuer, auth_client_id: some(""), auth_local_login: some("maybe"), ..Default::default() };
+            assert!(parse_sso_config(&env).expect("no error").is_none());
+        }
+    }
+
+    #[test]
+    fn a_complete_configuration_with_the_defaults_filled_in() {
+        let config = config_of(valid());
+        assert_eq!(config.issuer, "https://auth.example.com");
+        assert_eq!(config.client_id, "budget");
+        assert_eq!(config.client_secret, "s3cret");
+        assert_eq!(config.redirect_uri, "https://budget.example.com/api/auth/callback");
+        assert_eq!(config.back_channel_url, None);
+        assert_eq!(config.audience, None);
+        assert!(!config.local_login);
+        assert!(config.link_users.is_empty());
+        assert_eq!(config.post_logout_redirect, "https://budget.example.com/");
+    }
+
+    #[test]
+    fn an_explicit_redirect_uri_wins_over_host_name_and_its_origin_is_the_post_logout_redirect() {
+        let config = config_of(SsoEnv {
+            auth_redirect_uri: some("https://money.example.com:8443/api/auth/callback"),
+            auth_backchannel_url: some("http://auth.internal:3000"),
+            auth_audience: some("budget-service"),
+            ..valid()
+        });
+        assert_eq!(config.redirect_uri, "https://money.example.com:8443/api/auth/callback");
+        assert_eq!(config.post_logout_redirect, "https://money.example.com:8443/");
+        assert_eq!(config.back_channel_url.as_deref(), Some("http://auth.internal:3000"));
+        assert_eq!(config.audience.as_deref(), Some("budget-service"));
+    }
+
+    #[test]
+    fn values_are_trimmed_and_the_redirect_uri_is_made_from_a_host_name_in_any_letter_case() {
+        let config = config_of(SsoEnv {
+            auth_issuer: some("  https://auth.example.com  "),
+            auth_client_id: some(" budget\n"),
+            host_name: some(" Budget.Example.com:8443 "),
+            ..valid()
+        });
+        assert_eq!(config.issuer, "https://auth.example.com");
+        assert_eq!(config.client_id, "budget");
+        assert_eq!(config.redirect_uri, "https://budget.example.com:8443/api/auth/callback");
+        assert_eq!(config.post_logout_redirect, "https://budget.example.com:8443/");
+    }
+
+    #[test]
+    fn the_redirect_uri_is_required_when_host_name_is_unset() {
+        assert_eq!(problems_of(SsoEnv { host_name: None, ..valid() }), ["AUTH_REDIRECT_URI is required when HOST_NAME is not set"]);
+    }
+
+    #[test]
+    fn a_host_name_that_is_not_a_bare_host_cannot_make_a_redirect_uri() {
+        for host_name in ["https://budget.example.com", "budget.example.com/app", "budget.example.com:443", "budget example"] {
+            assert_eq!(
+                problems_of(SsoEnv { host_name: some(host_name), ..valid() }),
+                ["HOST_NAME must be a bare host name to derive AUTH_REDIRECT_URI from it; otherwise set AUTH_REDIRECT_URI"],
+                "{host_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn auth_local_login_reads_as_a_yes_or_a_no() {
+        let cases = [
+            (some("true"), true),
+            (some("1"), true),
+            (some("YES"), true),
+            (some(" on "), true),
+            (some("false"), false),
+            (some("0"), false),
+            (some("no"), false),
+            (some("Off"), false),
+            (some(""), false),
+            (None, false),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(config_of(SsoEnv { auth_local_login: raw.clone(), ..valid() }).local_login, expected, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn auth_link_users_maps_each_sso_username_to_its_local_account() {
+        let config = config_of(SsoEnv { auth_link_users: some(" admin = alice, bob=bob ,"), ..valid() });
+        let links: Vec<(&str, &str)> = config.link_users.iter().map(|(sso, local)| (sso.as_str(), local.as_str())).collect();
+        assert_eq!(links, [("alice", "admin"), ("bob", "bob")]);
+    }
+
+    #[test]
+    fn a_next_line_character_is_part_of_a_name_as_it_is_in_javascript() {
+        let config = config_of(SsoEnv { auth_link_users: some("next\u{85}line=nel\u{85}"), ..valid() });
+        assert_eq!(config.link_users.get("nel\u{85}").map(String::as_str), Some("next\u{85}line"));
+        // A byte-order mark is white space there, and so trimmed.
+        let config = config_of(SsoEnv { auth_link_users: some("\u{feff}admin=alice\u{feff}"), ..valid() });
+        assert_eq!(config.link_users.get("alice").map(String::as_str), Some("admin"));
+    }
+
+    #[test]
+    fn every_problem_is_listed_at_once_and_the_secret_never_appears_in_them() {
+        let problems = problems_of(SsoEnv {
+            auth_issuer: some("http://auth.example.com"),
+            auth_client_secret: some("do-not-print"),
+            auth_redirect_uri: some("/api/auth/callback"),
+            auth_backchannel_url: some("ftp://auth.internal"),
+            auth_local_login: some("sometimes"),
+            auth_link_users: some("admin,=bob,carol=dave=erin,ann=al ice,x=alice,y=alice,x=zed"),
+            ..Default::default()
+        });
+        assert_eq!(
+            problems,
+            [
+                "AUTH_ISSUER must be an https URL (http only for localhost) with no query or fragment",
+                "AUTH_CLIENT_ID is required when AUTH_ISSUER is set",
+                "AUTH_REDIRECT_URI must be an https URL (http only for localhost) with no fragment",
+                "AUTH_BACKCHANNEL_URL must be an http or https URL with no query or fragment",
+                "AUTH_LOCAL_LOGIN must be true or false",
+                "AUTH_LINK_USERS entry \"admin\" is not of the form <local account>=<auth username>",
+                "AUTH_LINK_USERS entry \"=bob\" is not of the form <local account>=<auth username>",
+                "AUTH_LINK_USERS entry \"carol=dave=erin\" is not of the form <local account>=<auth username>",
+                "AUTH_LINK_USERS entry \"ann=al ice\" is not of the form <local account>=<auth username>",
+                "AUTH_LINK_USERS names auth username \"alice\" more than once",
+                "AUTH_LINK_USERS names local account \"x\" more than once",
+            ]
+        );
+        assert!(!problems.join("\n").contains("do-not-print"));
+    }
+
+    #[test]
+    fn the_error_message_lists_the_problems() {
+        let error = parse_sso_config(&SsoEnv { auth_client_secret: some(""), ..valid() }).expect_err("a refusal");
+        assert_eq!(error.to_string(), "Single sign-on is misconfigured:\n- AUTH_CLIENT_SECRET is required when AUTH_ISSUER is set");
+    }
+
+    #[test]
+    fn issuers_on_https_or_on_localhost_are_accepted() {
+        for issuer in ["http://localhost:4000", "http://127.0.0.1:4000", "http://[::1]:4000", "https://auth.example.com/tenant", "https://auth.example.com/?"] {
+            assert_eq!(config_of(SsoEnv { auth_issuer: some(issuer), ..valid() }).issuer, issuer);
+        }
+    }
+
+    #[test]
+    fn other_issuers_are_refused() {
+        for issuer in ["https://auth.example.com/?x=1", "https://auth.example.com/#x", "not a url", "http://auth.example.com", "ftp://localhost"] {
+            assert_eq!(
+                problems_of(SsoEnv { auth_issuer: some(issuer), ..valid() }),
+                ["AUTH_ISSUER must be an https URL (http only for localhost) with no query or fragment"],
+                "{issuer}"
+            );
+        }
     }
 }

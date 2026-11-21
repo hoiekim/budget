@@ -1,6 +1,10 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { createUserClient, startStack, type ApiClient, type SeededUser, type Stack } from "../harness";
+
+// Tests here start, restart and wait on real server processes: give each the suite's 30 seconds
+// rather than the runner's default of five.
+setDefaultTimeout(30_000);
 
 let stack: Stack;
 let alice: { user: SeededUser; client: ApiClient };
@@ -586,7 +590,7 @@ describe("what the database refuses", () => {
     const alarm = await stack.waitFor(() => stack.upstream.discord.alarms().find((a) => a.title === title), {
       what: "the route error alarm",
     });
-    expect(alarm.description).toBe('**Error:** invalid input syntax for type uuid: "abc"');
+    expect(alarm?.description).toBe('**Error:** invalid input syntax for type uuid: "abc"');
   });
 
   test("a name the database cannot store fails as a server error, is logged, and raises the alarm", async () => {
@@ -604,7 +608,7 @@ describe("what the database refuses", () => {
     const alarm = await stack.waitFor(() => stack.upstream.discord.alarms().find((a) => a.title === title), {
       what: "the route error alarm",
     });
-    expect(alarm.description).toBe('**Error:** invalid byte sequence for encoding "UTF8": 0x00');
+    expect(alarm?.description).toBe('**Error:** invalid byte sequence for encoding "UTF8": 0x00');
     await stack.waitFor(
       () => stack.logs.filter((line) => line.includes("Failed to create API key") && line.includes(user.user_id)).length >= 2,
       { what: "the logged failures" },

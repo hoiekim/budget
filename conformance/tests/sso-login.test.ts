@@ -3,7 +3,7 @@
  * browser there, `GET /auth/callback` brings it back, checks everything the
  * provider said, finds or creates the user and starts the session.
  */
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   CLIENT_ID,
@@ -30,6 +30,10 @@ import {
   tokenAnswer,
   type StartedSsoLogin,
 } from "../harness/sso";
+
+// Tests here start, restart and wait on real server processes: give each the suite's 30 seconds
+// rather than the runner's default of five.
+setDefaultTimeout(30_000);
 
 let stack: Stack;
 beforeAll(async () => {
@@ -603,7 +607,7 @@ describe("GET /auth/callback", () => {
         () => stack.upstream.discord.alarms().find((a) => a.title === "🚨 Budget Server Error: Route Error: GET /auth/callback"),
         { what: "the route error alarm" },
       );
-      expect(alarm.description).toBe("**Error:** the token endpoint refused the request (invalid_client)");
+      expect(alarm?.description).toBe("**Error:** the token endpoint refused the request (invalid_client)");
 
       // An error code that is not one is left out of the message: the status stands in.
       issuer().state.token = () => jsonResponse(400, { error: "no such code!" });

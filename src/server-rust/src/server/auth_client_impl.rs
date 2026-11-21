@@ -97,6 +97,16 @@ struct CachedIntrospection {
     at: f64,
 }
 
+/// Puts an answer at the young end of the cache, and drops the oldest entry
+/// once there are more than `max`.
+fn remember(cache: &mut IndexMap<String, CachedIntrospection>, key: String, entry: CachedIntrospection, max: usize) {
+    cache.shift_remove(&key);
+    cache.insert(key, entry);
+    if cache.len() > max {
+        cache.shift_remove_index(0);
+    }
+}
+
 struct Inner {
     issuer: String,
     client_id: String,
@@ -693,12 +703,7 @@ impl Inner {
                 .unwrap_or_default(),
             id: text("jti"),
         };
-        let mut cache = self.cache.lock().unwrap();
-        cache.shift_remove(&key);
-        cache.insert(key, CachedIntrospection { answer: result.clone(), at: self.now() });
-        if cache.len() > CACHE_MAX {
-            cache.shift_remove_index(0);
-        }
+        remember(&mut self.cache.lock().unwrap(), key, CachedIntrospection { answer: result.clone(), at: self.now() }, CACHE_MAX);
         Ok(Some(result))
     }
 
@@ -975,5 +980,500 @@ impl AuthClient {
         }
         set_search_params(&mut url, &params);
         Ok(url.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::convert::Infallible;
+
+    use ed25519_dalek::{Signer, SigningKey};
+    use http_body_util::{BodyExt, Full};
+    use hyper::service::service_fn;
+    use hyper_util::rt::TokioIo;
+
+    use super::*;
+
+    // -- Pure pieces --------------------------------------------------------
+
+    #[test]
+    fn base64url_is_read_leniently() {
+        assert_eq!(decode_base64url("aGVsbG8"), b"hello");
+        assert_eq!(decode_base64url("aGVsbG8="), b"hello");
+        // Either alphabet, characters outside it skipped, a dangling character dropped.
+        assert_eq!(decode_base64url("ab+/"), decode_base64url("ab-_"));
+        assert_eq!(decode_base64url("a.b"), decode_base64url("ab"));
+        assert_eq!(decode_base64url("abcde"), decode_base64url("abcd"));
+        assert_eq!(decode_base64url("a"), b"");
+        assert_eq!(decode_base64url(""), b"");
+        assert_eq!(decode_base64url("ab=c"), decode_base64url("ab"));
+    }
+
+    #[test]
+    fn segments_must_be_json_objects() {
+        assert!(parse_segment(&encode_base64url(r#"{"a":1}"#)).is_ok());
+        for not_an_object in ["[1]", "\"text\"", "5", "null", "nope", ""] {
+            assert_eq!(parse_segment(&encode_base64url(not_an_object)), Err(invalid_token("malformed segment")));
+        }
+    }
+
+    #[test]
+    fn the_first_cookie_of_the_name_is_read() {
+        assert_eq!(read_cookie(Some("a=1; __Host-login=abc; __Host-login=def"), "__Host-login"), Some("abc"));
+        assert_eq!(read_cookie(Some(" __Host-login = abc "), "__Host-login"), Some("abc"));
+        assert_eq!(read_cookie(Some("__Host-login=a=b"), "__Host-login"), Some("a=b"));
+        assert_eq!(read_cookie(Some("__Host-login"), "__Host-login"), None);
+        assert_eq!(read_cookie(Some("=abc"), ""), None);
+        assert_eq!(read_cookie(None, "__Host-login"), None);
+    }
+
+    #[test]
+    fn only_a_path_on_this_origin_is_local() {
+        for local in ["/", "/budgets", "/a?next=https://evil.example/#x", "/%2F%2Fevil.example", "/é", "/a\"b"] {
+            assert!(is_local_path(local), "{local}");
+        }
+        for foreign in ["", "budgets", "//evil.example", "https://evil.example", "/\\evil.example", "/a b", "/a\tb", "/a\nb", "/a\u{7f}b", "/a\\b"] {
+            assert!(!is_local_path(foreign), "{foreign}");
+        }
+        assert!(is_local_path(&format!("/{}", "a".repeat(2047))));
+        assert!(!is_local_path(&format!("/{}", "a".repeat(2048))));
+        // The limit counts UTF-16 units.
+        assert!(!is_local_path(&format!("/{}", "🔑".repeat(1024))));
+    }
+
+    #[test]
+    fn credentials_are_form_encoded() {
+        assert_eq!(form_encode("a b+c/d:é~!*'()"), "a+b%2Bc%2Fd%3A%C3%A9~!*'()");
+    }
+
+    #[test]
+    fn an_error_code_is_quoted_only_when_it_is_one() {
+        let answer = |error: Json| json!({ "error": error }).as_object().cloned().unwrap();
+        assert_eq!(error_code(&answer(json!("invalid_client")), 401), "invalid_client");
+        assert_eq!(error_code(&answer(json!("a.b-c_1")), 400), "a.b-c_1");
+        assert_eq!(error_code(&answer(json!("no such code!")), 400), "400");
+        assert_eq!(error_code(&answer(json!("")), 400), "400");
+        assert_eq!(error_code(&answer(json!("x".repeat(65))), 418), "418");
+        assert_eq!(error_code(&answer(json!(5)), 403), "403");
+        assert_eq!(error_code(&Obj::new(), 500), "500");
+    }
+
+    #[test]
+    fn search_params_are_set_like_url_search_params() {
+        let mut url = Url::parse("https://auth.example.com/authorize?tenant=a%20b&client_id=old&scope=x&flag&scope=y#top").unwrap();
+        set_search_params(&mut url, &[("client_id", "bud get".to_string()), ("scope", "openid profile".to_string()), ("state", "~!*'()".to_string())]);
+        assert_eq!(
+            url.as_str(),
+            "https://auth.example.com/authorize?tenant=a+b&client_id=bud+get&scope=openid+profile&flag=&state=%7E%21*%27%28%29#top"
+        );
+    }
+
+    #[test]
+    fn only_ed25519_signing_keys_are_imported() {
+        let x = encode_base64url([7u8; 32]);
+        let jwk = |change: Json| {
+            let mut jwk = json!({ "kty": "OKP", "crv": "Ed25519", "x": x, "kid": "k1" });
+            for (name, value) in change.as_object().unwrap() {
+                jwk[name] = value.clone();
+            }
+            jwk
+        };
+        assert_eq!(import_key(&jwk(json!({}))), Some(("k1".to_string(), [7u8; 32])));
+        assert!(import_key(&jwk(json!({ "use": "sig", "alg": "EdDSA", "extra": true }))).is_some());
+        for change in [
+            json!({ "kty": "RSA" }),
+            json!({ "crv": "X25519" }),
+            json!({ "use": "enc" }),
+            json!({ "use": null }),
+            json!({ "alg": "ES256" }),
+            json!({ "kid": 1 }),
+            json!({ "x": 5 }),
+            json!({ "x": encode_base64url([7u8; 31]) }),
+            json!({ "x": encode_base64url([7u8; 33]) }),
+        ] {
+            assert_eq!(import_key(&jwk(change.clone())), None, "{change}");
+        }
+        assert_eq!(import_key(&json!("k1")), None);
+        assert_eq!(import_key(&Json::Null), None);
+    }
+
+    #[test]
+    fn the_cache_drops_its_oldest_answer_past_its_limit() {
+        let entry = |sub: &str, at: f64| CachedIntrospection {
+            answer: Introspection { sub: sub.into(), username: sub.into(), role: "user".into(), scopes: vec![], id: None },
+            at,
+        };
+        let mut cache = IndexMap::new();
+        for (key, at) in [("a", 1.0), ("b", 2.0), ("c", 3.0)] {
+            remember(&mut cache, key.to_string(), entry(key, at), 3);
+        }
+        // Asked about again, an answer becomes the youngest.
+        remember(&mut cache, "a".to_string(), entry("a", 4.0), 3);
+        assert_eq!(cache.keys().collect::<Vec<_>>(), ["b", "c", "a"]);
+        remember(&mut cache, "d".to_string(), entry("d", 5.0), 3);
+        assert_eq!(cache.keys().collect::<Vec<_>>(), ["c", "a", "d"]);
+        assert_eq!(cache["a"].at, 4.0);
+    }
+
+    fn options(issuer: &str) -> AuthClientOptions {
+        AuthClientOptions {
+            issuer: issuer.to_string(),
+            back_channel_url: None,
+            client_id: "budget".to_string(),
+            client_secret: Some("s3cret".to_string()),
+            redirect_uri: "https://budget.example.com/api/auth/callback".to_string(),
+            audience: None,
+        }
+    }
+
+    fn refusal(options: AuthClientOptions) -> String {
+        AuthClient::new(options).err().map(|error| error.to_string()).unwrap_or_default()
+    }
+
+    #[test]
+    fn options_are_checked_when_the_client_is_made() {
+        let valid = || options("https://auth.example.com");
+        assert!(AuthClient::new(valid()).is_ok());
+        for issuer in ["http://localhost:4000", "http://127.0.0.1:4000", "http://[::1]:4000", "https://auth.example.com/tenant/"] {
+            assert!(AuthClient::new(options(issuer)).is_ok(), "{issuer}");
+        }
+        assert_eq!(refusal(options("")), "issuer is required");
+        assert_eq!(refusal(options("auth.example.com")), "issuer must be an absolute URL");
+        assert_eq!(refusal(options("http://auth.example.com")), "issuer must be an https URL (http only for localhost)");
+        assert_eq!(refusal(options("https://auth.example.com/?x=1")), "issuer must have no query or fragment");
+        assert_eq!(refusal(options("https://auth.example.com/#x")), "issuer must have no query or fragment");
+        let with = |change: fn(&mut AuthClientOptions)| {
+            let mut options = valid();
+            change(&mut options);
+            refusal(options)
+        };
+        assert_eq!(with(|o| o.back_channel_url = Some("".into())), "backChannelUrl is required");
+        assert_eq!(with(|o| o.back_channel_url = Some("auth.internal".into())), "backChannelUrl must be an absolute URL");
+        assert_eq!(with(|o| o.back_channel_url = Some("ftp://auth.internal".into())), "backChannelUrl must be an http or https URL");
+        // A bare `?` or `#` is an empty query or fragment, which is none.
+        assert_eq!(with(|o| o.back_channel_url = Some("http://auth.internal/?#".into())), "");
+        assert_eq!(with(|o| o.back_channel_url = Some("http://auth.internal/?x=1".into())), "backChannelUrl must have no query or fragment");
+        assert_eq!(with(|o| o.client_id = String::new()), "clientId is required");
+        assert_eq!(with(|o| o.redirect_uri = String::new()), "redirectUri is required");
+        assert_eq!(with(|o| o.redirect_uri = "/api/auth/callback".into()), "redirectUri must be an absolute URL");
+        assert_eq!(with(|o| o.client_secret = Some(String::new())), "clientSecret must be a non-empty string when set");
+        assert_eq!(with(|o| o.audience = Some(String::new())), "audience must be a non-empty string when set");
+    }
+
+    #[test]
+    fn only_the_issuers_own_endpoints_go_over_the_back_channel() {
+        let client = AuthClient::new(AuthClientOptions {
+            back_channel_url: Some("http://auth.internal:3000/".to_string()),
+            ..options("https://auth.example.com/")
+        })
+        .unwrap();
+        let via = |endpoint: &str| client.inner.via_back_channel(endpoint);
+        assert_eq!(via("https://auth.example.com/oauth/token"), "http://auth.internal:3000/oauth/token");
+        assert_eq!(via("https://auth.example.com"), "http://auth.internal:3000");
+        assert_eq!(via("https://auth.example.com/"), "http://auth.internal:3000/");
+        assert_eq!(via("https://auth.example.com.evil.example/oauth/token"), "https://auth.example.com.evil.example/oauth/token");
+        assert_eq!(via("https://tokens.example.com/oauth/token"), "https://tokens.example.com/oauth/token");
+        // With no back channel, every endpoint is called where it is.
+        let direct = AuthClient::new(options("https://auth.example.com")).unwrap();
+        assert_eq!(direct.inner.via_back_channel("https://auth.example.com/oauth/token"), "https://auth.example.com/oauth/token");
+    }
+
+    // -- A provider to talk to ---------------------------------------------
+
+    /// How the provider answers one request: a status and a body.
+    type Answer = Box<dyn Fn(&str, &str) -> (u16, String) + Send + Sync>;
+
+    struct Provider {
+        issuer: String,
+        /// `METHOD path` of every request so far.
+        requests: Arc<Mutex<Vec<String>>>,
+        answer: Arc<Mutex<Answer>>,
+        now: Arc<AtomicU64>,
+        signing: SigningKey,
+    }
+
+    impl Provider {
+        async fn start() -> Provider {
+            let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let issuer = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+            let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+            let answer: Arc<Mutex<Answer>> = Arc::new(Mutex::new(Box::new(|_, _| (404, "{}".to_string()))));
+            let (seen, answers) = (requests.clone(), answer.clone());
+            tokio::spawn(async move {
+                loop {
+                    let Ok((stream, _)) = listener.accept().await else { return };
+                    let (seen, answers) = (seen.clone(), answers.clone());
+                    tokio::spawn(async move {
+                        let service = service_fn(move |request: hyper::Request<hyper::body::Incoming>| {
+                            let (seen, answers) = (seen.clone(), answers.clone());
+                            async move {
+                                let path = request.uri().path().to_string();
+                                let line = format!("{} {}", request.method(), path);
+                                let body = request.into_body().collect().await.map(|body| body.to_bytes()).unwrap_or_default();
+                                seen.lock().unwrap().push(line);
+                                let (status, text) = (answers.lock().unwrap())(&path, &String::from_utf8_lossy(&body));
+                                let mut response = hyper::Response::new(Full::new(bytes::Bytes::from(text)));
+                                *response.status_mut() = hyper::StatusCode::from_u16(status).unwrap();
+                                Ok::<_, Infallible>(response)
+                            }
+                        });
+                        let _ = hyper::server::conn::http1::Builder::new().serve_connection(TokioIo::new(stream), service).await;
+                    });
+                }
+            });
+            let provider = Provider {
+                issuer,
+                requests,
+                answer,
+                now: Arc::new(AtomicU64::new(1_800_000_000_000)),
+                signing: SigningKey::from_bytes(&[7u8; 32]),
+            };
+            provider.answer_with(&["k1"], |_| None);
+            provider
+        }
+
+        fn discovery(&self) -> String {
+            let at = |path: &str| format!("{}{path}", self.issuer);
+            json!({
+                "issuer": self.issuer,
+                "authorization_endpoint": at("/oauth/authorize"),
+                "token_endpoint": at("/oauth/token"),
+                "introspection_endpoint": at("/oauth/introspect"),
+                "jwks_uri": at("/jwks"),
+            })
+            .to_string()
+        }
+
+        /// Publishes the signing key under `kids`, and answers every other path with `other`, or 404.
+        fn answer_with(&self, kids: &[&str], other: impl Fn(&str) -> Option<(u16, String)> + Send + Sync + 'static) {
+            let discovery = self.discovery();
+            let x = encode_base64url(self.signing.verifying_key().to_bytes());
+            let keys: Vec<Json> = kids.iter().map(|kid| json!({ "kty": "OKP", "crv": "Ed25519", "x": x, "kid": kid })).collect();
+            let jwks = json!({ "keys": keys }).to_string();
+            *self.answer.lock().unwrap() = Box::new(move |path, _body| match path {
+                "/.well-known/openid-configuration" => (200, discovery.clone()),
+                "/jwks" => (200, jwks.clone()),
+                _ => other(path).unwrap_or((404, "{}".to_string())),
+            });
+        }
+
+        /// Every request is answered 503.
+        fn go_down(&self) {
+            *self.answer.lock().unwrap() = Box::new(|_, _| (503, String::new()));
+        }
+
+        fn client(&self) -> AuthClient {
+            let now = self.now.clone();
+            AuthClient::with_clock(options(&self.issuer), Box::new(move || now.load(Ordering::SeqCst) as f64)).unwrap()
+        }
+
+        fn advance(&self, ms: u64) {
+            self.now.fetch_add(ms, Ordering::SeqCst);
+        }
+
+        fn count(&self, line: &str) -> usize {
+            self.requests.lock().unwrap().iter().filter(|seen| seen.as_str() == line).count()
+        }
+
+        /// A security event token signed under `kid`, issued now.
+        fn event_token(&self, kid: &str) -> String {
+            let header = encode_base64url(json!({ "alg": "EdDSA", "typ": "secevent+jwt", "kid": kid }).to_string());
+            let payload = encode_base64url(
+                json!({
+                    "iss": self.issuer,
+                    "aud": "budget",
+                    "iat": self.now.load(Ordering::SeqCst) / 1000,
+                    "jti": "evt_1",
+                    "events": { "session.ended": { "sid": "ses_1" } },
+                })
+                .to_string(),
+            );
+            let signature = self.signing.sign(format!("{header}.{payload}").as_bytes());
+            format!("{header}.{payload}.{}", encode_base64url(signature.to_bytes()))
+        }
+    }
+
+    const DISCOVERY: &str = "GET /.well-known/openid-configuration";
+    const JWKS: &str = "GET /jwks";
+    const INTROSPECT: &str = "POST /oauth/introspect";
+
+    #[tokio::test]
+    async fn discovery_is_read_once_and_asked_for_again_only_after_a_failure() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        provider.go_down();
+        assert_eq!(client.start_login(StartLoginOptions::default()).await.err(), Some(unavailable("auth answered 503")));
+        assert_eq!(client.logout_url(None).await.err(), Some(unavailable("auth answered 503")));
+        assert_eq!(provider.count(DISCOVERY), 2);
+
+        provider.answer_with(&["k1"], |_| None);
+        let started = client.start_login(StartLoginOptions::default()).await.unwrap();
+        assert!(started.redirect_url.starts_with(&format!("{}/oauth/authorize?response_type=code&client_id=budget&", provider.issuer)));
+        assert!(started.login_cookie.starts_with("__Host-login="));
+        assert!(started.login_cookie.ends_with("; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=300"));
+        assert_eq!(provider.count(DISCOVERY), 3);
+
+        // Read, it is kept, provider up or down.
+        provider.go_down();
+        for _ in 0..3 {
+            assert!(client.start_login(StartLoginOptions::default()).await.is_ok());
+        }
+        assert_eq!(provider.count(DISCOVERY), 3);
+        // This provider names no end-session endpoint.
+        assert_eq!(client.logout_url(None).await.err(), Some(other("the provider has no end_session_endpoint")));
+    }
+
+    #[tokio::test]
+    async fn requests_that_arrive_together_share_one_discovery() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        let (first, second, third) = tokio::join!(
+            client.start_login(StartLoginOptions::default()),
+            client.start_login(StartLoginOptions::default()),
+            client.start_login(StartLoginOptions::default()),
+        );
+        assert!(first.is_ok() && second.is_ok() && third.is_ok());
+        assert_eq!(provider.count(DISCOVERY), 1);
+    }
+
+    #[tokio::test]
+    async fn keys_are_fetched_on_need_at_most_every_thirty_seconds_and_again_after_an_hour() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        assert_eq!(provider.count(JWKS), 0);
+        assert!(client.read_event(&provider.event_token("k1")).await.is_ok());
+        assert!(client.read_event(&provider.event_token("k1")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 1);
+
+        // The provider rotates to a new key id. Until thirty seconds have
+        // passed since the last fetch, an unknown id does not cause another.
+        provider.answer_with(&["k1", "k2"], |_| None);
+        provider.advance(29_000);
+        assert_eq!(client.read_event(&provider.event_token("k2")).await.err(), Some(invalid_token("signed with an unknown key")));
+        assert_eq!(provider.count(JWKS), 1);
+        provider.advance(1_000);
+        assert!(client.read_event(&provider.event_token("k2")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 2);
+        // An id nobody published is fetched for once per interval, and refused.
+        assert_eq!(client.read_event(&provider.event_token("k9")).await.err(), Some(invalid_token("signed with an unknown key")));
+        assert_eq!(provider.count(JWKS), 2);
+
+        // Known keys are trusted for an hour, then read again.
+        provider.advance(3_599_000);
+        assert!(client.read_event(&provider.event_token("k2")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 2);
+        provider.advance(1_000);
+        assert!(client.read_event(&provider.event_token("k2")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 3);
+
+        // Past the hour with the provider down: the keys in hand keep verifying.
+        provider.advance(3_600_000);
+        provider.go_down();
+        assert!(client.read_event(&provider.event_token("k2")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 4);
+        provider.advance(30_000);
+        assert!(client.read_event(&provider.event_token("k1")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 5);
+        // A key the provider withdrew is gone once a fetch succeeds.
+        provider.answer_with(&["k2"], |_| None);
+        provider.advance(30_000);
+        assert_eq!(client.read_event(&provider.event_token("k1")).await.err(), Some(invalid_token("signed with an unknown key")));
+        assert_eq!(provider.count(JWKS), 6);
+    }
+
+    #[tokio::test]
+    async fn without_keys_nothing_verifies_and_the_fetch_is_not_repeated_at_once() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        provider.go_down();
+        let token = provider.event_token("k1");
+        assert_eq!(client.read_event(&token).await.err(), Some(unavailable("auth's signing keys are unavailable")));
+        provider.answer_with(&["k1"], |_| None);
+        assert_eq!(client.read_event(&token).await.err(), Some(unavailable("auth's signing keys are unavailable")));
+        assert_eq!(provider.count(JWKS), 0);
+        provider.advance(30_000);
+        assert!(client.read_event(&provider.event_token("k1")).await.is_ok());
+        assert_eq!(provider.count(JWKS), 1);
+    }
+
+    fn introspection(active: bool, sub: &str, id: &str) -> Option<(u16, String)> {
+        Some((
+            200,
+            json!({ "active": active, "sub": sub, "username": sub, "role": "user", "scope": "a  b", "jti": id }).to_string(),
+        ))
+    }
+
+    #[tokio::test]
+    async fn an_introspection_answer_is_fresh_for_a_minute_and_usable_for_ten_while_the_provider_is_out() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        provider.answer_with(&["k1"], |_| introspection(true, "usr_a", "key_a"));
+
+        let answer = client.introspect("secret", None).await.unwrap().unwrap();
+        assert_eq!((answer.sub.as_str(), answer.id.as_deref()), ("usr_a", Some("key_a")));
+        assert_eq!(answer.scopes, ["a", "b"]);
+        provider.advance(59_999);
+        assert!(client.introspect("secret", None).await.unwrap().is_some());
+        assert_eq!(provider.count(INTROSPECT), 1);
+
+        // A minute old, it is asked about again.
+        provider.advance(1);
+        assert!(client.introspect("secret", None).await.unwrap().is_some());
+        assert_eq!(provider.count(INTROSPECT), 2);
+
+        // The provider goes out: the last answer serves until it is ten minutes old.
+        provider.go_down();
+        provider.advance(599_999);
+        assert_eq!(client.introspect("secret", None).await.unwrap().map(|answer| answer.sub), Some("usr_a".to_string()));
+        assert_eq!(provider.count(INTROSPECT), 3);
+        provider.advance(1);
+        assert_eq!(client.introspect("secret", None).await.err(), Some(unavailable("auth answered 503")));
+        // A key never asked about has no answer to fall back on.
+        assert_eq!(client.introspect("another", None).await.err(), Some(unavailable("auth answered 503")));
+    }
+
+    #[tokio::test]
+    async fn an_inactive_answer_or_a_forgotten_one_is_not_served_again() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        provider.answer_with(&["k1"], |_| introspection(true, "usr_a", "key_a"));
+        assert!(client.introspect("first", None).await.unwrap().is_some());
+        assert!(client.introspect("second", None).await.unwrap().is_some());
+        assert_eq!(provider.count(INTROSPECT), 2);
+
+        // Forgotten by credential id: both secrets carry it here, so both are asked about again.
+        client.forget(None, Some("key_other"));
+        client.forget(None, None);
+        assert!(client.introspect("first", None).await.unwrap().is_some());
+        assert_eq!(provider.count(INTROSPECT), 2);
+        client.forget(None, Some("key_a"));
+        assert!(client.introspect("first", None).await.unwrap().is_some());
+        assert_eq!(provider.count(INTROSPECT), 3);
+        client.forget(Some("usr_a"), None);
+        assert!(client.introspect("second", None).await.unwrap().is_some());
+        assert_eq!(provider.count(INTROSPECT), 4);
+
+        // A rate-limited provider says nothing, and what was known still stands.
+        provider.advance(60_000);
+        provider.answer_with(&["k1"], |_| Some((429, String::new())));
+        assert!(client.introspect("second", None).await.unwrap().is_none());
+        provider.go_down();
+        assert!(client.introspect("second", None).await.unwrap().is_some());
+
+        // Told the key is inactive, the answer is dropped: nothing to serve when the provider is out.
+        provider.answer_with(&["k1"], |_| introspection(false, "usr_a", "key_a"));
+        assert!(client.introspect("second", None).await.unwrap().is_none());
+        provider.go_down();
+        assert_eq!(client.introspect("second", None).await.err(), Some(unavailable("auth answered 503")));
+    }
+
+    #[tokio::test]
+    async fn introspection_has_its_preconditions() {
+        let provider = Provider::start().await;
+        let client = provider.client();
+        assert_eq!(client.introspect("secret", Some("not-an-ip")).await.err(), Some(other("ip must be an IP address")));
+        let public = AuthClient::new(AuthClientOptions { client_secret: None, ..options(&provider.issuer) }).unwrap();
+        assert_eq!(public.introspect("secret", None).await.err(), Some(other("introspection needs a confidential client")));
+        assert_eq!(provider.count(INTROSPECT), 0);
     }
 }

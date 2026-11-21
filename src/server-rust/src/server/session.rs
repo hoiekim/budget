@@ -206,3 +206,58 @@ pub fn watch_session(sid: String, on_ended: impl Fn() + Send + Sync + 'static, i
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_session_cookie_is_the_apps_own_and_secure_only_when_asked() {
+        assert_eq!(build_session_cookie("abc", 60, false), "session_id=abc; Max-Age=60; Path=/; HttpOnly; SameSite=Strict");
+        assert!(build_session_cookie("abc", 60, true).ends_with("; Secure"));
+        // The value is percent-encoded, and clearing it writes an empty one.
+        assert_eq!(build_session_cookie("a b;c", 60, false), "session_id=a%20b%3Bc; Max-Age=60; Path=/; HttpOnly; SameSite=Strict");
+        assert_eq!(build_session_cookie("", 0, false), "session_id=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict");
+    }
+
+    #[test]
+    fn the_session_id_reads_back_from_a_cookie_header_among_others() {
+        let cookies = parse_cookies("a=1; session_id=abc%3D; __Host-login=x").unwrap();
+        let pairs: Vec<(&str, &str)> = cookies.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+        assert_eq!(pairs, [("a", "1"), ("session_id", "abc="), ("__Host-login", "x")]);
+    }
+
+    #[test]
+    fn cookie_parts_without_a_name_or_an_equals_sign_are_skipped_and_a_repeated_name_takes_the_last() {
+        let cookies = parse_cookies("flag; =nameless; session_id = first ;session_id=second; empty=").unwrap();
+        let pairs: Vec<(&str, &str)> = cookies.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+        assert_eq!(pairs, [("session_id", "second"), ("empty", "")]);
+        assert!(parse_cookies("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_cookie_value_that_does_not_decode_fails_the_whole_header() {
+        assert!(parse_cookies("session_id=%E0%A4%A").is_err());
+        assert!(parse_cookies("a=%").is_err());
+    }
+
+    #[test]
+    fn a_new_session_row_expires_a_week_out_and_carries_the_sign_in_only_when_given() {
+        let user = MaskedUser { user_id: "u1".into(), username: "alice".into() };
+        let before = JsDate::now_ms();
+        let plain = build_session_data(&user, true, None);
+        assert_eq!(plain.user, user);
+        assert_eq!(plain.cookie.original_max_age, Some(604_800_000.0));
+        assert_eq!(plain.cookie.max_age, Some(604_800_000.0));
+        assert_eq!((plain.cookie.http_only, plain.cookie.secure), (Some(true), Some(true)));
+        assert_eq!((plain.cookie.path.as_deref(), plain.cookie.same_site.as_deref()), (Some("/"), Some("strict")));
+        let expires = plain.cookie.expires.map(|date| date.get_time()).unwrap_or(f64::NAN);
+        assert!(expires >= before + 604_800_000.0 && expires <= JsDate::now_ms() + 604_800_000.0);
+        assert!(plain.auth.is_none());
+
+        let auth = SessionAuth { sid: "ses_1".into(), refresh_token: None, recheck_at: JsDate::from_ms(5.0) };
+        let single_sign_on = build_session_data(&user, false, Some(auth));
+        assert_eq!(single_sign_on.cookie.secure, Some(false));
+        assert_eq!(single_sign_on.auth.map(|auth| (auth.sid, auth.refresh_token, auth.recheck_at.get_time())), Some(("ses_1".into(), None, 5.0)));
+    }
+}
