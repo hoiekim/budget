@@ -3,7 +3,7 @@
 ## Tech Stack
 
 - **Frontend**: React (TypeScript), built with Vite
-- **Backend**: Bun HTTP server (TypeScript)
+- **Backend**: Bun HTTP server (TypeScript); the same API is also served by a Rust server kept side by side with it (`src/server-rust`)
 - **Database**: PostgreSQL
 - **Containerization**: Docker
 - **External APIs**: Plaid, SimpleFin, Polygon, BLS
@@ -41,9 +41,11 @@ budget/
 │   │       ├── transfers/    # Transfer pair management
 │   │       ├── users/        # User management
 │   │       └── webhooks/     # Webhook handlers
+│   ├── server-rust/          # The backend in Rust, module for module the same as server/
 │   └── common/               # Shared code (client + server)
 │       ├── models/           # Data models and types
 │       └── utils/            # Shared utilities
+├── conformance/              # One HTTP test suite run against both backends
 ├── docs/                     # Documentation
 ├── build/                    # Compiled output
 └── scripts/                  # Development and maintenance scripts
