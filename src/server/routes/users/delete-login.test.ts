@@ -102,6 +102,19 @@ describe("delete-login", () => {
       expect(issuer.seen("/oauth/revoke")[0].form.get("token")).toBe("rt_1");
     });
 
+    test("still revokes its refresh token when the session store delete fails", async () => {
+      configureSso(issuer.config(), { fetch: issuer.fetch });
+      const { req } = makeReq({ auth, destroyErr: new Error("session store down") });
+      const res = fakeRes();
+      const result = await deleteLoginRoute.execute(req, res);
+
+      expect(result?.status).toBe("error");
+      expect((res as { statusCode: number }).statusCode).toBe(500);
+      expect(result?.body?.logoutUrl).toBeUndefined();
+      await settle();
+      expect(issuer.seen("/oauth/revoke").map((r) => r.form.get("token"))).toEqual(["rt_1"]);
+    });
+
     test("signs out even when the provider fails to revoke", async () => {
       configureSso(issuer.config(), { fetch: issuer.fetch });
       issuer.state.revoke = () => new Response(null, { status: 400 });
