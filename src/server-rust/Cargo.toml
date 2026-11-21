@@ -1,0 +1,53 @@
+[package]
+name = "budget-server"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "The budget app's backend, in Rust. Serves the same API as src/server."
+publish = false
+
+[[bin]]
+name = "budget-server"
+path = "src/main.rs"
+
+[lib]
+name = "budget_server"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+base64 = "0.23.1"
+bcrypt = "0.19.3"
+bytes = "1.12.2"
+chrono = "0.4.45"
+chrono-tz = "0.10.4"
+deadpool-postgres = "0.14.1"
+ed25519-dalek = "2.1.1"
+fallible-iterator = "0.2"
+futures = "0.3.34"
+hex = "0.4.3"
+http = "1.5.0"
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["http1", "server"] }
+hyper-util = { version = "0.1.20", features = ["tokio", "server", "http1"] }
+indexmap = "2.11.4"
+once_cell = "1.21.4"
+p256 = { version = "0.13.2", features = ["ecdsa", "jwk"] }
+percent-encoding = "2.3.2"
+postgres-protocol = "0.6.8"
+postgres-types = "0.2.9"
+rand = "0.9.5"
+regex = "1.13.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "system-proxy", "query", "form"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order", "float_roundtrip"] }
+sha2 = "0.10.9"
+subtle = "2.6.1"
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["full"] }
+tokio-postgres = "0.7.13"
+tokio-stream = "0.1.19"
+tokio-util = { version = "0.7.19", features = ["rt"] }
+url = "2.5.9"
+uuid = { version = "1.20.0", features = ["v4"] }

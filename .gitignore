@@ -30,3 +30,9 @@ CLAUDE.md
 CLAUDE.local.md
 GEMINI.md
 .claude/
+
+# Rust build output
+/target
+
+# Conformance run transcripts
+/conformance/.transcripts
