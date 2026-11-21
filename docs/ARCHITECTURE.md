@@ -38,6 +38,7 @@ budget/
 │   │       ├── events/       # Event feed
 │   │       ├── health.ts     # Health check endpoint
 │   │       ├── recurrings/   # Recurring transaction management
+│   │       ├── sharing/      # Invitations and membership of a data-sharing group
 │   │       ├── transfers/    # Transfer pair management
 │   │       ├── users/        # User management
 │   │       └── webhooks/     # Webhook handlers
@@ -61,6 +62,13 @@ Core models are defined in `src/common/models/`:
 - **Chart** — visualization configuration
 - **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
 - **CpiSnapshot** — one month of the BLS Consumer Price Index (global, not user-scoped; table `cpi_snapshots`)
+- **Sharing** — who shares data with whom (`sharing_members`) and the invitations still open (`sharing_invitations`); server-side only, see below
+
+### Data Sharing
+
+Users who share data see one merged dataset: every route reads and writes the rows of the whole sharing group, while each row keeps the `user_id` of its owner. The owner shows in one place, the Configuration page, where each connection (`Item.user_id`) carries its owner's username. [SECURITY.md](SECURITY.md#data-sharing) has the access rules; [DATABASE.md](DATABASE.md#owner-scope) how a query states its scope.
+
+On the client, `Data.sharing` (`GET /api/sharing`: the group's members and the open invitations) is fetched in Stage 1 of every sync and kept in memory. `useSharing` holds the actions; `SharingSection` on the Configuration page is their only caller. The cache in IndexedDB and its delta cursor are valid for the group they were filled under, recorded beside the cursor in `localStorage`: when a sync finds the group changed, it restarts cold. A `sharing_members-updated` event triggers that sync; a `sharing_invitations-updated` event refetches `Data.sharing` alone.
 
 ### Projection Chart: Auto Goal Configuration
 

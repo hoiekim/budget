@@ -13,9 +13,20 @@ See the [live demo](https://budget.hoie.kim) (username: `demo`, password: `budge
 - [API](docs/API.md) — route patterns, response format, authentication, input validation
 - [Code Style](docs/CODE_STYLE.md) — imports, TypeScript, logging, accessibility
 - [Database](docs/DATABASE.md) — connection, table methods, repository pattern, transactions
-- [Security](docs/SECURITY.md) — auth middleware, session fixation, anti-enumeration, ownership verification
+- [Security](docs/SECURITY.md) — auth middleware, data sharing, session fixation, anti-enumeration, ownership verification
 - [Design Patterns](docs/DESIGN_PATTERNS.md) — sync patterns, concurrency, performance
 - [Deployment](docs/DEPLOYMENT.md) — production, Docker, CI/CD
+
+## Sharing data with another user
+
+Two or more users can share their data: every account, transaction, budget and chart of each shows up for all of them as if it were one user's, and each can edit all of it.
+
+- On the Configuration page, enter the other user's username under **Share Data** and send the invitation. It appears on their Configuration page, where they accept or decline it.
+- Once they accept, both of you see and edit everything. Only the Configuration page tells whose a connection is: each one under **Connections** carries its owner's username.
+- Inviting someone while you already share brings them into the same group, so everyone in it shares with everyone. A user is in one group at a time.
+- **Stop Sharing** on the Configuration page ends it. Everyone keeps what they own: a connection and its accounts and transactions stay with whoever made the connection, and a budget with whoever created it, whoever edited them since. Labels that point at the other person's budgets are kept, and work again if you share again.
+- API keys and sign-in stay personal. An API key acts as its owner, so it reaches the shared data too.
+- The `demo` account can neither invite nor be invited.
 
 ## Single sign-on (optional)
 

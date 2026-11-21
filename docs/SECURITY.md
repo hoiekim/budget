@@ -98,9 +98,21 @@ return { status: "failed", message: "User is not found." };
 return { status: "failed", message: "Wrong password." };
 ```
 
+## Data Sharing
+
+Users who accept each other's invitation form a sharing group (`sharing_members`: one row per user, so a user is in at most one group; `sharing_invitations` holds the unanswered offers). Members read and write each other's rows as their own. Nobody else's access changes.
+
+- **Rows keep their owner.** Sharing never rewrites `user_id`. A row created under a parent takes the parent's owner, not the requester's: an account its item's, a transaction, split, snapshot or holding its account's, a section its budget's, a category its section's, a recurring its transactions', a transfer pair one of its two transactions'. Routes read that owner with `getRowOwner(user, table, id)` and pass it to the repository (`pairTransactions` reads it off the transactions it locks). So when sharing ends, a connection or a budget leaves with everything under it, and nobody is left holding rows inside someone else's account.
+- **The scope is resolved in SQL, per statement.** `sharing_user_ids($user)` (created at start, `models/sharing.ts`) answers the user and their group; an owner predicate written with `sharedWith(user)` (Table methods) or `sharedWithSql(column, "$n")` (hand-written SQL) becomes `user_id = ANY(sharing_user_ids($n))`. `sharedWith` is a filter only: a write that tries to store it as a column value throws. Nothing about the group is cached in the session, so leaving a group takes effect at the next query, on every copy of the app.
+- **What is not shared:** sessions, API keys and the `users` row. An API key still acts as its owner, and so reaches what its owner shares. The sharing routes accept cookie sessions only.
+- **Who may change a group.** Any member can invite, withdraw any invitation sent from the group, and remove any member; an invitee accepts or declines their own invitations. Members already read and write everything in the group, so none of this gives one more than they had. A user must leave their group before accepting an invitation into another: accepting never merges two groups, which would show one group's data to people its members never agreed to.
+- **Invitations name an existing username**, and the answer says when there is none: a signed-in user can learn which usernames exist. The `demo` account, which anyone can sign in to on a public instance, can neither invite nor be invited (`DEMO_USERNAME`), so a visitor can use it neither to probe usernames nor to talk a real user into sharing with an account the public reads.
+- **The detection jobs still run per owner.** Transfer detection suggests pairs within one owner's accounts, and sees every pair in the owner's group so that it never suggests a second pair for a transaction someone paired across owners by hand. Pairing serializes on one advisory lock per group (`sharingLockKeySql`). When sharing ends, a pair with a side on each side of the split is soft-deleted, the way a pair is when one of its transactions is.
+- **Events** (`/events`) for a write go to every member's open tabs (`emitToSharingGroup`). A membership change tells every former and current member, whose clients then drop their cache and fetch again from nothing (`isSharingStale` in `client/lib/hooks/sync.ts`): a delta fetch would bring none of a newcomer's older rows and take away none of a leaver's.
+
 ## Resource Ownership Verification
 
-**Every delete/update route must verify the resource belongs to the authenticated user.**
+**Every delete/update route must verify the resource belongs to the authenticated user, or to someone who shares data with them.** Pass `sharedWith(user)` where a data table's owner goes; pass the bare `user.user_id` only where the row must be the user's own (API keys, sessions).
 
 Repository-level `softDelete` by primary key alone is NOT sufficient:
 
@@ -118,5 +130,5 @@ await snapshotsTable.softDelete(snapshot_id);
 // `repositories/snapshots.ts` `deleteSnapshotById`), so the ownership check
 // lives in the write itself without raw SQL — matching DATABASE.md's
 // "Use `Table` class methods instead of direct SQL/pool operations".
-await snapshotsTable.softDelete(snapshot_id, user.user_id);
+await snapshotsTable.softDelete(snapshot_id, sharedWith(user));
 ```
