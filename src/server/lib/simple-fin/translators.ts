@@ -163,24 +163,48 @@ export const translateTransaction = (
   };
 };
 
+/**
+ * Subtypes a SimpleFin description can name for money arriving in the
+ * account. Whole-word matches only, so a payee name can't trip it.
+ */
+const ARRIVING_CASH_SUBTYPE_BY_KEYWORD: [RegExp, InvestmentTransactionSubtype][] = [
+  [/\bdividends?\b/i, InvestmentTransactionSubtype.Dividend],
+  [/\binterest\b/i, InvestmentTransactionSubtype.Interest],
+];
+
+const inferCashSubtype = (
+  description: string,
+  rawAmount: number,
+): InvestmentTransactionSubtype => {
+  if (rawAmount > 0) {
+    for (const [pattern, subtype] of ARRIVING_CASH_SUBTYPE_BY_KEYWORD) {
+      if (pattern.test(description)) return subtype;
+    }
+  }
+  return rawAmount >= 0 ? InvestmentTransactionSubtype.Deposit : InvestmentTransactionSubtype.Withdrawal;
+};
+
 export const translateInvestmentTransaction = (
   simpleFinTransaction: SimpleFinTransaction,
   simpleFinAccount: SimpleFinAccount,
 ): JSONInvestmentTransaction => {
   const { id: transactionId, posted, amount: amountString, description } = simpleFinTransaction;
 
+  // SimpleFin signs positive when money arrives; investment amounts are positive when money leaves.
+  const rawAmount = +amountString;
+  const amount = rawAmount === 0 ? 0 : -rawAmount;
   return {
     investment_transaction_id: transactionId,
     date: getDateTimeString(new Date(posted * 1000)),
-    amount: +amountString,
-    quantity: 1,
-    price: +amountString,
+    amount,
+    quantity: 0,
+    price: 0,
     name: description,
     account_id: simpleFinAccount.id,
     security_id: null,
     cancel_transaction_id: null,
-    type: InvestmentTransactionType.Buy,
-    subtype: InvestmentTransactionSubtype.Buy,
+    type: InvestmentTransactionType.Cash,
+    subtype: inferCashSubtype(description, rawAmount),
     fees: null,
     iso_currency_code: null,
     unofficial_currency_code: null,
