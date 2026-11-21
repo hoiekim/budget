@@ -8,7 +8,9 @@ import {
   searchSecuritiesById,
   marketData,
   logger,
+  CLOSE_PRICE,
   SECURITY_ID,
+  SNAPSHOT_DATE,
   SNAPSHOT_TYPE,
   UPDATED,
 } from "server";
@@ -31,6 +33,8 @@ export interface RefreshSecuritySnapshotsResult {
   empty: number;
   /** Polygon API or upsert errors. */
   errors: number;
+  /** Fetched closes rejected by the write-time sanity gate. */
+  anomalous: number;
 }
 
 /**
@@ -146,6 +150,55 @@ const getLatestSnapshotDate = async (security_id: string): Promise<string | null
 };
 
 /**
+ * Maximum single-step close-price move the write-time sanity gate accepts,
+ * as a ratio against the previous close. Generous on purpose: real
+ * volatility and thin instruments never trip a 20x bound. Stored closes are
+ * not split-adjusted, so a large reverse split can trip it; the seed-age
+ * bound below is what lets the gate recover from that.
+ */
+export const MAX_SINGLE_STEP_RATIO = 20;
+
+/**
+ * How far before the first fetched trading date a stored close may be and
+ * still seed the gate. An older close, or a wrong one that keeps every
+ * fetched close rejected, ages out of the window and the next fetched close
+ * re-seeds the chain, so a security is never frozen for longer than this.
+ */
+export const MAX_SEED_AGE_DAYS = 5;
+
+/**
+ * Whether a fetched close is implausible: zero or less on its own, or more
+ * than `MAX_SINGLE_STEP_RATIO` away from a positive previous close in
+ * either direction. A previous close of zero or less carries no ratio
+ * information, so no positive close is anomalous against it.
+ */
+export const isAnomalousClose = (fetched: number, previous: number | null): boolean => {
+  if (!(fetched > 0)) return true;
+  if (previous == null || !(previous > 0)) return false;
+  return fetched < previous / MAX_SINGLE_STEP_RATIO || fetched > previous * MAX_SINGLE_STEP_RATIO;
+};
+
+/**
+ * The most recent stored close for a security dated on or after `since`
+ * (YYYY-MM-DD), or null when it has none in that window.
+ */
+const getRecentStoredClose = async (security_id: string, since: string): Promise<number | null> => {
+  const latest = await pool.query<{ close_price: number | null }>(
+    `SELECT ${CLOSE_PRICE}
+     FROM ${SNAPSHOTS}
+     WHERE ${SECURITY_ID} = $1
+       AND ${SNAPSHOT_TYPE} = 'security'
+       AND ${CLOSE_PRICE} IS NOT NULL
+       AND ${SNAPSHOT_DATE} >= $2::date
+       AND (is_deleted IS NULL OR is_deleted = FALSE)
+     ORDER BY ${SNAPSHOT_DATE} DESC
+     LIMIT 1`,
+    [security_id, since],
+  );
+  return latest.rows[0]?.close_price ?? null;
+};
+
+/**
  * The closes to write for a security: the latest trading day's. The
  * benchmark also gets every settled trading day since its last snapshot, or
  * since the static history's last row when it has none, so a window can
@@ -210,6 +263,7 @@ export const refreshActiveSecuritySnapshots = async (now = new Date()): Promise<
     cash: 0,
     empty: 0,
     errors: 0,
+    anomalous: 0,
   };
 
   const rows = await pool.query<{ security_id: string }>(
@@ -273,15 +327,37 @@ export const refreshActiveSecuritySnapshots = async (now = new Date()): Promise<
       continue;
     }
 
+    const firstTradingDate = closes.data[0]?.tradingDate;
+    let previous = firstTradingDate
+      ? await getRecentStoredClose(security_id, shiftDay(firstTradingDate, -MAX_SEED_AGE_DAYS))
+      : null;
+    const kept: Close[] = [];
+    for (const close of closes.data) {
+      if (isAnomalousClose(close.price, previous)) {
+        result.anomalous++;
+        logger.warn("refreshActiveSecuritySnapshots: anomalous close rejected", {
+          security_id,
+          polygon_ticker: polygon.toPolygonTicker(ticker_symbol, security.type),
+          tradingDate: close.tradingDate,
+          fetchedClose: close.price,
+          previousClose: previous,
+        });
+        continue;
+      }
+      kept.push(close);
+      previous = close.price;
+    }
+    if (kept.length === 0) continue;
+
     // `upsertSnapshots` catches per-snapshot errors internally and
     // returns one `UpsertResult { status }` per row instead of throwing.
     // A 4xx / 5xx status means the row didn't land.
-    const upserted = await upsertSnapshots(closes.data.map((close) => securitySnapshotOf(security, close)));
+    const upserted = await upsertSnapshots(kept.map((close) => securitySnapshotOf(security, close)));
     const failed = upserted.filter((r) => !r || r.status >= 400);
     if (failed.length > 0 || upserted.length === 0) {
       logger.error("refreshActiveSecuritySnapshots: upsert failed", {
         security_id,
-        tradingDates: closes.data.map((c) => c.tradingDate),
+        tradingDates: kept.map((c) => c.tradingDate),
         statuses: failed.map((r) => r?.status),
       });
       result.errors++;

@@ -35,7 +35,7 @@ const mockFetch = mock(
 );
 globalThis.fetch = mockFetch as unknown as typeof globalThis.fetch;
 
-const { refreshActiveSecuritySnapshots, BENCHMARK_SECURITY_ID } = await import("./refresh-security-snapshots");
+const { refreshActiveSecuritySnapshots, BENCHMARK_SECURITY_ID, isAnomalousClose } = await import("./refresh-security-snapshots");
 const { clearPriceCache } = await import("server/lib/polygon");
 const { clearYahooCache } = await import("server/lib/yahoo");
 
@@ -52,6 +52,7 @@ let holdingsRows: Array<{ security_id: string }> = [];
 let securitiesRows: Array<Record<string, unknown>> = [];
 let recentBySecurity = new Set<string>();
 let latestSnapshotDate: Record<string, string> = {};
+let latestStoredClose: Record<string, { price: number; date: string }> = {};
 const upsertCalls: Array<{ sql: string; values: unknown[] }> = [];
 const securityInserts: Array<Record<string, unknown>> = [];
 
@@ -90,6 +91,14 @@ const queryRouter = async (sql: string, values?: unknown[]) => {
 
   if (/MAX\(snapshot_date\)/i.test(sql)) {
     return { rows: [{ date: latestSnapshotDate[params[0] as string] ?? null }], rowCount: 1 };
+  }
+
+  // Sanity-gate probe — the most recent stored close for a security dated
+  // on or after `$2` (`… ORDER BY snapshot_date DESC LIMIT 1`).
+  if (/ORDER\s+BY\s+snapshot_date\s+DESC/i.test(sql)) {
+    const stored = latestStoredClose[params[0] as string];
+    const inWindow = stored && stored.date >= (params[1] as string);
+    return { rows: inWindow ? [{ close_price: stored.price }] : [], rowCount: inWindow ? 1 : 0 };
   }
 
   // Cadence-gate probe — `… updated > NOW() - INTERVAL 'N hours' …`.
@@ -141,6 +150,7 @@ beforeEach(() => {
   securitiesRows = [];
   recentBySecurity = new Set([BENCHMARK_SECURITY_ID]);
   latestSnapshotDate = {};
+  latestStoredClose = {};
   upsertCalls.length = 0;
   securityInserts.length = 0;
 });
@@ -176,7 +186,7 @@ const securityRow = (overrides: Record<string, unknown> = {}) => ({
 describe("refreshActiveSecuritySnapshots", () => {
   test("no holdings → no polygon calls; only the benchmark is looked at", async () => {
     const r = await refreshActiveSecuritySnapshots();
-    expect(r).toEqual({ refreshed: 0, fresh: 1, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 0, fresh: 1, cash: 0, empty: 0, errors: 0, anomalous: 0 });
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -285,7 +295,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     const gateIds = (gateCalls[0][1] as unknown[])?.[0] as string[];
     expect(gateIds.sort()).toEqual([...ids, BENCHMARK_SECURITY_ID].sort());
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(r).toEqual({ refreshed: 0, fresh: 6, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 0, fresh: 6, cash: 0, empty: 0, errors: 0, anomalous: 0 });
   });
 
   test("cash securities add no cadence-gate ids — the batched query covers only gate-eligible rows", async () => {
@@ -376,7 +386,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     securitiesRows = [securityRow({ security_id: "sec-no-ticker", ticker_symbol: null })];
     const r = await refreshActiveSecuritySnapshots();
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(r).toEqual({ refreshed: 0, fresh: 1, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 0, fresh: 1, cash: 0, empty: 0, errors: 0, anomalous: 0 });
   });
 
   test("cadence gate is per-security: skipping sec-a does not skip sec-b", async () => {
@@ -404,7 +414,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(String(mockFetch.mock.calls[0][0])).toContain("/v2/aggs/ticker/VOO/");
     expect(upsertCalls.some((c) => c.values.some((v) => String(v) === `${BENCHMARK_SECURITY_ID}-20260610`))).toBe(true);
-    expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0, anomalous: 0 });
   });
 
   test("an existing row for the benchmark's ticker is used, not a new one", async () => {
@@ -466,7 +476,7 @@ describe("refreshActiveSecuritySnapshots", () => {
     );
     const written = upsertCalls.flatMap((c) => c.values.map(String));
     for (const day of ["20261006", "20261007", "20261008"]) expect(written).toContain(`${BENCHMARK_SECURITY_ID}-${day}`);
-    expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0 });
+    expect(r).toEqual({ refreshed: 1, fresh: 0, cash: 0, empty: 0, errors: 0, anomalous: 0 });
   });
 
   test("a benchmark with no snapshot is filled from the day after the static history ends", async () => {
@@ -555,5 +565,159 @@ describe("refreshActiveSecuritySnapshots", () => {
       "utf8",
     ).trim();
     expect(csv.slice(csv.lastIndexOf("\n") + 1).split(",")[0]).toBe(BENCHMARK_HISTORY_THROUGH);
+  });
+});
+
+describe("isAnomalousClose", () => {
+  test("a 2,000x single-step drop is anomalous", () => {
+    expect(isAnomalousClose(27, 67890)).toBe(true);
+  });
+
+  test("moves inside the 20x bound are not anomalous", () => {
+    expect(isAnomalousClose(200, 100)).toBe(false);
+    expect(isAnomalousClose(5, 100)).toBe(false); // exactly 20x down
+    expect(isAnomalousClose(2000, 100)).toBe(false); // exactly 20x up
+  });
+
+  test("moves just beyond the 20x bound are anomalous", () => {
+    expect(isAnomalousClose(4.99, 100)).toBe(true);
+    expect(isAnomalousClose(2000.01, 100)).toBe(true);
+  });
+
+  test("a previous close of zero or less carries no ratio — no positive close is anomalous against it", () => {
+    expect(isAnomalousClose(1000000, 0)).toBe(false);
+    expect(isAnomalousClose(100, -5)).toBe(false);
+    expect(isAnomalousClose(100, null)).toBe(false);
+  });
+
+  test("a fetched close of zero or less is anomalous with or without a previous close", () => {
+    expect(isAnomalousClose(0, null)).toBe(true);
+    expect(isAnomalousClose(-1, null)).toBe(true);
+    expect(isAnomalousClose(0, 0)).toBe(true);
+    expect(isAnomalousClose(0, 100)).toBe(true);
+  });
+});
+
+describe("refreshActiveSecuritySnapshots sanity gate", () => {
+  test("a fetched close 2,000x below the stored close is rejected, counted, and never written", async () => {
+    holdingsRows = [{ security_id: "sec-btc" }];
+    securitiesRows = [
+      securityRow({ security_id: "sec-btc", ticker_symbol: "BTC", type: "cryptocurrency" }),
+    ];
+    latestStoredClose = { "sec-btc": { price: 67890.0625, date: "2026-08-31" } };
+    setPolygonResponse({ results: [{ c: 27.44, t: Date.UTC(2026, 8, 1) }] });
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(upsertCalls).toHaveLength(0);
+    expect(r.anomalous).toBe(1);
+    expect(r.refreshed).toBe(0);
+    expect(r.errors).toBe(0);
+  });
+
+  test("a fetched close within 20x of the stored close is written", async () => {
+    holdingsRows = [{ security_id: "sec-btc" }];
+    securitiesRows = [
+      securityRow({ security_id: "sec-btc", ticker_symbol: "BTC", type: "cryptocurrency" }),
+    ];
+    latestStoredClose = { "sec-btc": { price: 67890.0625, date: "2026-08-31" } };
+    setPolygonResponse({ results: [{ c: 70000, t: Date.UTC(2026, 8, 1) }] });
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(r.anomalous).toBe(0);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("no stored close → the fetched close seeds the gate and is written", async () => {
+    holdingsRows = [{ security_id: "sec-1" }];
+    securitiesRows = [securityRow({ security_id: "sec-1", ticker_symbol: "TICK9" })];
+
+    const r = await refreshActiveSecuritySnapshots();
+
+    expect(upsertCalls).toHaveLength(1);
+    expect(r.anomalous).toBe(0);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("a benchmark range with one anomalous day writes the rest and counts the anomaly", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    latestStoredClose = { [BENCHMARK_SECURITY_ID]: { price: 700, date: "2026-10-05" } };
+    setPolygonResponse({
+      results: [
+        { c: 706, t: Date.UTC(2026, 9, 6) },
+        { c: 707, t: Date.UTC(2026, 9, 7) },
+        { c: 27, t: Date.UTC(2026, 9, 8) },
+        { c: 708, t: Date.UTC(2026, 9, 9) },
+      ],
+    });
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261006`);
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261007`);
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261009`);
+    expect(written).not.toContain(`${BENCHMARK_SECURITY_ID}-20261008`);
+    expect(r.anomalous).toBe(1);
+    expect(r.refreshed).toBe(1);
+  });
+
+  test("each close is judged against the previous kept close, not the stored seed", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    latestStoredClose = { [BENCHMARK_SECURITY_ID]: { price: 1, date: "2026-10-05" } };
+    setPolygonResponse({
+      results: [
+        { c: 15, t: Date.UTC(2026, 9, 6) },
+        { c: 300, t: Date.UTC(2026, 9, 7) },
+      ],
+    });
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261006`);
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261007`);
+    expect(r.anomalous).toBe(0);
+  });
+
+  test("a wrong stored close rejects fetched closes only until it ages out of the seed window", async () => {
+    holdingsRows = [{ security_id: "sec-rs" }];
+    securitiesRows = [securityRow({ security_id: "sec-rs", ticker_symbol: "RSPLT" })];
+    latestStoredClose = { "sec-rs": { price: 2, date: "2026-08-31" } };
+
+    setPolygonResponse({ results: [{ c: 50, t: Date.UTC(2026, 8, 1) }] });
+    const rejected = await refreshActiveSecuritySnapshots();
+    expect(upsertCalls).toHaveLength(0);
+    expect(rejected.anomalous).toBe(1);
+
+    clearPriceCache();
+    clearYahooCache();
+    setPolygonResponse({ results: [{ c: 50, t: Date.UTC(2026, 8, 6) }] });
+    const recovered = await refreshActiveSecuritySnapshots();
+    expect(upsertCalls).toHaveLength(1);
+    expect(recovered.anomalous).toBe(0);
+    expect(recovered.refreshed).toBe(1);
+  });
+
+  test("a first-ever fetched close of zero is rejected, not written as the seed", async () => {
+    recentBySecurity = new Set();
+    latestSnapshotDate = { [BENCHMARK_SECURITY_ID]: "2026-10-05" };
+    setPolygonResponse({
+      results: [
+        { c: 0, t: Date.UTC(2026, 9, 6) },
+        { c: 700, t: Date.UTC(2026, 9, 7) },
+      ],
+    });
+
+    const r = await refreshActiveSecuritySnapshots(NOW);
+
+    const written = upsertCalls.flatMap((c) => c.values.map(String));
+    expect(written).not.toContain(`${BENCHMARK_SECURITY_ID}-20261006`);
+    expect(written).toContain(`${BENCHMARK_SECURITY_ID}-20261007`);
+    expect(r.anomalous).toBe(1);
   });
 });
