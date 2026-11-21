@@ -20,3 +20,4 @@ export * from "./chart";
 export * from "./api_key";
 export * from "./rejected-category";
 export * from "./cpi_snapshot";
+export * from "./sharing";

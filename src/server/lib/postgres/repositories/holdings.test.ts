@@ -83,8 +83,8 @@ describe("searchHoldingsByAccountId — single batched query", () => {
   test("query is scoped by user_id", async () => {
     await searchHoldingsByAccountId(mockUser, ["acc-1"]);
     const [sql, values] = mockUnsafe.mock.calls[0];
-    expect(String(sql)).toContain("user_id = $1");
-    expect(values).toContain("usr-1");
+    expect(String(sql)).toContain("WHERE user_id = ANY(sharing_user_ids($1)) AND ");
+    expect((values as unknown[])[0]).toBe("usr-1");
   });
 });
 

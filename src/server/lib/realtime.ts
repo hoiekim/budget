@@ -1,5 +1,6 @@
 import { TableName } from "common/constants";
 import { logger } from "./logger";
+import { getSharingUserIds } from "./postgres/repositories/sharing";
 
 /**
  * Per-user SSE subscriber registry. Every open browser tab authenticated
@@ -213,6 +214,15 @@ export interface EmitPayload {
   originTabId?: string;
 }
 
+/** The payload that lets the tab a request came from recognise the event as its own. */
+export const originTabPayload = (
+  headers: Record<string, string | string[] | undefined>,
+): EmitPayload => {
+  const tabHeader = headers["x-tab-id"];
+  const originTabId = Array.isArray(tabHeader) ? tabHeader[0] : tabHeader;
+  return originTabId ? { originTabId } : {};
+};
+
 export const registerSubscriber = (userId: string, sub: Subscriber): void => {
   let set = subscribers.get(userId);
   if (!set) {
@@ -262,6 +272,26 @@ export const emitToUser = (
       }
     }
   }
+};
+
+/**
+ * `emitToUser` for a user and everyone sharing data with them: what one of
+ * them writes, all of them see. Finding the group is a query, so a caller on
+ * a response path starts this without awaiting it. It never rejects: when the
+ * group can't be read, the user alone is told.
+ */
+export const emitToSharingGroup = async (
+  userId: string,
+  domain: EmitDomain,
+  payload: EmitPayload = {},
+): Promise<void> => {
+  let userIds = [userId];
+  try {
+    userIds = await getSharingUserIds(userId);
+  } catch (error) {
+    logger.warn("Sharing group lookup failed; the event reaches its author only", { userId, domain }, error);
+  }
+  for (const id of userIds) emitToUser(id, domain, payload);
 };
 
 /** Closes this process's connections of a user whose access ended, or of one single sign-on session. */

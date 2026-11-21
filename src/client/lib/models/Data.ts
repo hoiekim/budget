@@ -12,7 +12,7 @@ import { Category } from "./Category";
 import { Item } from "./Item";
 import { Chart } from "./Chart";
 import { AccountSnapshot, HoldingSnapshot, SecuritySnapshot } from "./Snapshot";
-import type { TransferPair, Recurring } from "server";
+import type { TransferPair, Recurring, Sharing } from "server";
 import type { MutableModel } from "client/lib/hooks/useMutate";
 import type { StoredModel } from "client/lib/indexed-db/service";
 
@@ -326,6 +326,13 @@ export class Data {
    *  it (or while every fetch has failed); `null` when the server has no CPI
    *  history yet. */
   inflation: JSONAverageInflation | null | undefined = undefined;
+
+  /** Who the user shares data with, and the invitations still open, from
+   *  `GET /api/sharing`. Fetched in Stage 1 of every sync and kept in memory
+   *  only; `undefined` until a sync has fetched it. Its members are the
+   *  people whose rows the other tables hold. Only the configuration page
+   *  tells whose a connection is. */
+  sharing: Sharing | undefined = undefined;
 
   constructor(init?: Partial<Data>) {
     assign(this, init);

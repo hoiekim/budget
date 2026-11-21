@@ -13,7 +13,7 @@ import {
   IS_DELETED,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult, sharedWith } from "../database";
 import { logger } from "../../logger";
 
 export interface SearchSplitTransactionsOptions {
@@ -36,7 +36,7 @@ const getSplitTransactionsByTransaction = async (
   transaction_id: string,
 ): Promise<JSONSplitTransaction[]> => {
   const models = await splitTransactionsTable.query({
-    [USER_ID]: user.user_id,
+    [USER_ID]: sharedWith(user),
     [TRANSACTION_ID]: transaction_id,
   });
   return models.map((m) => m.toJSON());
@@ -46,7 +46,7 @@ export const searchSplitTransactions = async (
   user: MaskedUser,
   options: SearchSplitTransactionsOptions = {},
 ): Promise<JSONSplitTransaction[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (options.transaction_id) filters[TRANSACTION_ID] = options.transaction_id;
   if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
 
@@ -83,7 +83,7 @@ export const updateSplitTransactions = async (
         tx.split_transaction_id,
         row,
         undefined,
-        user.user_id,
+        sharedWith(user),
         undefined,
         undefined,
         true,
@@ -109,7 +109,7 @@ export const deleteSplitTransactions = async (
   if (!split_transaction_ids.length) return { deleted: 0 };
   const deleted = await splitTransactionsTable.bulkSoftDelete(
     split_transaction_ids,
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     client,
   );
   return { deleted };

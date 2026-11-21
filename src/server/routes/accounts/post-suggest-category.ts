@@ -4,6 +4,7 @@ import {
   categoriesTable,
   isUuid,
   logger,
+  sharedWith,
   transactionsTable,
   USER_ID,
 } from "server";
@@ -127,13 +128,13 @@ export const postSuggestCategoryRoute = new Route<SuggestCategoryResponse>(
     // soft-delete predicate and the user scoping — the route no longer
     // hand-writes SQL for these reads.
     const [existingTxs, categoryRows, budgetRows] = await Promise.all([
-      transactionsTable.queryByIds(txIds, { [USER_ID]: user.user_id }),
+      transactionsTable.queryByIds(txIds, { [USER_ID]: sharedWith(user) }),
       categoryIds.length === 0
         ? []
-        : categoriesTable.queryByIds(categoryIds, { [USER_ID]: user.user_id }),
+        : categoriesTable.queryByIds(categoryIds, { [USER_ID]: sharedWith(user) }),
       budgetIds.length === 0
         ? []
-        : budgetsTable.queryByIds(budgetIds, { [USER_ID]: user.user_id }),
+        : budgetsTable.queryByIds(budgetIds, { [USER_ID]: sharedWith(user) }),
     ]);
     const validCategoryIds = new Set(categoryRows.map((r) => r.category_id));
     const validBudgetIds = new Set(budgetRows.map((r) => r.budget_id));
@@ -220,7 +221,7 @@ export const postSuggestCategoryRoute = new Route<SuggestCategoryResponse>(
                 s.transaction_id,
                 updates,
                 undefined,
-                user.user_id,
+                sharedWith(user),
               );
               return {
                 index,

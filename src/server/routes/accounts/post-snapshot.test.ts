@@ -310,3 +310,51 @@ describe("post-snapshot body validation", () => {
     expect(result!.body!.snapshot_id).toBe(`acct-A-${getSquashedDateString(new Date())}`);
   });
 });
+
+describe("post-snapshot on an account someone else in the sharing group owns", () => {
+  const OWNER_LOOKUP = /FROM\s+accounts\s+r\s+JOIN\s+users\b/i;
+  const SNAPSHOT_INSERT = /^\s*INSERT INTO snapshots\b/i;
+
+  /** The value a single-row INSERT binds to `column`, read off its own column list. */
+  const boundTo = (insert: { sql: string; values?: unknown[] }, column: string): unknown => {
+    const [, columnList, valueList] = /\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i.exec(insert.sql)!;
+    const columns = columnList.split(",").map((c) => c.trim());
+    const placeholders = valueList.split(",").map((p) => p.trim());
+    return insert.values![Number(placeholders[columns.indexOf(column)].slice(1)) - 1];
+  };
+
+  test("the upserted snapshot row carries the account owner's user_id", async () => {
+    ownedAccountRows = [{ user_id: "owner", username: "owner" }];
+
+    const result = await postSnapshotRoute.execute(makeReq(victimsAccount, "member"), fakeRes());
+
+    expect(result!.status).toBe("success");
+    const insert = issued.find((q) => SNAPSHOT_INSERT.test(q.sql));
+    expect(insert).toBeTruthy();
+    expect(boundTo(insert!, "user_id")).toBe("owner");
+    expect(insert!.values).not.toContain("member");
+    expect(boundTo(insert!, "account_id")).toBe("acct-A");
+  });
+
+  test("the owner lookup is keyed on the live account and scoped to the caller's sharing group", async () => {
+    ownedAccountRows = [{ user_id: "owner", username: "owner" }];
+
+    await postSnapshotRoute.execute(makeReq(victimsAccount, "member"), fakeRes());
+
+    const lookup = issued.find((q) => OWNER_LOOKUP.test(q.sql));
+    expect(lookup).toBeTruthy();
+    expect(lookup!.sql).toMatch(/r\.account_id = \$1 AND r\.user_id = ANY\(sharing_user_ids\(\$2\)\)/);
+    expect(lookup!.sql).toMatch(/r\.is_deleted IS NULL OR r\.is_deleted = FALSE/);
+    expect(lookup!.values).toEqual(["acct-A", "member"]);
+  });
+
+  test("an account outside the caller's sharing group is refused with no write", async () => {
+    ownedAccountRows = [];
+
+    const result = await postSnapshotRoute.execute(makeReq(victimsAccount, "member"), fakeRes());
+
+    expect(result).toEqual({ status: "failed", message: "Account not found or access denied." });
+    expect(issued).toHaveLength(1);
+    expect(issued[0].sql).toMatch(OWNER_LOOKUP);
+  });
+});

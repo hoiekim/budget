@@ -1,4 +1,11 @@
-import { Route, createSplitTransaction, requireQueryString, validationError } from "server";
+import {
+  Route,
+  createSplitTransaction,
+  getRowOwner,
+  requireQueryString,
+  transactionsTable,
+  validationError,
+} from "server";
 
 export type NewSplitTransactionGetResponse = { split_transaction_id: string };
 
@@ -20,7 +27,10 @@ export const getNewSplitTransactionRoute = new Route<NewSplitTransactionGetRespo
     const accountResult = requireQueryString(req, "account_id");
     if (!accountResult.success) return validationError(accountResult.error!);
     
-    const response = await createSplitTransaction(user, { 
+    const owner = await getRowOwner(user, transactionsTable, transactionResult.data!);
+    if (!owner) return { status: "failed", message: "Transaction not found." };
+
+    const response = await createSplitTransaction(owner, { 
       transaction_id: transactionResult.data!, 
       account_id: accountResult.data! 
     });

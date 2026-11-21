@@ -76,12 +76,15 @@ describe("scoreConfidence", () => {
  */
 function setupMock(opts: {
   users?: ReturnType<typeof userRow>[];
-  candidates?: unknown[] | ((userId: string) => unknown[]);
+  /** Each user's sharing group, themselves included; alone when absent. */
+  groups?: Record<string, string[]>;
+  /** Candidate rows; each lacking an owner gets the run's first member as it. */
+  candidates?: unknown[] | ((memberIds: string[]) => unknown[]);
   insertResult?: { rows: unknown[]; rowCount: number };
   insertRejector?: (sql: string, values: unknown[]) => boolean;
-  /** Throws on the cleanup UPDATE for the named user — simulates a per-user
-   *  failure so we can verify the engine isolates it and continues to the
-   *  next user. */
+  /** Throws on the cleanup UPDATE of the run covering the named user —
+   *  simulates a failed run so we can verify the engine isolates it and
+   *  continues to the next one. */
   cleanupFailOnUser?: string;
 }) {
   const users = opts.users ?? [];
@@ -95,9 +98,16 @@ function setupMock(opts: {
     ) {
       return { rows: [], rowCount: 0 };
     }
+    // The run's group, read once it holds the locks.
+    if (/^SELECT unnest\(sharing_user_ids\(\$1\)\) AS user_id$/.test(sql.trim())) {
+      const anchor = (values ?? [])[0] as string;
+      const rows = (opts.groups?.[anchor] ?? [anchor]).map((user_id) => ({ user_id }));
+      return { rows, rowCount: rows.length };
+    }
     // Stale-pair cleanup UPDATE.
     if (/^\s*UPDATE\s+transaction_pairs/i.test(sql) && /is_deleted\s*=\s*TRUE/i.test(sql)) {
-      if (opts.cleanupFailOnUser && (values ?? [])[0] === opts.cleanupFailOnUser) {
+      const memberIds = (values ?? [])[0] as string[];
+      if (opts.cleanupFailOnUser && memberIds.includes(opts.cleanupFailOnUser)) {
         throw new Error("cleanup rejected by test");
       }
       return { rows: [], rowCount: 0 };
@@ -108,10 +118,12 @@ function setupMock(opts: {
     }
     // fetchCandidates SELECT.
     if (/JOIN\s+transactions\s+t2/i.test(sql)) {
-      const candidates =
+      const memberIds = (values ?? [])[0] as string[];
+      const candidates = (
         typeof opts.candidates === "function"
-          ? opts.candidates((values ?? [])[0] as string)
-          : opts.candidates ?? [];
+          ? opts.candidates(memberIds)
+          : opts.candidates ?? []
+      ).map((row) => ({ user_id_a: memberIds[0], user_id_b: memberIds[0], ...(row as object) }));
       return { rows: candidates, rowCount: candidates.length };
     }
     // INSERT INTO transaction_pairs.
@@ -189,7 +201,7 @@ describe("runTransferDetection", () => {
     expect(inserts[0].values).not.toContain("txn-3");
   });
 
-  test("per-user BEGIN+advisory-lock+COMMIT wraps the work (serializes against manual mutations and concurrent engine runs)", async () => {
+  test("BEGIN + advisory locks + COMMIT wrap each run (serializes against manual mutations and concurrent engine runs)", async () => {
     setupMock({
       users: [userRow({ user_id: "user-1" })],
       candidates: [
@@ -204,15 +216,15 @@ describe("runTransferDetection", () => {
     const locks = calls.filter((s) => /pg_advisory_xact_lock/i.test(s));
     const commits = calls.filter((s) => /^COMMIT$/i.test(s));
     expect(begins).toHaveLength(1);
-    expect(locks).toHaveLength(1);
+    expect(locks).toHaveLength(2);
     expect(commits).toHaveLength(1);
     // The pool sees only the user list. A BEGIN there would mean the work ran
     // on a connection the advisory lock never covered.
     expect(mockUnsafe.mock.calls.map((c) => c[0] as string)).not.toContain("BEGIN");
-    // Lock key uses the user_id (so engine + manual mutations on the same
-    // user serialize). Round 1 (`pairTransactions`) uses the same key.
+    // The group lock is keyed from the user (so engine + manual mutations in
+    // the same group serialize); `pairTransactions` takes the same one.
     const lockCall = mockReservedUnsafe.mock.calls.find((c) =>
-      /pg_advisory_xact_lock/i.test(c[0] as string),
+      /pg_advisory_xact_lock\(/i.test(c[0] as string),
     )!;
     expect(lockCall[1] as unknown[]).toContain("user-1");
   });
@@ -225,8 +237,8 @@ describe("runTransferDetection", () => {
         userRow({ user_id: "user-bad" }),
         userRow({ user_id: "user-good" }),
       ],
-      candidates: (userId) =>
-        userId === "user-good"
+      candidates: (memberIds) =>
+        memberIds.includes("user-good")
           ? [
               {
                 transaction_id_a: "g-a",
@@ -410,4 +422,178 @@ describe("runTransferDetection", () => {
     expect(tail).not.toMatch(/a1\.hide/i);
     expect(tail).not.toMatch(/a2\.hide/i);
   });
+});
+
+// What a user's sharing group changes: one run covers the whole group, its
+// candidates pair transactions of any two members, a pair owned by anyone in
+// the group keeps its transactions from being suggested again, and the run
+// holds the membership lock so the group can't change under it.
+describe("runTransferDetection — sharing scope", () => {
+  /** A statement as Postgres reads it: comments dropped, whitespace collapsed. */
+  const flat = (sql: string) => sql.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim();
+
+  const run = async () => {
+    setupMock({
+      users: [userRow({ user_id: "user-1" })],
+      candidates: [
+        { transaction_id_a: "txn-a", transaction_id_b: "txn-b", date_delta: 0, is_plaid_transfer: false },
+      ],
+    });
+    await runTransferDetection();
+    const ran = mockReservedUnsafe.mock.calls.map(([sql, values]) => ({ sql: flat(sql), values }));
+    const only = (pattern: RegExp) => {
+      const matches = ran.filter(({ sql }) => pattern.test(sql));
+      expect(matches).toHaveLength(1);
+      return matches[0];
+    };
+    return {
+      ran,
+      candidates: only(/JOIN transactions t2/),
+      insert: only(/^INSERT INTO transaction_pairs/),
+    };
+  };
+
+  const LIVE = "(tp.is_deleted IS NULL OR tp.is_deleted = FALSE)";
+
+  test("the run holds the membership lock, then the group's lock, before it reads the group", async () => {
+    const { ran } = await run();
+    expect(ran.slice(0, 5)).toEqual([
+      { sql: "BEGIN", values: undefined },
+      { sql: "SELECT pg_advisory_xact_lock_shared(hashtext('sharing'))", values: undefined },
+      {
+        sql:
+          "SELECT pg_advisory_xact_lock(hashtext(" +
+          "(SELECT min(member::text) FROM unnest(sharing_user_ids($1)) member)" +
+          " || ':transfers'))",
+        values: ["user-1"],
+      },
+      { sql: "SELECT unnest(sharing_user_ids($1)) AS user_id", values: ["user-1"] },
+      expect.objectContaining({ sql: expect.stringMatching(/^UPDATE transaction_pairs tp/) }),
+    ]);
+  });
+
+  test("candidates are any two transactions of the people the run covers", async () => {
+    const { candidates } = await run();
+    expect(candidates.sql).toContain(
+      "FROM transactions t1 JOIN transactions t2" +
+        " ON t1.user_id = ANY($1::uuid[]) AND t2.user_id = ANY($1::uuid[]) AND t2.amount = -t1.amount",
+    );
+    expect(candidates.values).toEqual([["user-1"], 7, 500]);
+  });
+
+  test("a live pair owned by anyone in the group keeps either transaction out of the candidates", async () => {
+    const { candidates } = await run();
+    expect(candidates.sql).toContain(
+      "AND NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+        ` WHERE tp.user_id = ANY($1::uuid[]) AND ${LIVE} AND tp.status <> 'rejected'` +
+        " AND ( tp.transaction_id_a IN (t1.transaction_id, t2.transaction_id)" +
+        " OR tp.transaction_id_b IN (t1.transaction_id, t2.transaction_id) ) )" +
+        " AND NOT EXISTS (",
+    );
+  });
+
+  test("a rejection by anyone in the group keeps that same pair out of the candidates", async () => {
+    const { candidates } = await run();
+    expect(candidates.sql).toContain(
+      "AND NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+        ` WHERE tp.user_id = ANY($1::uuid[]) AND ${LIVE} AND tp.status = 'rejected'` +
+        " AND ( (tp.transaction_id_a = t1.transaction_id AND tp.transaction_id_b = t2.transaction_id)" +
+        " OR (tp.transaction_id_a = t2.transaction_id AND tp.transaction_id_b = t1.transaction_id) ) )" +
+        " ORDER BY ",
+    );
+  });
+
+  test("the insert is skipped when the group already pairs either transaction", async () => {
+    const { insert } = await run();
+    expect(insert.sql).toContain(
+      "INSERT INTO transaction_pairs (pair_id, user_id, transaction_id_a, transaction_id_b, status)" +
+        " SELECT $1, $2, $3, $4, 'suggested'" +
+        " WHERE NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+        ` WHERE tp.user_id = ANY($5::uuid[]) AND ${LIVE} AND tp.status <> 'rejected'` +
+        " AND ( tp.transaction_id_a IN ($3, $4) OR tp.transaction_id_b IN ($3, $4) ) )" +
+        " AND NOT EXISTS (",
+    );
+    expect(insert.values).toEqual([expect.any(String), "user-1", "txn-a", "txn-b", ["user-1"]]);
+  });
+
+  test("the insert is skipped when the group holds any row for this same pair, deleted or not", async () => {
+    const { insert } = await run();
+    const guard =
+      " AND NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+      " WHERE tp.user_id = ANY($5::uuid[])" +
+      " AND ( (tp.transaction_id_a = $3 AND tp.transaction_id_b = $4)" +
+      " OR (tp.transaction_id_a = $4 AND tp.transaction_id_b = $3) ) )";
+    // Anchored on the end of the statement: nothing follows the guard to widen it.
+    expect(insert.sql.slice(-guard.length)).toBe(guard);
+  });
+});
+
+describe("runTransferDetection — one run per sharing group", () => {
+  const GROUP = ["user-1", "user-2"];
+  const groups = { "user-1": GROUP, "user-2": GROUP, "user-3": ["user-3"] };
+  const statements = (pattern: RegExp) =>
+    mockReservedUnsafe.mock.calls
+      .map(([sql, values]) => ({ sql: String(sql), values: values as unknown[] }))
+      .filter(({ sql }) => pattern.test(sql));
+
+  test("a group gets one run, anchored on whichever member the user list names first", async () => {
+    setupMock({
+      users: [userRow({ user_id: "user-2" }), userRow({ user_id: "user-3" }), userRow({ user_id: "user-1" })],
+      groups,
+    });
+    await runTransferDetection();
+    expect(statements(/^BEGIN$/)).toHaveLength(2);
+    expect(statements(/^SELECT unnest\(sharing_user_ids/).map(({ values }) => values)).toEqual([
+      ["user-2"],
+      ["user-3"],
+    ]);
+    expect(statements(/JOIN\s+transactions\s+t2/).map(({ values }) => values[0])).toEqual([
+      GROUP,
+      ["user-3"],
+    ]);
+  });
+
+  test("each member keeps the candidate budget they had alone", async () => {
+    setupMock({ users: [userRow({ user_id: "user-1" }), userRow({ user_id: "user-3" })], groups });
+    await runTransferDetection();
+    expect(statements(/JOIN\s+transactions\s+t2/).map(({ values }) => values[2])).toEqual([1000, 500]);
+  });
+
+  test("the stale-pair cleanup covers every member's pairs", async () => {
+    setupMock({ users: [userRow({ user_id: "user-1" })], groups });
+    await runTransferDetection();
+    const [cleanup] = statements(/^\s*UPDATE\s+transaction_pairs/i);
+    expect(cleanup.sql.replace(/\s+/g, " ")).toContain(
+      "WHERE tp.user_id = ANY($1::uuid[]) AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE) AND EXISTS (",
+    );
+    expect(cleanup.values).toEqual([GROUP]);
+  });
+
+  // The candidate's order is the database's collation; the pair's is canonicalizePairIds'.
+  test.each([
+    ["in the same order", "txn-a", "user-2", "txn-b", "user-1", "user-2"],
+    ["in the other order", "txn-b", "user-2", "txn-a", "user-1", "user-1"],
+  ])(
+    "a pair across two members belongs to the owner of its canonical first transaction, with the candidate %s",
+    async (_order, idA, ownerA, idB, ownerB, expectedOwner) => {
+      setupMock({
+        users: [userRow({ user_id: "user-1" })],
+        groups,
+        candidates: [
+          {
+            transaction_id_a: idA,
+            transaction_id_b: idB,
+            user_id_a: ownerA,
+            user_id_b: ownerB,
+            date_delta: 0,
+            is_plaid_transfer: false,
+          },
+        ],
+      });
+      await runTransferDetection();
+      const inserts = findInsertCalls();
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0].values.slice(1)).toEqual([expectedOwner, "txn-a", "txn-b", GROUP]);
+    },
+  );
 });
