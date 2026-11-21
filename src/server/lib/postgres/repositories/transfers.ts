@@ -1,6 +1,11 @@
 import { JSONTransaction, TransferPairStatus } from "common";
 import { pool } from "../client";
-import { sharedWith, sharedWithSql, sharingLockKeySql } from "../database";
+import {
+  SHARING_MEMBERSHIP_LOCK_KEY,
+  sharedWith,
+  sharedWithSql,
+  sharingLockKeySql,
+} from "../database";
 import {
   MaskedUser,
   transactionsTable,
@@ -14,11 +19,29 @@ import {
   IS_DELETED,
   UPDATED,
   canonicalizePairIds,
+  type QueryExecutor,
 } from "../models";
 import {
   TRANSACTIONS,
   TRANSACTION_PAIRS,
 } from "common/constants";
+
+/**
+ * Serializes every transfer-pair write in `user_id`'s sharing group: manual
+ * pairing, confirming, and the detection job. Without it, two concurrent
+ * writers (double-click, two tabs, two people sharing data, the hourly job)
+ * can each pass a collision check before either commits — READ COMMITTED
+ * hides the in-flight write — and leave one transaction in two active pairs.
+ * The group cannot change until the caller's transaction ends, so a pair is
+ * never written across people who have just stopped sharing.
+ */
+export const lockTransferPairs = async (client: QueryExecutor, user_id: string): Promise<void> => {
+  await client.query(`SELECT pg_advisory_xact_lock_shared(${SHARING_MEMBERSHIP_LOCK_KEY})`);
+  await client.query(
+    `SELECT pg_advisory_xact_lock(hashtext(${sharingLockKeySql("$1")} || ':transfers'))`,
+    [user_id],
+  );
+};
 
 
 export interface TransferPair {
@@ -188,17 +211,7 @@ export const pairTransactions = async (
   try {
     await client.query("BEGIN");
 
-    // Serialization of all transfer-pair mutations within a sharing group via
-    // a transaction-scoped advisory lock. Without it, two concurrent calls
-    // (double-click, two tabs, two people sharing data) can each pass the
-    // collision SELECT before either commits — READ COMMITTED hides the
-    // in-flight UPDATE — and both succeed, leaving A in two simultaneous
-    // active confirmed pairs. Scoped to the group so that only the people
-    // who can touch the same pairs contend.
-    await client.query(
-      `SELECT pg_advisory_xact_lock(hashtext(${sharingLockKeySql("$1")} || ':transfers'))`,
-      [user.user_id],
-    );
+    await lockTransferPairs(client, user.user_id);
 
     // Existence pre-check: BOTH transactions must exist, be alive, and belong
     // to this user or to someone sharing data with them. `FOR SHARE` takes a
@@ -342,13 +355,9 @@ export const confirmTransferPair = async (
   try {
     await client.query("BEGIN");
 
-    // Per-group advisory lock — see comment in `pairTransactions`. Same
-    // race-window concern: a concurrent confirm of a different pair_id
-    // involving the same transaction would slip past the collision SELECT.
-    await client.query(
-      `SELECT pg_advisory_xact_lock(hashtext(${sharingLockKeySql("$1")} || ':transfers'))`,
-      [user.user_id],
-    );
+    // A concurrent confirm of a different pair_id involving the same
+    // transaction would otherwise slip past the collision SELECT.
+    await lockTransferPairs(client, user.user_id);
 
     // Look up the pair's transaction_ids. Missing, soft-deleted, or
     // rejection records all fail cleanly. The status filter blocks a client

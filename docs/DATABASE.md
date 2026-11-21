@@ -49,7 +49,7 @@ await transactionsTable.bulkSoftDelete(ids, { user_id: sharedWith(user) });
 await pool.query(`SELECT … FROM holdings h WHERE ${sharedWithSql("h.user_id", "$1")}`, [user.user_id]);
 ```
 
-Both render `user_id = ANY(sharing_user_ids($n))`. The bound value is still the user's own id, and `sharing_user_ids` (a SQL function created at every start, beside the tables) widens it to their sharing group inside the statement. A bare `user.user_id` in an owner slot means "this user's own rows only": right for `api_keys`, and for the sync and detection jobs, which work one owner at a time.
+Both render `user_id = ANY(sharing_user_ids($n))`. The bound value is still the user's own id, and `sharing_user_ids` (a SQL function created at every start, beside the tables) widens it to their sharing group inside the statement. A bare `user.user_id` in an owner slot means "this user's own rows only": right for `api_keys`, and for the sync, auto-suggest and recurring-detection jobs, which work one owner at a time. Transfer detection works one sharing group at a time and binds the group's ids as `ANY($n::uuid[])`, read once under the membership lock so they hold for the whole run.
 
 A new row's `user_id` is a value, not a scope: write the owner of the row's parent there (`getRowOwner`), never whoever in the group made the request.
 

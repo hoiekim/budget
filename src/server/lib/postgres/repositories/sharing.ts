@@ -7,7 +7,7 @@ import {
   USERS,
 } from "common/constants";
 import { pool, withTransaction } from "../client";
-import { SHARING_USER_IDS, sharedWithSql } from "../database";
+import { SHARING_MEMBERSHIP_LOCK_KEY, SHARING_USER_IDS, sharedWithSql } from "../database";
 import {
   MaskedUser,
   QueryExecutor,
@@ -74,7 +74,7 @@ const INVITATION_CONCERNS_USER = `(i.${INVITEE_USER_ID} = $1 OR ${sharedWithSql(
 
 /** Sharing changes are rare, and one lock for all of them keeps every membership check race-free. */
 const lockSharing = (client: QueryExecutor): Promise<unknown> =>
-  client.query(`SELECT pg_advisory_xact_lock(hashtext('sharing'))`);
+  client.query(`SELECT pg_advisory_xact_lock(${SHARING_MEMBERSHIP_LOCK_KEY})`);
 
 /** The user and everyone in their sharing group. */
 export const getSharingUserIds = async (

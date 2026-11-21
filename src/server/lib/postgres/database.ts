@@ -42,6 +42,14 @@ export const sharedWithSql = (column: string, placeholder: string): string =>
 export const sharingLockKeySql = (placeholder: string): string =>
   `(SELECT min(member::text) FROM unnest(${SHARING_USER_IDS}(${placeholder})) member)`;
 
+/**
+ * The advisory-lock key of sharing membership as a whole. Joining or leaving
+ * a group holds it exclusively; work that reads a group and must not see it
+ * change midway holds it shared, and takes it before any lock keyed on the
+ * group (`sharingLockKeySql`), so the two never wait on each other in turn.
+ */
+export const SHARING_MEMBERSHIP_LOCK_KEY = "hashtext('sharing')";
+
 const equalityCondition = (column: string, value: unknown, paramIndex: number): string =>
   value instanceof SharedWith
     ? sharedWithSql(column, `$${paramIndex}`)

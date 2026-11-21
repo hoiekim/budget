@@ -23,6 +23,7 @@ Two or more users can share their data: every account, transaction, budget and c
 
 - On the Configuration page, enter the other user's username under **Share Data** and send the invitation. It appears on their Configuration page, where they accept or decline it.
 - Once they accept, both of you see and edit everything. Only the Configuration page tells whose a connection is: each one under **Connections** carries its owner's username.
+- Transfers between two people's accounts are suggested like transfers between one person's.
 - Inviting someone while you already share brings them into the same group, so everyone in it shares with everyone. A user is in one group at a time.
 - **Stop Sharing** on the Configuration page ends it. Everyone keeps what they own: a connection and its accounts and transactions stay with whoever made the connection, and a budget with whoever created it, whoever edited them since. Labels that point at the other person's budgets are kept, and work again if you share again.
 - API keys and sign-in stay personal. An API key acts as its owner, so it reaches the shared data too.

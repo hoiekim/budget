@@ -74,12 +74,13 @@ describe("post-transfer-pair", () => {
     expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
-  // `confirmTransferPair` now runs in a DB transaction: BEGIN, advisory
-  // lock, lookup SELECT, collision SELECT, UPDATE status, cleanup UPDATE,
+  // `confirmTransferPair` now runs in a DB transaction: BEGIN, two advisory
+  // locks, lookup SELECT, collision SELECT, UPDATE status, cleanup UPDATE,
   // COMMIT.
   function stageConfirmOk(pairTxnA = "tx-a", pairTxnB = "tx-b") {
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
-    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // membership lock
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // transfer lock
     mockReservedUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
       rowCount: 1,
@@ -224,7 +225,7 @@ describe("post-transfer-pair", () => {
       expect(result?.status).toBe("success");
     });
 
-    // `pairTransactions` runs in a DB transaction: BEGIN, advisory lock,
+    // `pairTransactions` runs in a DB transaction: BEGIN, two advisory locks,
     // existence pre-check, collision SELECT, INSERT, cleanup UPDATE, COMMIT.
     function stagePairOk(
       insertPairId: string,
@@ -234,7 +235,8 @@ describe("post-transfer-pair", () => {
       ],
     ) {
       mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
-      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // membership lock
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // transfer lock
       mockReservedUnsafe.mockResolvedValueOnce({
         rows: transactions,
         rowCount: 2,
