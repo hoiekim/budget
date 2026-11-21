@@ -1,0 +1,3279 @@
+{
+  "columns": [
+    {
+      "table_name": "accounts",
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "item_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "institution_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "subtype",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 100,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "balances_available",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "balances_current",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "balances_limit",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "balances_iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "custom_name",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "hide",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "archived",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "label_budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "graph_options_use_snapshots",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "true"
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "graph_options_use_holding_snapshots",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "true"
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "graph_options_use_transactions",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "true"
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "plan_fund_mappings",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "accounts",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "key_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "key_hash",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 64,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "key_prefix",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 16,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "scopes",
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "last_used_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "revoked_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "api_keys",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "'Unnamed'::character varying"
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "'USD'::character varying"
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "roll_over",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "roll_over_start_date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "capacities",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "budgets",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "categories",
+      "column_name": "category_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "categories",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "categories",
+      "column_name": "section_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "categories",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "'Unnamed'::character varying"
+    },
+    {
+      "table_name": "categories",
+      "column_name": "roll_over",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "categories",
+      "column_name": "roll_over_start_date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "categories",
+      "column_name": "capacities",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "categories",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "categories",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "charts",
+      "column_name": "chart_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "charts",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "charts",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "'Unnamed'::character varying"
+    },
+    {
+      "table_name": "charts",
+      "column_name": "type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "charts",
+      "column_name": "configuration",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "charts",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "charts",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "cpi_snapshots",
+      "column_name": "cpi_snapshot_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "cpi_snapshots",
+      "column_name": "series_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "cpi_snapshots",
+      "column_name": "snapshot_date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "cpi_snapshots",
+      "column_name": "index_value",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "cpi_snapshots",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "holding_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "security_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "institution_price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "institution_price_as_of",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "institution_value",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "cost_basis",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "quantity",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "holdings",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "institutions",
+      "column_name": "institution_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "institutions",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "institutions",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "institutions",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "investment_transaction_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "security_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "name",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "amount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "quantity",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "type",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "subtype",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "label_budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "label_category_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "label_memo",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "investment_transactions",
+      "column_name": "source",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "'plaid'::character varying"
+    },
+    {
+      "table_name": "items",
+      "column_name": "item_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "access_token",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "institution_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "available_products",
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "cursor",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "status",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "status_reason",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "provider",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "last_sync_status",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "last_sync_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "last_sync_error",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "items",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "items",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "recurring_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "merchant_key",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "merchant_name",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "cadence",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "is_income",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "status",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "transaction_ids",
+      "data_type": "ARRAY",
+      "udt_name": "_text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "'{}'::text[]"
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "label_budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "label_category_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "splits",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "'[]'::jsonb"
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "splits_since",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "recurrings",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "rejected_categories",
+      "column_name": "transaction_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "rejected_categories",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "rejected_categories",
+      "column_name": "category_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "rejected_categories",
+      "column_name": "rejected_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "sections",
+      "column_name": "section_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "sections",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sections",
+      "column_name": "budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sections",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "'Unnamed'::character varying"
+    },
+    {
+      "table_name": "sections",
+      "column_name": "roll_over",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "sections",
+      "column_name": "roll_over_start_date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sections",
+      "column_name": "capacities",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sections",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "sections",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "securities",
+      "column_name": "security_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "name",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "ticker_symbol",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "close_price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "close_price_as_of",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "isin",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "cusip",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "securities",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "session_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "user_user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "user_username",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_original_max_age",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "numeric_precision": 64,
+      "numeric_scale": 0,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_max_age",
+      "data_type": "bigint",
+      "udt_name": "int8",
+      "character_maximum_length": null,
+      "numeric_precision": 64,
+      "numeric_scale": 0,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_signed",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_expires",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_http_only",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_path",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_domain",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_secure",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "cookie_same_site",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "auth_sid",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "auth_refresh_token",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "sessions",
+      "column_name": "auth_recheck_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "snapshot_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "snapshot_date",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "snapshot_type",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 50,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "balances_available",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "balances_current",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "balances_limit",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "balances_iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "security_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "close_price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "holding_account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "holding_security_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "institution_price",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "institution_value",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "cost_basis",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "quantity",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 6,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "snapshots",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "split_transaction_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "transaction_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "amount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": "0"
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "custom_name",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "''::text"
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "label_budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "label_category_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "label_memo",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "label_category_confidence",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "numeric_precision": 53,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "split_transactions",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "pair_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "transaction_id_a",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "transaction_id_b",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "status",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "transaction_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "account_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "name",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "merchant_name",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "amount",
+      "data_type": "numeric",
+      "udt_name": "numeric",
+      "character_maximum_length": null,
+      "numeric_precision": 15,
+      "numeric_scale": 2,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "iso_currency_code",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 10,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "date",
+      "data_type": "date",
+      "udt_name": "date",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "pending",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "pending_transaction_id",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "payment_channel",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "location_country",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "location_region",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "location_city",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "label_budget_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "label_category_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "label_memo",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "label_category_confidence",
+      "data_type": "double precision",
+      "udt_name": "float8",
+      "character_maximum_length": null,
+      "numeric_precision": 53,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "raw",
+      "data_type": "jsonb",
+      "udt_name": "jsonb",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    },
+    {
+      "table_name": "transactions",
+      "column_name": "source",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 20,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "'plaid'::character varying"
+    },
+    {
+      "table_name": "users",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "users",
+      "column_name": "username",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "users",
+      "column_name": "password",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "users",
+      "column_name": "email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "users",
+      "column_name": "expiry",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "users",
+      "column_name": "token",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "users",
+      "column_name": "auth_sub",
+      "data_type": "text",
+      "udt_name": "text",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "users",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "users",
+      "column_name": "is_deleted",
+      "data_type": "boolean",
+      "udt_name": "bool",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "false"
+    }
+  ],
+  "indexes": [
+    {
+      "tablename": "accounts",
+      "indexname": "accounts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX accounts_pkey ON public.accounts USING btree (account_id)"
+    },
+    {
+      "tablename": "accounts",
+      "indexname": "idx_accounts_institution_id",
+      "indexdef": "CREATE INDEX idx_accounts_institution_id ON public.accounts USING btree (institution_id)"
+    },
+    {
+      "tablename": "accounts",
+      "indexname": "idx_accounts_item_id",
+      "indexdef": "CREATE INDEX idx_accounts_item_id ON public.accounts USING btree (item_id)"
+    },
+    {
+      "tablename": "accounts",
+      "indexname": "idx_accounts_user_id",
+      "indexdef": "CREATE INDEX idx_accounts_user_id ON public.accounts USING btree (user_id)"
+    },
+    {
+      "tablename": "api_keys",
+      "indexname": "api_keys_key_hash_key",
+      "indexdef": "CREATE UNIQUE INDEX api_keys_key_hash_key ON public.api_keys USING btree (key_hash)"
+    },
+    {
+      "tablename": "api_keys",
+      "indexname": "api_keys_pkey",
+      "indexdef": "CREATE UNIQUE INDEX api_keys_pkey ON public.api_keys USING btree (key_id)"
+    },
+    {
+      "tablename": "api_keys",
+      "indexname": "idx_api_keys_key_hash",
+      "indexdef": "CREATE INDEX idx_api_keys_key_hash ON public.api_keys USING btree (key_hash)"
+    },
+    {
+      "tablename": "api_keys",
+      "indexname": "idx_api_keys_user_id",
+      "indexdef": "CREATE INDEX idx_api_keys_user_id ON public.api_keys USING btree (user_id)"
+    },
+    {
+      "tablename": "budgets",
+      "indexname": "budgets_pkey",
+      "indexdef": "CREATE UNIQUE INDEX budgets_pkey ON public.budgets USING btree (budget_id)"
+    },
+    {
+      "tablename": "budgets",
+      "indexname": "idx_budgets_user_id",
+      "indexdef": "CREATE INDEX idx_budgets_user_id ON public.budgets USING btree (user_id)"
+    },
+    {
+      "tablename": "categories",
+      "indexname": "categories_pkey",
+      "indexdef": "CREATE UNIQUE INDEX categories_pkey ON public.categories USING btree (category_id)"
+    },
+    {
+      "tablename": "categories",
+      "indexname": "idx_categories_section_id",
+      "indexdef": "CREATE INDEX idx_categories_section_id ON public.categories USING btree (section_id)"
+    },
+    {
+      "tablename": "categories",
+      "indexname": "idx_categories_user_id",
+      "indexdef": "CREATE INDEX idx_categories_user_id ON public.categories USING btree (user_id)"
+    },
+    {
+      "tablename": "charts",
+      "indexname": "charts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX charts_pkey ON public.charts USING btree (chart_id)"
+    },
+    {
+      "tablename": "charts",
+      "indexname": "idx_charts_user_id",
+      "indexdef": "CREATE INDEX idx_charts_user_id ON public.charts USING btree (user_id)"
+    },
+    {
+      "tablename": "cpi_snapshots",
+      "indexname": "cpi_snapshots_pkey",
+      "indexdef": "CREATE UNIQUE INDEX cpi_snapshots_pkey ON public.cpi_snapshots USING btree (cpi_snapshot_id)"
+    },
+    {
+      "tablename": "cpi_snapshots",
+      "indexname": "idx_cpi_snapshots_series_id",
+      "indexdef": "CREATE INDEX idx_cpi_snapshots_series_id ON public.cpi_snapshots USING btree (series_id)"
+    },
+    {
+      "tablename": "holdings",
+      "indexname": "holdings_pkey",
+      "indexdef": "CREATE UNIQUE INDEX holdings_pkey ON public.holdings USING btree (holding_id)"
+    },
+    {
+      "tablename": "holdings",
+      "indexname": "idx_holdings_account_id",
+      "indexdef": "CREATE INDEX idx_holdings_account_id ON public.holdings USING btree (account_id)"
+    },
+    {
+      "tablename": "holdings",
+      "indexname": "idx_holdings_security_id",
+      "indexdef": "CREATE INDEX idx_holdings_security_id ON public.holdings USING btree (security_id)"
+    },
+    {
+      "tablename": "holdings",
+      "indexname": "idx_holdings_user_id",
+      "indexdef": "CREATE INDEX idx_holdings_user_id ON public.holdings USING btree (user_id)"
+    },
+    {
+      "tablename": "institutions",
+      "indexname": "institutions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX institutions_pkey ON public.institutions USING btree (institution_id)"
+    },
+    {
+      "tablename": "investment_transactions",
+      "indexname": "idx_investment_transactions_account_id",
+      "indexdef": "CREATE INDEX idx_investment_transactions_account_id ON public.investment_transactions USING btree (account_id)"
+    },
+    {
+      "tablename": "investment_transactions",
+      "indexname": "idx_investment_transactions_date",
+      "indexdef": "CREATE INDEX idx_investment_transactions_date ON public.investment_transactions USING btree (date)"
+    },
+    {
+      "tablename": "investment_transactions",
+      "indexname": "idx_investment_transactions_user_id_investment_transaction_id",
+      "indexdef": "CREATE INDEX idx_investment_transactions_user_id_investment_transaction_id ON public.investment_transactions USING btree (user_id, investment_transaction_id)"
+    },
+    {
+      "tablename": "investment_transactions",
+      "indexname": "idx_investment_transactions_user_id_updated",
+      "indexdef": "CREATE INDEX idx_investment_transactions_user_id_updated ON public.investment_transactions USING btree (user_id, updated)"
+    },
+    {
+      "tablename": "investment_transactions",
+      "indexname": "investment_transactions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX investment_transactions_pkey ON public.investment_transactions USING btree (investment_transaction_id)"
+    },
+    {
+      "tablename": "items",
+      "indexname": "idx_items_institution_id",
+      "indexdef": "CREATE INDEX idx_items_institution_id ON public.items USING btree (institution_id)"
+    },
+    {
+      "tablename": "items",
+      "indexname": "idx_items_user_id",
+      "indexdef": "CREATE INDEX idx_items_user_id ON public.items USING btree (user_id)"
+    },
+    {
+      "tablename": "items",
+      "indexname": "items_pkey",
+      "indexdef": "CREATE UNIQUE INDEX items_pkey ON public.items USING btree (item_id)"
+    },
+    {
+      "tablename": "recurrings",
+      "indexname": "idx_recurrings_user_id_merchant_key",
+      "indexdef": "CREATE INDEX idx_recurrings_user_id_merchant_key ON public.recurrings USING btree (user_id, merchant_key)"
+    },
+    {
+      "tablename": "recurrings",
+      "indexname": "idx_recurrings_user_id_updated",
+      "indexdef": "CREATE INDEX idx_recurrings_user_id_updated ON public.recurrings USING btree (user_id, updated)"
+    },
+    {
+      "tablename": "recurrings",
+      "indexname": "recurrings_pkey",
+      "indexdef": "CREATE UNIQUE INDEX recurrings_pkey ON public.recurrings USING btree (recurring_id)"
+    },
+    {
+      "tablename": "recurrings",
+      "indexname": "recurrings_user_merchant_direction_unique",
+      "indexdef": "CREATE UNIQUE INDEX recurrings_user_merchant_direction_unique ON public.recurrings USING btree (user_id, merchant_key, is_income)"
+    },
+    {
+      "tablename": "rejected_categories",
+      "indexname": "idx_rejected_categories_user_id",
+      "indexdef": "CREATE INDEX idx_rejected_categories_user_id ON public.rejected_categories USING btree (user_id)"
+    },
+    {
+      "tablename": "rejected_categories",
+      "indexname": "rejected_categories_pkey",
+      "indexdef": "CREATE UNIQUE INDEX rejected_categories_pkey ON public.rejected_categories USING btree (transaction_id, category_id)"
+    },
+    {
+      "tablename": "sections",
+      "indexname": "idx_sections_budget_id",
+      "indexdef": "CREATE INDEX idx_sections_budget_id ON public.sections USING btree (budget_id)"
+    },
+    {
+      "tablename": "sections",
+      "indexname": "idx_sections_user_id",
+      "indexdef": "CREATE INDEX idx_sections_user_id ON public.sections USING btree (user_id)"
+    },
+    {
+      "tablename": "sections",
+      "indexname": "sections_pkey",
+      "indexdef": "CREATE UNIQUE INDEX sections_pkey ON public.sections USING btree (section_id)"
+    },
+    {
+      "tablename": "securities",
+      "indexname": "securities_pkey",
+      "indexdef": "CREATE UNIQUE INDEX securities_pkey ON public.securities USING btree (security_id)"
+    },
+    {
+      "tablename": "sessions",
+      "indexname": "idx_sessions_auth_sid",
+      "indexdef": "CREATE INDEX idx_sessions_auth_sid ON public.sessions USING btree (auth_sid)"
+    },
+    {
+      "tablename": "sessions",
+      "indexname": "idx_sessions_user_user_id",
+      "indexdef": "CREATE INDEX idx_sessions_user_user_id ON public.sessions USING btree (user_user_id)"
+    },
+    {
+      "tablename": "sessions",
+      "indexname": "sessions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (session_id)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_account_id",
+      "indexdef": "CREATE INDEX idx_snapshots_account_id ON public.snapshots USING btree (account_id)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_holding_account_id",
+      "indexdef": "CREATE INDEX idx_snapshots_holding_account_id ON public.snapshots USING btree (holding_account_id)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_security_id",
+      "indexdef": "CREATE INDEX idx_snapshots_security_id ON public.snapshots USING btree (security_id)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_snapshot_date",
+      "indexdef": "CREATE INDEX idx_snapshots_snapshot_date ON public.snapshots USING btree (snapshot_date)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_snapshot_type",
+      "indexdef": "CREATE INDEX idx_snapshots_snapshot_type ON public.snapshots USING btree (snapshot_type)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_user_id_snapshot_id",
+      "indexdef": "CREATE INDEX idx_snapshots_user_id_snapshot_id ON public.snapshots USING btree (user_id, snapshot_id)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "idx_snapshots_user_id_updated",
+      "indexdef": "CREATE INDEX idx_snapshots_user_id_updated ON public.snapshots USING btree (user_id, updated)"
+    },
+    {
+      "tablename": "snapshots",
+      "indexname": "snapshots_pkey",
+      "indexdef": "CREATE UNIQUE INDEX snapshots_pkey ON public.snapshots USING btree (snapshot_id)"
+    },
+    {
+      "tablename": "split_transactions",
+      "indexname": "idx_split_transactions_account_id",
+      "indexdef": "CREATE INDEX idx_split_transactions_account_id ON public.split_transactions USING btree (account_id)"
+    },
+    {
+      "tablename": "split_transactions",
+      "indexname": "idx_split_transactions_transaction_id",
+      "indexdef": "CREATE INDEX idx_split_transactions_transaction_id ON public.split_transactions USING btree (transaction_id)"
+    },
+    {
+      "tablename": "split_transactions",
+      "indexname": "idx_split_transactions_user_id_updated",
+      "indexdef": "CREATE INDEX idx_split_transactions_user_id_updated ON public.split_transactions USING btree (user_id, updated)"
+    },
+    {
+      "tablename": "split_transactions",
+      "indexname": "split_transactions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX split_transactions_pkey ON public.split_transactions USING btree (split_transaction_id)"
+    },
+    {
+      "tablename": "transaction_pairs",
+      "indexname": "idx_transaction_pairs_transaction_id_a",
+      "indexdef": "CREATE INDEX idx_transaction_pairs_transaction_id_a ON public.transaction_pairs USING btree (transaction_id_a)"
+    },
+    {
+      "tablename": "transaction_pairs",
+      "indexname": "idx_transaction_pairs_transaction_id_b",
+      "indexdef": "CREATE INDEX idx_transaction_pairs_transaction_id_b ON public.transaction_pairs USING btree (transaction_id_b)"
+    },
+    {
+      "tablename": "transaction_pairs",
+      "indexname": "idx_transaction_pairs_user_id_updated",
+      "indexdef": "CREATE INDEX idx_transaction_pairs_user_id_updated ON public.transaction_pairs USING btree (user_id, updated)"
+    },
+    {
+      "tablename": "transaction_pairs",
+      "indexname": "transaction_pairs_pair_unique",
+      "indexdef": "CREATE UNIQUE INDEX transaction_pairs_pair_unique ON public.transaction_pairs USING btree (transaction_id_a, transaction_id_b)"
+    },
+    {
+      "tablename": "transaction_pairs",
+      "indexname": "transaction_pairs_pkey",
+      "indexdef": "CREATE UNIQUE INDEX transaction_pairs_pkey ON public.transaction_pairs USING btree (pair_id)"
+    },
+    {
+      "tablename": "transactions",
+      "indexname": "idx_transactions_account_id",
+      "indexdef": "CREATE INDEX idx_transactions_account_id ON public.transactions USING btree (account_id)"
+    },
+    {
+      "tablename": "transactions",
+      "indexname": "idx_transactions_date",
+      "indexdef": "CREATE INDEX idx_transactions_date ON public.transactions USING btree (date)"
+    },
+    {
+      "tablename": "transactions",
+      "indexname": "idx_transactions_pending",
+      "indexdef": "CREATE INDEX idx_transactions_pending ON public.transactions USING btree (pending)"
+    },
+    {
+      "tablename": "transactions",
+      "indexname": "idx_transactions_user_id_transaction_id",
+      "indexdef": "CREATE INDEX idx_transactions_user_id_transaction_id ON public.transactions USING btree (user_id, transaction_id)"
+    },
+    {
+      "tablename": "transactions",
+      "indexname": "idx_transactions_user_id_updated",
+      "indexdef": "CREATE INDEX idx_transactions_user_id_updated ON public.transactions USING btree (user_id, updated)"
+    },
+    {
+      "tablename": "transactions",
+      "indexname": "transactions_pkey",
+      "indexdef": "CREATE UNIQUE INDEX transactions_pkey ON public.transactions USING btree (transaction_id)"
+    },
+    {
+      "tablename": "users",
+      "indexname": "idx_users_lower_email",
+      "indexdef": "CREATE UNIQUE INDEX idx_users_lower_email ON public.users USING btree (lower((email)::text)) WHERE (email IS NOT NULL)"
+    },
+    {
+      "tablename": "users",
+      "indexname": "users_auth_sub_key",
+      "indexdef": "CREATE UNIQUE INDEX users_auth_sub_key ON public.users USING btree (auth_sub)"
+    },
+    {
+      "tablename": "users",
+      "indexname": "users_pkey",
+      "indexdef": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (user_id)"
+    },
+    {
+      "tablename": "users",
+      "indexname": "users_username_key",
+      "indexdef": "CREATE UNIQUE INDEX users_username_key ON public.users USING btree (username)"
+    }
+  ],
+  "constraints": [
+    {
+      "table_name": "accounts",
+      "constraint_name": "accounts_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (account_id)"
+    },
+    {
+      "table_name": "accounts",
+      "constraint_name": "accounts_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "api_keys",
+      "constraint_name": "api_keys_key_hash_key",
+      "constraint_type": "u",
+      "definition": "UNIQUE (key_hash)"
+    },
+    {
+      "table_name": "api_keys",
+      "constraint_name": "api_keys_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (key_id)"
+    },
+    {
+      "table_name": "api_keys",
+      "constraint_name": "api_keys_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "budgets",
+      "constraint_name": "budgets_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (budget_id)"
+    },
+    {
+      "table_name": "budgets",
+      "constraint_name": "budgets_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "categories",
+      "constraint_name": "categories_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (category_id)"
+    },
+    {
+      "table_name": "categories",
+      "constraint_name": "categories_section_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (section_id) REFERENCES sections(section_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "categories",
+      "constraint_name": "categories_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "charts",
+      "constraint_name": "charts_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (chart_id)"
+    },
+    {
+      "table_name": "charts",
+      "constraint_name": "charts_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "cpi_snapshots",
+      "constraint_name": "cpi_snapshots_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (cpi_snapshot_id)"
+    },
+    {
+      "table_name": "holdings",
+      "constraint_name": "holdings_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (holding_id)"
+    },
+    {
+      "table_name": "holdings",
+      "constraint_name": "holdings_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "institutions",
+      "constraint_name": "institutions_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (institution_id)"
+    },
+    {
+      "table_name": "investment_transactions",
+      "constraint_name": "investment_transactions_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (investment_transaction_id)"
+    },
+    {
+      "table_name": "investment_transactions",
+      "constraint_name": "investment_transactions_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "items",
+      "constraint_name": "items_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (item_id)"
+    },
+    {
+      "table_name": "items",
+      "constraint_name": "items_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "recurrings",
+      "constraint_name": "recurrings_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (recurring_id)"
+    },
+    {
+      "table_name": "recurrings",
+      "constraint_name": "recurrings_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "recurrings",
+      "constraint_name": "recurrings_user_merchant_direction_unique",
+      "constraint_type": "u",
+      "definition": "UNIQUE (user_id, merchant_key, is_income)"
+    },
+    {
+      "table_name": "rejected_categories",
+      "constraint_name": "rejected_categories_category_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (category_id) REFERENCES categories(category_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "rejected_categories",
+      "constraint_name": "rejected_categories_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (transaction_id, category_id)"
+    },
+    {
+      "table_name": "rejected_categories",
+      "constraint_name": "rejected_categories_transaction_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (transaction_id) REFERENCES transactions(transaction_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "rejected_categories",
+      "constraint_name": "rejected_categories_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "sections",
+      "constraint_name": "sections_budget_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (budget_id) REFERENCES budgets(budget_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "sections",
+      "constraint_name": "sections_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (section_id)"
+    },
+    {
+      "table_name": "sections",
+      "constraint_name": "sections_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "securities",
+      "constraint_name": "securities_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (security_id)"
+    },
+    {
+      "table_name": "sessions",
+      "constraint_name": "sessions_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (session_id)"
+    },
+    {
+      "table_name": "snapshots",
+      "constraint_name": "snapshots_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (snapshot_id)"
+    },
+    {
+      "table_name": "split_transactions",
+      "constraint_name": "split_transactions_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (split_transaction_id)"
+    },
+    {
+      "table_name": "split_transactions",
+      "constraint_name": "split_transactions_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "constraint_name": "transaction_pairs_pair_unique",
+      "constraint_type": "u",
+      "definition": "UNIQUE (transaction_id_a, transaction_id_b)"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "constraint_name": "transaction_pairs_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (pair_id)"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "constraint_name": "transaction_pairs_transaction_id_a_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (transaction_id_a) REFERENCES transactions(transaction_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "constraint_name": "transaction_pairs_transaction_id_b_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (transaction_id_b) REFERENCES transactions(transaction_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "transaction_pairs",
+      "constraint_name": "transaction_pairs_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "transactions",
+      "constraint_name": "transactions_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (transaction_id)"
+    },
+    {
+      "table_name": "transactions",
+      "constraint_name": "transactions_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE RESTRICT"
+    },
+    {
+      "table_name": "users",
+      "constraint_name": "users_auth_sub_key",
+      "constraint_type": "u",
+      "definition": "UNIQUE (auth_sub)"
+    },
+    {
+      "table_name": "users",
+      "constraint_name": "users_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (user_id)"
+    },
+    {
+      "table_name": "users",
+      "constraint_name": "users_username_key",
+      "constraint_type": "u",
+      "definition": "UNIQUE (username)"
+    }
+  ]
+}
