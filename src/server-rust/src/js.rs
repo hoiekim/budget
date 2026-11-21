@@ -52,9 +52,48 @@ pub fn json_parse(text: &str) -> Option<Json> {
     Some(value)
 }
 
-/// `JSON.stringify` for a value that is already JSON.
+fn write_json(value: &Json, out: &mut String) {
+    match value {
+        Json::Null => out.push_str("null"),
+        Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        // The digits `Number.prototype.toString` writes, so text that is
+        // stored or hashed is the same on both servers.
+        Json::Number(n) => match n.as_f64() {
+            Some(f) if f.is_finite() => out.push_str(&number_to_string(f)),
+            _ => out.push_str("null"),
+        },
+        Json::String(text) => out.push_str(&serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())),
+        Json::Array(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                write_json(item, out);
+            }
+            out.push(']');
+        }
+        Json::Object(map) => {
+            out.push('{');
+            for (index, (key, member)) in map.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| "\"\"".to_string()));
+                out.push(':');
+                write_json(member, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// `JSON.stringify` for a value that is already JSON, numbers included:
+/// `1.5e-6` prints as `0.0000015` and negative zero as `0`.
 pub fn json_stringify(value: &Json) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
+    let mut out = String::new();
+    write_json(value, &mut out);
+    out
 }
 
 /// JS truthiness of a JSON value; an absent value (`undefined`) is falsy.
@@ -924,5 +963,7 @@ mod tests {
         let mut value = serde_json::json!({ "a": 5.0, "b": 9007199254740993u64, "c": 1.5 });
         normalize_numbers(&mut value);
         assert_eq!(json_stringify(&value), r#"{"a":5,"b":9007199254740992,"c":1.5}"#);
+        let odd = serde_json::json!([0.0000015, 9000000000000000000u64, 1234567890123456789u64, -0.0, 1e21, "a\"b\n"]);
+        assert_eq!(json_stringify(&odd), r#"[0.0000015,9000000000000000000,1234567890123456800,0,1e+21,"a\"b\n"]"#);
     }
 }
