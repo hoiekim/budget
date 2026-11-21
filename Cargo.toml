@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["src/server-rust"]
+
+[profile.dev]
+# Dependencies (bcrypt above all) are optimized even in debug builds, so the
+# conformance suite can run against `target/debug` at a usable speed.
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+codegen-units = 4

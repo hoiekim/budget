@@ -1,0 +1,11 @@
+/home/user/budget/target/debug/deps/deadpool_postgres-7a41ced4ea557618.d: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/config.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/generic_client.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/statement_cache.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/../README.md
+
+/home/user/budget/target/debug/deps/libdeadpool_postgres-7a41ced4ea557618.rlib: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/config.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/generic_client.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/statement_cache.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/../README.md
+
+/home/user/budget/target/debug/deps/libdeadpool_postgres-7a41ced4ea557618.rmeta: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/config.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/generic_client.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/statement_cache.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/../README.md
+
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/lib.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/config.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/generic_client.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/statement_cache.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/deadpool-postgres-0.14.2/src/../README.md:
