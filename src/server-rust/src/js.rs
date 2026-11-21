@@ -45,10 +45,45 @@ pub fn normalize_numbers(value: &mut Json) {
     }
 }
 
+/// The number a property key is when it is an array index (`"0"`, `"17"`).
+fn array_index(key: &str) -> Option<u32> {
+    let canonical = key == "0" || (!key.starts_with('0') && !key.is_empty() && key.bytes().all(|b| b.is_ascii_digit()));
+    if !canonical {
+        return None;
+    }
+    key.parse::<u32>().ok().filter(|index| *index != u32::MAX)
+}
+
+/// Puts the keys of every object in `value` in the order a JS object lists
+/// them, and so the order `JSON.stringify` writes them back in: array-index
+/// keys first, ascending, then the rest as written.
+fn normalize_key_order(value: &mut Json) {
+    match value {
+        Json::Array(items) => items.iter_mut().for_each(normalize_key_order),
+        Json::Object(map) => {
+            map.values_mut().for_each(normalize_key_order);
+            if map.keys().any(|key| array_index(key).is_some()) {
+                let mut indexed = Vec::new();
+                let mut named = Vec::new();
+                for (key, member) in std::mem::take(map) {
+                    match array_index(&key) {
+                        Some(index) => indexed.push((index, key, member)),
+                        None => named.push((key, member)),
+                    }
+                }
+                indexed.sort_by_key(|(index, _, _)| *index);
+                map.extend(indexed.into_iter().map(|(_, key, member)| (key, member)).chain(named));
+            }
+        }
+        _ => {}
+    }
+}
+
 /// `JSON.parse`, or `None` where it would throw.
 pub fn json_parse(text: &str) -> Option<Json> {
     let mut value: Json = serde_json::from_str(text).ok()?;
     normalize_numbers(&mut value);
+    normalize_key_order(&mut value);
     Some(value)
 }
 
@@ -491,8 +526,9 @@ impl JsDate {
         JsDate::from_local(year, month, day, 0, 0, 0, 0)
     }
 
-    /// `new Date(Date.UTC(year, month, day, …))`.
+    /// `new Date(Date.UTC(year, month, day, …))`. A year from 0 to 99 is 1900 to 1999, as `Date.UTC` reads it.
     pub fn from_utc(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64, ms: i64) -> JsDate {
+        let year = if (0..=99).contains(&year) { 1900 + year } else { year };
         JsDate(time_clip(
             days_from_civil(year, month, day) * MS_PER_DAY + make_time(hour as f64, minute as f64, second as f64, ms as f64),
         ))
