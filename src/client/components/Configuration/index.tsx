@@ -1,5 +1,5 @@
 import { ItemProvider, ItemStatus, toUpperCamelCase } from "common";
-import { LoginDeleteResponse, PublicTokenPostResponse } from "server";
+import { ApiResponse, LoginDeleteResponse, PublicTokenPostResponse } from "server";
 import {
   Data,
   Item,
@@ -60,23 +60,24 @@ export const Configuration = () => {
   const { clean, sync } = useSync();
 
   const logout = () => {
-    call
-      .delete<LoginDeleteResponse>("/api/login")
-      .then(async (r) => {
-        // The server clears the session cookie whatever the outcome, so the local state goes too.
-        if (r.status !== "success") console.error("Logout failed:", r.message);
-        setUser(undefined);
-        await clean();
-        // A single sign-on session also ends at the identity provider.
-        const logoutUrl = r.body?.logoutUrl;
-        if (logoutUrl) window.location.assign(logoutUrl);
-      })
-      .catch((error) => {
-        console.error("Logout request failed:", error);
-        // Still clear local state on network error
-        setUser(undefined);
-        clean();
-      });
+    fetch("/api/login", { method: "DELETE" })
+      .then((httpResponse) => httpResponse.json() as Promise<ApiResponse<LoginDeleteResponse>>)
+      .then(
+        async (r) => {
+          // Any answer from the server means it has cleared the session cookie, so the local state goes too.
+          if (r.status !== "success") console.error("Logout failed:", r.message);
+          setUser(undefined);
+          await clean();
+          // A single sign-on session also ends at the identity provider.
+          const logoutUrl = r.body?.logoutUrl;
+          if (logoutUrl) window.location.assign(logoutUrl);
+        },
+        (error) => {
+          // No answer from the server: the session cookie is still valid, so stay signed in.
+          console.error("Logout request failed:", error);
+        },
+      )
+      .catch((error) => console.error("Logout cleanup failed:", error));
   };
 
   const onClickRefresh = async () => {

@@ -9,16 +9,18 @@ export interface LoginDeleteResponse {
 
 export const deleteLoginRoute = new Route<LoginDeleteResponse>("DELETE", "/login", async (req) => {
   const { auth } = req.session;
-  await req.session.destroy();
-
   const sso = getSso();
-  if (!auth || !sso) return { status: "success" };
 
-  if (auth.refreshToken !== null) {
+  // The revoke goes first: if the store delete fails, the surviving row is ended at its next re-check.
+  if (auth && sso && auth.refreshToken !== null) {
     sso.client.revoke(auth.refreshToken).catch((error) => {
       logger.warn("Failed to revoke the single sign-on refresh token", { component: "sso" }, error);
     });
   }
+  await req.session.destroy();
+
+  if (!auth || !sso) return { status: "success" };
+
   const logoutUrl = await sso.client
     .logoutUrl(sso.config.postLogoutRedirect)
     .catch((error) => {
