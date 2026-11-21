@@ -7,6 +7,8 @@ import {
   applyDelta,
   cursorUpdateAfterSync,
   isFailedResponse,
+  isSharingStale,
+  sharingKeyOf,
   sortById,
   type Stage1Fetched,
   type PartitionedFetched,
@@ -37,7 +39,7 @@ import {
   TransferDictionary,
   RecurringDictionary,
 } from "client";
-import type { TransferPair, Recurring } from "server";
+import type { TransferPair, Recurring, Sharing } from "server";
 
 describe("cursorUpdateAfterSync", () => {
   test("advances after a clean sync", () => {
@@ -192,6 +194,8 @@ describe("stage helpers", () => {
     recurringsFailed: false,
     inflation: null,
     inflationFailed: false,
+    sharing: { members: [], invitations: [] },
+    sharingFailed: false,
   });
 
   const emptyPartitioned = (): PartitionedFetched => ({
@@ -281,6 +285,59 @@ describe("stage helpers", () => {
       expect(applyDelta(old, stage1, emptyPartitioned()).inflation?.year_over_year_inflation).toBe(
         1.03,
       );
+    });
+  });
+
+  describe("sharing", () => {
+    const ANN = { user_id: "u-ann", username: "ann" };
+    const BEN = { user_id: "u-ben", username: "ben" };
+    const CAT = { user_id: "u-cat", username: "cat" };
+    const sharingOf = (...members: Sharing["members"]): Sharing => ({
+      members,
+      invitations: [{ invitation_id: "inv-1", inviter: ANN, invitee: CAT }],
+    });
+
+    test("a group's key names its members in any order, and nobody's key is empty", () => {
+      expect(sharingKeyOf(sharingOf())).toBe("");
+      expect(sharingKeyOf(sharingOf(BEN, ANN))).toBe("u-ann,u-ben");
+      expect(sharingKeyOf(sharingOf(ANN, BEN))).toBe("u-ann,u-ben");
+    });
+
+    test("the cache is stale once someone joined, someone left, or the user stopped sharing", () => {
+      const fetched = (sharing: Sharing) => ({ ...emptyStage1(), sharing });
+      expect(isSharingStale(fetched(sharingOf(ANN, BEN, CAT)), "u-ann,u-ben")).toBe(true);
+      expect(isSharingStale(fetched(sharingOf(ANN)), "u-ann,u-ben")).toBe(true);
+      expect(isSharingStale(fetched(sharingOf()), "u-ann,u-ben")).toBe(true);
+      expect(isSharingStale(fetched(sharingOf(ANN, BEN)), "")).toBe(true);
+    });
+
+    test("the cache is current while the same people share, whatever else changed", () => {
+      const stage1 = { ...emptyStage1(), sharing: sharingOf(BEN, ANN) };
+      expect(isSharingStale(stage1, "u-ann,u-ben")).toBe(false);
+      expect(isSharingStale(emptyStage1(), "")).toBe(false);
+    });
+
+    test("a failed fetch never calls the cache stale", () => {
+      const stage1 = { ...emptyStage1(), sharingFailed: true };
+      expect(isSharingStale(stage1, "u-ann,u-ben")).toBe(false);
+    });
+
+    test("Stage 1 paints the fetched sharing, and the apply step replaces it", () => {
+      const stage1 = { ...emptyStage1(), sharing: sharingOf(ANN, BEN) };
+      expect(paintStage1(new Data(), stage1).sharing).toEqual(sharingOf(ANN, BEN));
+
+      const old = new Data({ sharing: sharingOf(ANN, BEN) });
+      expect(applyDelta(old, emptyStage1(), emptyPartitioned()).sharing).toEqual({
+        members: [],
+        invitations: [],
+      });
+    });
+
+    test("a failed fetch keeps the previous sharing instead of painting nobody", () => {
+      const old = new Data({ sharing: sharingOf(ANN, BEN) });
+      const stage1 = { ...emptyStage1(), sharingFailed: true };
+      expect(paintStage1(old, stage1).sharing).toEqual(sharingOf(ANN, BEN));
+      expect(applyDelta(old, stage1, emptyPartitioned()).sharing).toEqual(sharingOf(ANN, BEN));
     });
   });
 

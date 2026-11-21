@@ -20,6 +20,7 @@ import {
   USER_ID,
   getAccount,
   getItem,
+  getRowOwner,
   getHoldingSnapshotsForSecurities,
   searchSecuritiesById,
   softDeleteHoldingSnapshots,
@@ -133,10 +134,12 @@ const toRow = (
 };
 
 export const importPlanStatement = async (
-  user: MaskedUser,
+  requester: MaskedUser,
   request: PlanStatementImportRequest,
 ): Promise<{ ok: false; message: string } | { ok: true; result: PlanStatementImportResult }> => {
-  const account = await getAccount(user, request.account_id);
+  // Everything the import stores belongs to the account's owner.
+  const user = await getRowOwner(requester, accountsTable, request.account_id);
+  const account = user && (await getAccount(user, request.account_id));
   if (!account) return { ok: false, message: "Account not found." };
   const item = await getItem(user, account.item_id);
   if (account.type !== AccountType.Investment || item?.provider !== ItemProvider.MANUAL) {

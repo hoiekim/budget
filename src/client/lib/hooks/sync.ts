@@ -13,6 +13,8 @@ import {
   RecurringsGetResponse,
   InstitutionsGetResponse,
   InflationGetResponse,
+  SharingGetResponse,
+  Sharing,
 } from "server";
 import {
   Account,
@@ -103,6 +105,40 @@ const writeLastSyncedCursor = (cursor: string) => {
 const removeLastSyncedCursor = () => {
   try {
     window.localStorage.removeItem(LAST_SYNCED_CURSOR_KEY);
+  } catch {
+    // no-op
+  }
+};
+
+// The people whose shared data the cache and its cursor were last filled with.
+const LAST_SYNCED_SHARING_KEY = "budget:lastSyncedSharing";
+
+/** Names a sharing group by its members, in any order; `""` for someone sharing with nobody. */
+export const sharingKeyOf = (sharing: Sharing): string =>
+  sharing.members
+    .map((member) => member.user_id)
+    .sort()
+    .join(",");
+
+const readLastSyncedSharing = (): string => {
+  try {
+    return window.localStorage.getItem(LAST_SYNCED_SHARING_KEY) ?? "";
+  } catch {
+    return "";
+  }
+};
+
+const writeLastSyncedSharing = (sharingKey: string) => {
+  try {
+    window.localStorage.setItem(LAST_SYNCED_SHARING_KEY, sharingKey);
+  } catch {
+    // no-op
+  }
+};
+
+const removeLastSyncedSharing = () => {
+  try {
+    window.localStorage.removeItem(LAST_SYNCED_SHARING_KEY);
   } catch {
     // no-op
   }
@@ -596,6 +632,19 @@ const fetchInflation = async (): Promise<FetchInflationResult> => {
   return { inflation: response.body ?? null, networkFailed: false };
 };
 
+interface FetchSharingResult {
+  sharing: Sharing;
+  networkFailed: boolean;
+}
+
+const fetchSharing = async (): Promise<FetchSharingResult> => {
+  const response = await call.get<SharingGetResponse>("/api/sharing").catch(console.error);
+  if (isFailedResponse(response) || !response.body) {
+    return { sharing: { members: [], invitations: [] }, networkFailed: true };
+  }
+  return { sharing: response.body, networkFailed: false };
+};
+
 // ---------------------------------------------------------------------------
 // Stage helpers (#839). `_sync` is a sequencer over these; each stage is a
 // module-scope function so the pure ones can be unit-tested without
@@ -635,6 +684,9 @@ export interface Stage1Fetched {
   /** Kept out of `fetchFailed`: inflation is neither delta-synced nor
    *  persisted, so the cursor has nothing to wait for. */
   inflationFailed: boolean;
+  sharing: Sharing;
+  /** Kept out of `fetchFailed`, as inflation is and for the same reason. */
+  sharingFailed: boolean;
 }
 
 /** The time-partitioned triple Stage 2 fetches over a recent window and
@@ -663,6 +715,7 @@ export const fetchStage1 = async (
   const transfersPromise = fetchTransfers(cursor, includeDeleted);
   const recurringsPromise = fetchRecurrings(cursor, includeDeleted);
   const inflationPromise = fetchInflation();
+  const sharingPromise = fetchSharing();
 
   const [
     accountsResult,
@@ -673,6 +726,7 @@ export const fetchStage1 = async (
     transfersResult,
     recurringsResult,
     inflationResult,
+    sharingResult,
   ] = await Promise.all([
     accountsPromise,
     budgetsPromise,
@@ -682,6 +736,7 @@ export const fetchStage1 = async (
     transfersPromise,
     recurringsPromise,
     inflationPromise,
+    sharingPromise,
   ]);
 
   return {
@@ -714,8 +769,17 @@ export const fetchStage1 = async (
     transfersFailed: transfersResult.networkFailed,
     recurringsFailed: recurringsResult.networkFailed,
     inflationFailed: inflationResult.networkFailed,
+    sharing: sharingResult.sharing,
+    sharingFailed: sharingResult.networkFailed,
   };
 };
+
+/**
+ * Whether the cache and its cursor were filled for another set of people than
+ * the user shares data with now. A fetch that failed says nothing either way.
+ */
+export const isSharingStale = (fetched: Stage1Fetched, lastSyncedSharing: string): boolean =>
+  !fetched.sharingFailed && sharingKeyOf(fetched.sharing) !== lastSyncedSharing;
 
 /** Warm paint: hand the cached `Data` to React with the loading flags set.
  *  Mutates the cached object's status (it is the cache's own object, not
@@ -746,6 +810,7 @@ export const paintStage1 = (oldData: Data, fetched: Stage1Fetched): Data => {
     transfers: fetched.transfersFailed ? oldData.transfers : fetched.transfers,
     recurrings: fetched.recurringsFailed ? oldData.recurrings : fetched.recurrings,
     inflation: fetched.inflationFailed ? oldData.inflation : fetched.inflation,
+    sharing: fetched.sharingFailed ? oldData.sharing : fetched.sharing,
   });
   stage1.status.isInit = true;
   stage1.status.isLoading = true;
@@ -890,6 +955,7 @@ export const applyDelta = (
   if (!stage1.institutionsFailed) next.institutions = stage1.institutions;
   if (!stage1.securitiesFailed) next.securities = stage1.securities;
   if (!stage1.inflationFailed) next.inflation = stage1.inflation;
+  if (!stage1.sharingFailed) next.sharing = stage1.sharing;
   mergeTransfersDelta(next, stage1);
   mergeRecurringsDelta(next, stage1);
   mergeTransactionsDelta(next, partitioned.transactions);
@@ -1055,7 +1121,7 @@ const debounceDomain = (
 
 export const useSync = () => {
   const { user, setData } = useAppContext();
-  const _sync = useCallback(async () => {
+  const _sync = useCallback(async function syncEverything(): Promise<void> {
     if (!user) return;
     setData((oldData) => {
       const newData = new Data(oldData);
@@ -1141,6 +1207,17 @@ export const useSync = () => {
         // and strand the loading flag.
         setData((oldData) => paintAccountsFailure(oldData, isWarm));
         return;
+      }
+
+      // Once someone has joined or left, a delta brings in none of a
+      // newcomer's older rows and drops none of a leaver's, so the sync starts
+      // over cold: it purges the cache and fetches in full.
+      if (isSharingStale(stage1, readLastSyncedSharing())) {
+        writeLastSyncedSharing(sharingKeyOf(stage1.sharing));
+        if (isWarm) {
+          removeLastSyncedCursor();
+          return syncEverything();
+        }
       }
 
       // On a cold load, paint Stage 1 immediately so the navigation +
@@ -1370,6 +1447,19 @@ export const useSync = () => {
             await indexedDb.saveInstitutions(r.institutions).catch(console.error);
             return;
           }
+          case TableName.SharingInvitations: {
+            const r = await fetchSharing();
+            if (r.networkFailed) return;
+            setData((oldData) => {
+              const next = new Data(oldData);
+              next.sharing = r.sharing;
+              return next;
+            });
+            return;
+          }
+          // Who the user shares with decides the rows of every other table.
+          case TableName.SharingMembers:
+            return _sync();
           // Tables the client doesn't mirror into `Data` — no-op.
           case TableName.Users:
           case TableName.Sessions:
@@ -1389,7 +1479,7 @@ export const useSync = () => {
         console.error(err);
       }
     },
-    [setData, user],
+    [setData, user, _sync],
   );
   const syncDomain = useCallback(
     (domain: TableName) => debounceDomain(domain, () => _syncDomain(domain)),
@@ -1407,6 +1497,7 @@ export const useSync = () => {
     // the two steps below it down with it.
     await indexedDb.clearAllData().catch(console.error);
     removeLastSyncedCursor();
+    removeLastSyncedSharing();
     setData(new Data());
   }, [setData]);
 

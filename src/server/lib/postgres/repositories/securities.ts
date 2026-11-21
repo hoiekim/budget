@@ -12,7 +12,7 @@ import {
 } from "common/constants";
 
 import { pool } from "../client";
-import { UpsertResult, successResult, errorResult } from "../database";
+import { UpsertResult, successResult, errorResult, sharedWithSql } from "../database";
 import { logger } from "../../logger";
 
 /**
@@ -31,7 +31,7 @@ export const getSecuritiesForUser = async (user: MaskedUser): Promise<JSONSecuri
     SELECT DISTINCT s.*
     FROM ${SECURITIES} s
     INNER JOIN ${HOLDINGS} h ON h.${SECURITY_ID} = s.${SECURITY_ID}
-    WHERE h.${USER_ID} = $1
+    WHERE ${sharedWithSql(`h.${USER_ID}`, "$1")}
   `;
   const result = await pool.query<Record<string, unknown>>(sql, [user.user_id]);
   return result.rows.map((row) => new SecurityModel(row).toJSON());

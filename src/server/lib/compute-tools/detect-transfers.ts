@@ -1,6 +1,7 @@
 import { TRANSFER_DATE_WINDOW_DAYS } from "common";
 import { pool, logger, usersTable } from "server";
 import type { SqlClient } from "../postgres/client";
+import { sharedWithSql, sharingLockKeySql } from "../postgres/database";
 import { canonicalizePairIds, QueryExecutor } from "../postgres/models";
 
 const BASE_CONFIDENCE = 0.7;
@@ -79,7 +80,7 @@ const fetchCandidates = async (
        -- eligible for OTHER counterparts.
        AND NOT EXISTS (
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = t1.user_id
+         WHERE ${sharedWithSql("tp.user_id", "$1")}
            AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
            AND tp.status <> 'rejected'
            AND (
@@ -91,7 +92,7 @@ const fetchCandidates = async (
        -- if (t1, t2) was rejected before, do not re-suggest it.
        AND NOT EXISTS (
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = t1.user_id
+         WHERE ${sharedWithSql("tp.user_id", "$1")}
            AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
            AND tp.status = 'rejected'
            AND (
@@ -133,7 +134,7 @@ const createPair = async (
      SELECT $1, $2, $3, $4, 'suggested'
      WHERE NOT EXISTS (
        SELECT 1 FROM transaction_pairs tp
-       WHERE tp.user_id = $2
+       WHERE ${sharedWithSql("tp.user_id", "$2")}
          AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
          AND tp.status <> 'rejected'
          AND (
@@ -153,7 +154,7 @@ const createPair = async (
          -- is_deleted predicate — the UNIQUE constraint doesn't care
          -- about is_deleted, so neither does this guard.
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = $2
+         WHERE ${sharedWithSql("tp.user_id", "$2")}
            AND (
              (tp.transaction_id_a = $3 AND tp.transaction_id_b = $4)
              OR (tp.transaction_id_a = $4 AND tp.transaction_id_b = $3)
@@ -217,7 +218,7 @@ export const runTransferDetection = async (): Promise<void> => {
         client = await pool.connect();
         await client.query("BEGIN");
         await client.query(
-          `SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`,
+          `SELECT pg_advisory_xact_lock(hashtext(${sharingLockKeySql("$1")} || ':transfers'))`,
           [userId],
         );
 

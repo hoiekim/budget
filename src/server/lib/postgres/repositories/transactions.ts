@@ -18,7 +18,14 @@ import {
   QueryExecutor,
   toJSONBatches,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult, refusedResult } from "../database";
+import {
+  UpsertResult,
+  successResult,
+  errorResult,
+  noChangeResult,
+  refusedResult,
+  sharedWith,
+} from "../database";
 import { getOwnedLabelIds } from "./budgets";
 import { logger } from "../../logger";
 
@@ -43,7 +50,7 @@ export const getTransaction = async (
   transaction_id: string,
 ): Promise<JSONTransaction | null> => {
   const model = await transactionsTable.queryOne({
-    [USER_ID]: user.user_id,
+    [USER_ID]: sharedWith(user),
     [TRANSACTION_ID]: transaction_id,
   });
   return model?.toJSON() ?? null;
@@ -69,11 +76,11 @@ export const searchTransactions = (
     excludeDeleted: !options.includeDeleted,
   };
   const transactions = transactionsTable.queryInBatches(
-    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id, pending: options.pending },
+    { [USER_ID]: sharedWith(user), [ACCOUNT_ID]: options.account_id, pending: options.pending },
     queryOptions,
   );
   const investmentTransactions = investmentTransactionsTable.queryInBatches(
-    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
+    { [USER_ID]: sharedWith(user), [ACCOUNT_ID]: options.account_id },
     queryOptions,
   );
   return {
@@ -87,7 +94,7 @@ export const searchTransactionsById = async (
   transaction_ids: string[],
 ): Promise<JSONTransaction[]> => {
   if (!transaction_ids.length) return [];
-  const models = await transactionsTable.queryByIds(transaction_ids, { [USER_ID]: user.user_id });
+  const models = await transactionsTable.queryByIds(transaction_ids, { [USER_ID]: sharedWith(user) });
   return models.map((m) => m.toJSON());
 };
 
@@ -145,7 +152,7 @@ export const updateTransactions = async (
         tx.transaction_id,
         row,
         undefined,
-        user.user_id,
+        sharedWith(user),
         undefined,
         undefined,
         true,
@@ -241,13 +248,13 @@ export const softDeleteTransactionPairsByAccounts = async (
   await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
     TRANSACTION_ID_A,
     source,
-    user.user_id,
+    sharedWith(user),
     client,
   );
   await transactionPairsTable.bulkSoftDeleteByRelatedColumn(
     TRANSACTION_ID_B,
     source,
-    user.user_id,
+    sharedWith(user),
     client,
   );
 };
@@ -263,7 +270,7 @@ export const deleteTransactions = async (
   await splitTransactionsTable.bulkSoftDeleteByColumn(
     TRANSACTION_ID,
     transaction_ids,
-    user.user_id,
+    sharedWith(user),
     client,
   );
 
@@ -276,19 +283,19 @@ export const deleteTransactions = async (
   await transactionPairsTable.bulkSoftDeleteByColumn(
     TRANSACTION_ID_A,
     transaction_ids,
-    user.user_id,
+    sharedWith(user),
     client,
   );
   await transactionPairsTable.bulkSoftDeleteByColumn(
     TRANSACTION_ID_B,
     transaction_ids,
-    user.user_id,
+    sharedWith(user),
     client,
   );
 
   const deleted = await transactionsTable.bulkSoftDelete(
     transaction_ids,
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     client,
   );
   return { deleted };
@@ -316,7 +323,7 @@ export const searchTransactionsByAccountId = async (
 
   const [txModels, invModels] = await Promise.all([
     transactionsTable.query(
-      { [USER_ID]: user.user_id },
+      { [USER_ID]: sharedWith(user) },
       {
         inFilters: { [ACCOUNT_ID]: account_ids },
         dateRange,
@@ -325,7 +332,7 @@ export const searchTransactionsByAccountId = async (
       },
     ),
     investmentTransactionsTable.query(
-      { [USER_ID]: user.user_id },
+      { [USER_ID]: sharedWith(user) },
       {
         inFilters: { [ACCOUNT_ID]: account_ids },
         dateRange,

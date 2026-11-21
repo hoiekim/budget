@@ -127,16 +127,20 @@ describe("getTransferPairs", () => {
 // SHARE), collision SELECT, INSERT, cleanup UPDATE, COMMIT (7 calls).
 // On error path the existence/collision rejection replaces the
 // INSERT+cleanup+COMMIT with a ROLLBACK.
-function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
+function stagePairOk(
+  insertPairId: string,
+  collisionRows: unknown[] = [],
+  transactions = [
+    { transaction_id: "tx-a", user_id: "usr-1" },
+    { transaction_id: "tx-b", user_id: "usr-1" },
+  ],
+) {
   // BEGIN
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
   // advisory lock
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // existence pre-check (FOR SHARE) — both alive: 2 rows
-  mockReservedUnsafe.mockResolvedValueOnce({
-    rows: [{ transaction_id: "tx-a" }, { transaction_id: "tx-b" }],
-    rowCount: 2,
-  });
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: transactions, rowCount: 2 });
   // collision SELECT
   mockReservedUnsafe.mockResolvedValueOnce({ rows: collisionRows, rowCount: collisionRows.length });
   // INSERT ... RETURNING
@@ -157,7 +161,10 @@ function stagePairCollision(collidingPairId: string) {
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // existence pre-check (FOR SHARE) — both alive: 2 rows
   mockReservedUnsafe.mockResolvedValueOnce({
-    rows: [{ transaction_id: "tx-a" }, { transaction_id: "tx-b" }],
+    rows: [
+      { transaction_id: "tx-a", user_id: "usr-1" },
+      { transaction_id: "tx-b", user_id: "usr-1" },
+    ],
     rowCount: 2,
   });
   // collision SELECT returns a colliding row → triggers ROLLBACK
@@ -175,9 +182,9 @@ function stagePairMissingTransaction(whichAlive: { a: boolean; b: boolean }) {
   // advisory lock
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // existence pre-check (FOR SHARE) — at most one row if a transaction missing.
-  const rows: { transaction_id: string }[] = [];
-  if (whichAlive.a) rows.push({ transaction_id: "tx-a" });
-  if (whichAlive.b) rows.push({ transaction_id: "tx-b" });
+  const rows: { transaction_id: string; user_id: string }[] = [];
+  if (whichAlive.a) rows.push({ transaction_id: "tx-a", user_id: "usr-1" });
+  if (whichAlive.b) rows.push({ transaction_id: "tx-b", user_id: "usr-1" });
   mockReservedUnsafe.mockResolvedValueOnce({ rows, rowCount: rows.length });
   // ROLLBACK
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -220,8 +227,49 @@ describe("pairTransactions", () => {
     if (result.ok) expect(result.pair_id).toBe("pair-existing");
   });
 
+  test("stores the pair under the owner of its first transaction, whoever in the group asked", async () => {
+    const transactions = [
+      { transaction_id: "tx-b", user_id: "usr-3" },
+      { transaction_id: "tx-a", user_id: "usr-2" },
+    ];
+    for (const [first, second] of [
+      ["tx-a", "tx-b"],
+      ["tx-b", "tx-a"],
+    ]) {
+      clearSqlMocks();
+      stagePairOk("pair-shared", [], transactions);
+      await pairTransactions(mockUser as never, first, second);
+      const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
+        /INSERT INTO transaction_pairs/i.test(c[0] as string),
+      )!;
+      expect((insertCall[1] as unknown[]).slice(1)).toEqual(["usr-2", "tx-a", "tx-b", "suggested"]);
+    }
+  });
+
+  test("refuses a pair whose rows are not the two transactions asked for", async () => {
+    // BEGIN, advisory lock, existence pre-check, ROLLBACK
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+    mockReservedUnsafe.mockResolvedValueOnce({
+      rows: [
+        { transaction_id: "tx-a", user_id: "usr-1" },
+        { transaction_id: "tx-other", user_id: "usr-1" },
+      ],
+      rowCount: 2,
+    });
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(result.ok).toBe(false);
+    expect(
+      mockReservedUnsafe.mock.calls.some((c) => /INSERT INTO transaction_pairs/i.test(c[0] as string)),
+    ).toBe(false);
+  });
+
   test("canonicalizes (a, b) so reversed inputs hit the same row shape", async () => {
-    stagePairOk("pair-1");
+    stagePairOk("pair-1", [], [
+      { transaction_id: "tx-a", user_id: "usr-1" },
+      { transaction_id: "tx-z", user_id: "usr-1" },
+    ]);
     await pairTransactions(mockUser as never, "tx-z", "tx-a");
     const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
@@ -289,20 +337,21 @@ describe("pairTransactions", () => {
 
   test("existence pre-check scopes by user_id, filters is_deleted, uses FOR SHARE", async () => {
     // Verify the existence query's SQL shape so a future refactor can't
-    // silently drop the user_id filter (would allow cross-user pairing)
-    // or drop FOR SHARE (would re-open the deleteTransactions race).
+    // silently drop the user_id filter (would allow pairing a stranger's
+    // transaction) or drop FOR SHARE (would re-open the deleteTransactions race).
     stagePairOk("pair-new");
     await pairTransactions(mockUser as never, "tx-a", "tx-b");
     const existenceCall = mockReservedUnsafe.mock.calls.find((c) => {
       const sql = c[0] as string;
-      return /SELECT transaction_id FROM transactions/i.test(sql) && /FOR SHARE/i.test(sql);
+      return /SELECT transaction_id, user_id FROM transactions/i.test(sql) && /FOR SHARE/i.test(sql);
     })!;
     expect(existenceCall).toBeDefined();
     const sql = existenceCall[0] as string;
-    expect(sql).toMatch(/WHERE user_id = \$1/i);
+    expect(sql).toMatch(/WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)\s+AND /i);
     expect(sql).toMatch(/transaction_id = ANY\(\$2/i);
     expect(sql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/i);
     expect(sql).toMatch(/FOR SHARE/);
+    expect((existenceCall[1] as unknown[])[0]).toBe("usr-1");
   });
 
   test("collision pre-check excludes the SAME (a, b) being re-paired (allows un-reject)", async () => {

@@ -1,5 +1,6 @@
 import { JSONTransaction, TransferPairStatus } from "common";
 import { pool } from "../client";
+import { sharedWith, sharedWithSql, sharingLockKeySql } from "../database";
 import {
   MaskedUser,
   transactionsTable,
@@ -70,7 +71,7 @@ export const getTransferPairs = async (
   // `startDate` narrows the SQL scan to rows whose `updated >= $cursor`, so a
   // warm sync fetches only the delta instead of the full pair set.
   const allPairs = await transactionPairsTable.query(
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     {
       orderBy: PAIR_ID,
       excludeDeleted: !options.includeDeleted,
@@ -118,7 +119,7 @@ export const getTransferPairs = async (
   const txnIds = visiblePairs.flatMap((p) => [p.transaction_id_a, p.transaction_id_b]);
 
   const txnModels = await transactionsTable.query(
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     { inFilters: { [TRANSACTION_ID]: txnIds } },
   );
 
@@ -187,31 +188,39 @@ export const pairTransactions = async (
   try {
     await client.query("BEGIN");
 
-    // Per-user serialization for all transfer-pair mutations via a
-    // transaction-scoped advisory lock. Without it, two concurrent calls
-    // (double-click, two tabs) can each pass the collision SELECT before
-    // either commits — READ COMMITTED hides the in-flight UPDATE — and both
-    // succeed, leaving A in two simultaneous active confirmed pairs. Per-user
-    // scope so users only contend with themselves.
-    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`, [
-      user.user_id,
-    ]);
+    // Serialization of all transfer-pair mutations within a sharing group via
+    // a transaction-scoped advisory lock. Without it, two concurrent calls
+    // (double-click, two tabs, two people sharing data) can each pass the
+    // collision SELECT before either commits — READ COMMITTED hides the
+    // in-flight UPDATE — and both succeed, leaving A in two simultaneous
+    // active confirmed pairs. Scoped to the group so that only the people
+    // who can touch the same pairs contend.
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtext(${sharingLockKeySql("$1")} || ':transfers'))`,
+      [user.user_id],
+    );
 
     // Existence pre-check: BOTH transactions must exist, be alive, and belong
-    // to this user. `FOR SHARE` takes a row-level share lock that conflicts
+    // to this user or to someone sharing data with them. `FOR SHARE` takes a
+    // row-level share lock that conflicts
     // with `deleteTransactions`'s subsequent EXCLUSIVE lock, serializing the
     // existence check against any concurrent delete — without it, a delete
     // could commit between our SELECT and INSERT, leaving a confirmed pair
     // referencing a soft-deleted transaction. Returns 0/1/2 rows; we expect 2.
-    const existence = await client.query<{ transaction_id: string }>(
-      `SELECT ${TRANSACTION_ID} FROM ${TRANSACTIONS}
-       WHERE ${USER_ID} = $1
+    const existence = await client.query<{ transaction_id: string; user_id: string }>(
+      `SELECT ${TRANSACTION_ID}, ${USER_ID} FROM ${TRANSACTIONS}
+       WHERE ${sharedWithSql(USER_ID, "$1")}
          AND ${TRANSACTION_ID} = ANY($2::text[])
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
        FOR SHARE`,
       [user.user_id, [canonical.transaction_id_a, canonical.transaction_id_b]],
     );
-    if ((existence.rowCount ?? 0) !== 2) {
+    const ownerOf = new Map(existence.rows.map((row) => [row.transaction_id, row.user_id]));
+    // A pair belongs to an owner of its transactions, never to a third member
+    // of their sharing group: once sharing ends, whoever still holds both
+    // transactions still holds the pair.
+    const pairOwnerId = ownerOf.get(canonical.transaction_id_a);
+    if (!pairOwnerId || !ownerOf.has(canonical.transaction_id_b)) {
       await client.query("ROLLBACK");
       return {
         ok: false,
@@ -225,7 +234,7 @@ export const pairTransactions = async (
     // put the transaction in two simultaneous confirmed pairs.
     const collision = await client.query<{ pair_id: string }>(
       `SELECT ${PAIR_ID} FROM ${TRANSACTION_PAIRS}
-       WHERE ${USER_ID} = $1
+       WHERE ${sharedWithSql(USER_ID, "$1")}
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
          AND ${STATUS} = 'confirmed'
          AND (${TRANSACTION_ID_A} = $2 OR ${TRANSACTION_ID_B} = $2
@@ -267,7 +276,7 @@ export const pairTransactions = async (
            ELSE ${TRANSACTION_PAIRS}.updated
          END
        RETURNING ${PAIR_ID}`,
-      [pair_id, user.user_id, canonical.transaction_id_a, canonical.transaction_id_b, status],
+      [pair_id, pairOwnerId, canonical.transaction_id_a, canonical.transaction_id_b, status],
     );
 
     const effectivePairId = result.rows[0].pair_id;
@@ -286,7 +295,7 @@ export const pairTransactions = async (
     await client.query(
       `UPDATE ${TRANSACTION_PAIRS}
        SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
-       WHERE ${USER_ID} = $1
+       WHERE ${sharedWithSql(USER_ID, "$1")}
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
          AND ${STATUS} = 'suggested'
          AND ${PAIR_ID} <> $2
@@ -333,12 +342,13 @@ export const confirmTransferPair = async (
   try {
     await client.query("BEGIN");
 
-    // Per-user advisory lock — see comment in `pairTransactions`. Same
+    // Per-group advisory lock — see comment in `pairTransactions`. Same
     // race-window concern: a concurrent confirm of a different pair_id
     // involving the same transaction would slip past the collision SELECT.
-    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`, [
-      user.user_id,
-    ]);
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtext(${sharingLockKeySql("$1")} || ':transfers'))`,
+      [user.user_id],
+    );
 
     // Look up the pair's transaction_ids. Missing, soft-deleted, or
     // rejection records all fail cleanly. The status filter blocks a client
@@ -350,7 +360,7 @@ export const confirmTransferPair = async (
     // into a silent no-op.
     const lookup = await client.query<{ transaction_id_a: string; transaction_id_b: string }>(
       `SELECT ${TRANSACTION_ID_A}, ${TRANSACTION_ID_B} FROM ${TRANSACTION_PAIRS}
-       WHERE ${PAIR_ID} = $1 AND ${USER_ID} = $2
+       WHERE ${PAIR_ID} = $1 AND ${sharedWithSql(USER_ID, "$2")}
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
          AND ${STATUS} <> 'rejected'
        FOR UPDATE`,
@@ -366,7 +376,7 @@ export const confirmTransferPair = async (
     // confirmed pair?
     const collision = await client.query<{ pair_id: string }>(
       `SELECT ${PAIR_ID} FROM ${TRANSACTION_PAIRS}
-       WHERE ${USER_ID} = $1
+       WHERE ${sharedWithSql(USER_ID, "$1")}
          AND ${PAIR_ID} <> $2
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
          AND ${STATUS} = 'confirmed'
@@ -388,7 +398,7 @@ export const confirmTransferPair = async (
       `UPDATE ${TRANSACTION_PAIRS}
        SET ${STATUS} = 'confirmed', updated = CURRENT_TIMESTAMP
        WHERE ${PAIR_ID} = $1
-         AND ${USER_ID} = $2
+         AND ${sharedWithSql(USER_ID, "$2")}
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
       [pair_id, user.user_id],
     );
@@ -402,7 +412,7 @@ export const confirmTransferPair = async (
     await client.query(
       `UPDATE ${TRANSACTION_PAIRS}
        SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
-       WHERE ${USER_ID} = $1
+       WHERE ${sharedWithSql(USER_ID, "$1")}
          AND ${PAIR_ID} <> $2
          AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)
          AND ${STATUS} = 'suggested'
@@ -446,7 +456,7 @@ export const rejectTransferPair = async (
     `UPDATE ${TRANSACTION_PAIRS}
      SET ${STATUS} = 'rejected', updated = CURRENT_TIMESTAMP
      WHERE ${PAIR_ID} = $1
-       AND ${USER_ID} = $2
+       AND ${sharedWithSql(USER_ID, "$2")}
        AND (${IS_DELETED} IS NULL OR ${IS_DELETED} = FALSE)`,
     [pair_id, user.user_id],
   );

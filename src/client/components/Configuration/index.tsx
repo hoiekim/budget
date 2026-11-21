@@ -20,18 +20,25 @@ import {
 } from "client";
 import { SimpleFinLinkButton } from "client/components";
 import { ApiKeysSection } from "./ApiKeysSection";
+import { SharingSection } from "./SharingSection";
 import "./index.css";
 
 export const Configuration = () => {
-  const { setUser, data, setData, router } = useAppContext();
+  const { user, setUser, data, setData, router } = useAppContext();
 
-  const { items } = data;
+  const { items, sharing } = data;
   const { go } = router;
+
+  const isOwn = (item: Item) => !item.user_id || item.user_id === user?.user_id;
+  const ownerNameOf = (item: Item) =>
+    sharing.members.find((member) => member.user_id === item.user_id)?.username;
 
   const itemsRow = items
     .toArray()
-    .filter(({ provider }) => provider !== ItemProvider.MANUAL)
-    .map(({ id, institution_id, status, provider }) => {
+    .filter((item) => item.provider !== ItemProvider.MANUAL || !isOwn(item))
+    .map((item) => {
+      const { id, institution_id, status, provider } = item;
+      const ownerName = ownerNameOf(item);
       const onClickConnection = () => {
         const params = new URLSearchParams();
         params.append("item_id", id);
@@ -46,13 +53,20 @@ export const Configuration = () => {
           onClick={onClickConnection}
         >
           <div>
-            {institution_id ? (
-              <InstitutionSpan institution_id={institution_id} />
+            {provider === ItemProvider.MANUAL ? (
+              <span>Manual&nbsp;Accounts</span>
             ) : (
-              <span>{id.slice(0, 6).toUpperCase()}</span>
+              <>
+                {institution_id ? (
+                  <InstitutionSpan institution_id={institution_id} />
+                ) : (
+                  <span>{id.slice(0, 6).toUpperCase()}</span>
+                )}
+                <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
+              </>
             )}
-            <span className="small">&nbsp;&nbsp;via&nbsp;{toUpperCamelCase(provider)}</span>
           </div>
+          {ownerName && <span className="small owner">{ownerName}</span>}
         </ButtonRow>
       );
     });
@@ -88,7 +102,7 @@ export const Configuration = () => {
   };
 
   const onClickAddManualAccount = async () => {
-    const manualItem = items.find((item) => item.provider === ItemProvider.MANUAL);
+    const manualItem = items.find((item) => item.provider === ItemProvider.MANUAL && isOwn(item));
     if (manualItem) {
       const clientPathParams = new URLSearchParams();
       clientPathParams.append("item_id", manualItem.id);
@@ -137,6 +151,7 @@ export const Configuration = () => {
           <SimpleFinLinkButton>Connect&nbsp;via&nbsp;SimpleFin</SimpleFinLinkButton>
         </Row>
       </Property>
+      <SharingSection />
       <ApiKeysSection />
       <PropertyLabel>&nbsp;</PropertyLabel>
       <Property>

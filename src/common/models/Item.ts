@@ -20,6 +20,8 @@ export enum ItemProvider {
 
 export interface JSONItem {
   item_id: string;
+  /** The user who made the connection. Absent on an item that has not been stored yet. */
+  user_id?: string;
   access_token: string;
   institution_id: string | null;
   available_products: Products[];

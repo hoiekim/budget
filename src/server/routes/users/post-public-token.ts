@@ -86,8 +86,8 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
 
       return { status: "success", body: { item: toClientItem(item) } };
     } else if (provider === ItemProvider.MANUAL) {
-      const items = await searchItems(user);
-      if (items.find((e) => e.provider === ItemProvider.MANUAL)) {
+      const items = await searchItems(user, { provider: ItemProvider.MANUAL });
+      if (items.find((e) => e.user_id === user.user_id)) {
         return {
           status: "failed",
           message: "Manual item already exists for the user",
@@ -101,6 +101,7 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
           status: ItemStatus.OK,
           institution_id: null,
           available_products: [],
+          user_id: user.user_id,
         };
         await upsertItems(user, [item]);
         return { status: "success", body: { item: toClientItem(item) } };

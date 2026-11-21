@@ -16,6 +16,40 @@ export const SOFT_DELETE_CONDITION = "(is_deleted IS NULL OR is_deleted = FALSE)
  */
 export const IS_NOT_NULL = Symbol("IS_NOT_NULL");
 
+/** The SQL function listing a user and everyone in their sharing group (see `models/sharing.ts`). */
+export const SHARING_USER_IDS = "sharing_user_ids";
+
+/**
+ * Filter sentinel — pass as a filter value on an owner column to match the
+ * rows of that user and of everyone they share data with.
+ *
+ *   table.query({ user_id: sharedWith(user) });
+ */
+export class SharedWith {
+  constructor(readonly user_id: string) {}
+}
+
+export const sharedWith = (user: { user_id: string }): SharedWith => new SharedWith(user.user_id);
+
+/** The predicate a `SharedWith` filter becomes, for SQL written by hand. */
+export const sharedWithSql = (column: string, placeholder: string): string =>
+  `${column} = ANY(${SHARING_USER_IDS}(${placeholder}))`;
+
+/**
+ * The advisory-lock key a user's sharing group serializes on: the same for
+ * every member, and the user's own id while they share with nobody.
+ */
+export const sharingLockKeySql = (placeholder: string): string =>
+  `(SELECT min(member::text) FROM unnest(${SHARING_USER_IDS}(${placeholder})) member)`;
+
+const equalityCondition = (column: string, value: unknown, paramIndex: number): string =>
+  value instanceof SharedWith
+    ? sharedWithSql(column, `$${paramIndex}`)
+    : `${column} = $${paramIndex}`;
+
+const equalityParam = (value: unknown): ParamValue =>
+  value instanceof SharedWith ? value.user_id : prepareParamValue(value as ParamValue);
+
 // JSONB columns take objects/arrays as values (Bun.sql encodes a plain
 // object or array as JSON for json/jsonb columns; a pre-stringified value
 // would be stored as a JSON string instead of the object — see
@@ -51,9 +85,13 @@ export interface WhereOptions {
  * IS NOT NULL without dropping to raw SQL:
  *   - `value: null` → `<column> IS NULL`
  *   - `value: IS_NOT_NULL` → `<column> IS NOT NULL`
+ *   - `sharedWith(user)` → `<column> = ANY(sharing_user_ids($N))`
  *   - anything else → `<column> = $N`
  */
-export type AdditionalWhere = { column: string; value: ParamValue | typeof IS_NOT_NULL };
+export type AdditionalWhere = {
+  column: string;
+  value: ParamValue | typeof IS_NOT_NULL | SharedWith;
+};
 
 export interface UpdateOptions {
   additionalWhere?: AdditionalWhere | AdditionalWhere[];
@@ -121,6 +159,10 @@ export function buildSelectDuplicateKeys(
 
 export function prepareParamValue(value: ParamValue): ParamValue {
   if (isDate(value)) return value.toISOString();
+  // `sharedWith(user)` names several owners, which a row can't have.
+  if ((value as unknown) instanceof SharedWith) {
+    throw new Error("sharedWith() scopes a query to a sharing group; it is not a value to store");
+  }
   return value;
 }
 
@@ -139,8 +181,8 @@ export function prepareQuery(data: QueryData, options: WhereOptions = {}): Prepa
     } else if (isNull(value)) {
       conditions.push(`${key} IS NULL`);
     } else {
-      conditions.push(`${key} = $${paramIndex}`);
-      values.push(prepareParamValue(value as ParamValue));
+      conditions.push(equalityCondition(key, value, paramIndex));
+      values.push(equalityParam(value));
       paramIndex++;
     }
   }
@@ -227,8 +269,8 @@ export function buildUpdate(
       } else if (isNull(value)) {
         sql += ` AND ${column} IS NULL`;
       } else {
-        values.push(value);
-        sql += ` AND ${column} = $${paramIndex}`;
+        values.push(value instanceof SharedWith ? value.user_id : value);
+        sql += ` AND ${equalityCondition(column, value, paramIndex)}`;
         paramIndex++;
       }
     }
@@ -368,14 +410,15 @@ export function buildSoftDelete(
   tableName: string,
   primaryKey: string,
   primaryKeyValue: ParamValue,
-  additionalWhere?: { column: string; value: ParamValue },
+  additionalWhere?: { column: string; value: ParamValue | SharedWith },
 ): PreparedQuery {
   const values: ParamValue[] = [primaryKeyValue];
   let sql = `UPDATE ${tableName} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${primaryKey} = $1`;
 
   if (additionalWhere) {
-    values.push(additionalWhere.value);
-    sql += ` AND ${additionalWhere.column} = $${values.length}`;
+    const { column, value } = additionalWhere;
+    values.push(value instanceof SharedWith ? value.user_id : value);
+    sql += ` AND ${equalityCondition(column, value, values.length)}`;
   }
 
   sql += ` RETURNING ${primaryKey}`;
@@ -384,7 +427,7 @@ export function buildSoftDelete(
 }
 
 export interface SearchFilters {
-  user_id?: string;
+  user_id?: string | SharedWith;
   primaryKey?: { column: string; value: ParamValue };
   filters?: QueryData;
   inFilters?: Record<string, ParamValue[]>;
@@ -427,8 +470,8 @@ export function buildSelectWithFilters(
   let paramIndex = 1;
 
   if (user_id) {
-    conditions.push(`user_id = $${paramIndex++}`);
-    values.push(user_id);
+    conditions.push(equalityCondition("user_id", user_id, paramIndex++));
+    values.push(equalityParam(user_id));
   }
 
   if (primaryKey) {
@@ -443,8 +486,8 @@ export function buildSelectWithFilters(
     } else if (isNull(value)) {
       conditions.push(`${key} IS NULL`);
     } else {
-      conditions.push(`${key} = $${paramIndex++}`);
-      values.push(prepareParamValue(value as ParamValue));
+      conditions.push(equalityCondition(key, value, paramIndex++));
+      values.push(equalityParam(value));
     }
   }
 

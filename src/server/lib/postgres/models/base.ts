@@ -11,7 +11,31 @@ import {
   ParamValue,
   QueryData,
   SearchFilters,
+  SharedWith,
+  sharedWithSql,
 } from "../database";
+
+/** ` AND <key> = $N` per defined filter, numbered from `startIndex`; `sharedWith(user)` widens its column. */
+const appendEqualityFilters = (
+  filters: Record<string, ParamValue | unknown>,
+  values: ParamValue[],
+  startIndex: number,
+): string => {
+  let sql = "";
+  let paramIdx = startIndex;
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined) continue;
+    const placeholder = `$${paramIdx++}`;
+    if (value instanceof SharedWith) {
+      sql += ` AND ${sharedWithSql(key, placeholder)}`;
+      values.push(value.user_id);
+    } else {
+      sql += ` AND ${key} = ${placeholder}`;
+      values.push(value as ParamValue);
+    }
+  }
+  return sql;
+};
 
 /** Query executor - either pool or a transaction client */
 export type QueryExecutor = SqlPool | SqlClient;
@@ -247,7 +271,7 @@ export abstract class Table<
     primaryKeyValue: ParamValue,
     data: QueryData,
     returning?: string[],
-    userId?: string,
+    userId?: string | SharedWith,
     client?: QueryExecutor,
     extraWhere?: AdditionalWhere[],
     excludeDeleted?: boolean,
@@ -337,7 +361,10 @@ export abstract class Table<
     return upserted;
   }
 
-  async softDelete(primaryKeyValue: ParamValue, userId?: ParamValue): Promise<boolean> {
+  async softDelete(
+    primaryKeyValue: ParamValue,
+    userId?: ParamValue | SharedWith,
+  ): Promise<boolean> {
     this._assertSimplePrimaryKey("softDelete");
     const { sql, values } = buildSoftDelete(
       this.name,
@@ -361,14 +388,7 @@ export abstract class Table<
       sql += ` AND (is_deleted IS NULL OR is_deleted = FALSE)`;
     }
     const values: ParamValue[] = [...ids];
-
-    let paramIdx = ids.length + 1;
-    for (const [key, value] of Object.entries(additionalFilters)) {
-      if (value !== undefined) {
-        sql += ` AND ${key} = $${paramIdx++}`;
-        values.push(value as ParamValue);
-      }
-    }
+    sql += appendEqualityFilters(additionalFilters, values, ids.length + 1);
 
     const result = await pool.query(sql, values);
     return result.rows.map((row: unknown) => new this.ModelClass(row));
@@ -384,14 +404,7 @@ export abstract class Table<
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${this.primaryKey} IN (${placeholders})`;
     const values: ParamValue[] = [...ids];
-
-    let paramIdx = ids.length + 1;
-    for (const [key, value] of Object.entries(additionalFilters)) {
-      if (value !== undefined) {
-        sql += ` AND ${key} = $${paramIdx++}`;
-        values.push(value as ParamValue);
-      }
-    }
+    sql += appendEqualityFilters(additionalFilters, values, ids.length + 1);
     sql += ` RETURNING ${this.primaryKey}`;
 
     const executor = client ?? pool;
@@ -402,7 +415,7 @@ export abstract class Table<
   async bulkSoftDeleteByColumn(
     column: string,
     columnValue: ParamValue | ParamValue[],
-    userIdValue?: ParamValue,
+    userIdValue?: ParamValue | SharedWith,
     client?: QueryExecutor,
   ): Promise<number> {
     this._assertSimplePrimaryKey("bulkSoftDeleteByColumn");
@@ -414,11 +427,7 @@ export abstract class Table<
     const predicate = isArray ? `${column} = ANY($1)` : `${column} = $1`;
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${predicate}`;
     const values: ParamValue[] = [columnValue as ParamValue];
-
-    if (userIdValue !== undefined) {
-      sql += ` AND user_id = $2`;
-      values.push(userIdValue);
-    }
+    sql += appendEqualityFilters({ user_id: userIdValue }, values, 2);
     sql += ` RETURNING ${this.primaryKey}`;
 
     const executor = client ?? pool;
@@ -451,18 +460,14 @@ export abstract class Table<
       matchColumn: string;
       matchValues: ParamValue[];
     },
-    userIdValue?: ParamValue,
+    userIdValue?: ParamValue | SharedWith,
     client?: QueryExecutor,
   ): Promise<number> {
     this._assertSimplePrimaryKey("bulkSoftDeleteByRelatedColumn");
     if (source.matchValues.length === 0) return 0;
     let sql = `UPDATE ${this.name} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE ${column} IN (SELECT ${source.selectColumn} FROM ${source.table} WHERE ${source.matchColumn} = ANY($1))`;
     const values: ParamValue[] = [source.matchValues as unknown as ParamValue];
-
-    if (userIdValue !== undefined) {
-      sql += ` AND user_id = $2`;
-      values.push(userIdValue);
-    }
+    sql += appendEqualityFilters({ user_id: userIdValue }, values, 2);
     sql += ` RETURNING ${this.primaryKey}`;
 
     const executor = client ?? pool;

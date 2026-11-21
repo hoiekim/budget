@@ -411,3 +411,98 @@ describe("runTransferDetection", () => {
     expect(tail).not.toMatch(/a2\.hide/i);
   });
 });
+
+// What a user's sharing group changes: a pair owned by anyone in the group
+// keeps its transactions from being suggested again, and the whole group
+// serializes on one lock. Which transactions are candidates stays the user's own.
+describe("runTransferDetection — sharing scope", () => {
+  /** A statement as Postgres reads it: comments dropped, whitespace collapsed. */
+  const flat = (sql: string) => sql.replace(/--.*$/gm, "").replace(/\s+/g, " ").trim();
+
+  const run = async () => {
+    setupMock({
+      users: [userRow({ user_id: "user-1" })],
+      candidates: [
+        { transaction_id_a: "txn-a", transaction_id_b: "txn-b", date_delta: 0, is_plaid_transfer: false },
+      ],
+    });
+    await runTransferDetection();
+    const ran = mockReservedUnsafe.mock.calls.map(([sql, values]) => ({ sql: flat(sql), values }));
+    const only = (pattern: RegExp) => {
+      const matches = ran.filter(({ sql }) => pattern.test(sql));
+      expect(matches).toHaveLength(1);
+      return matches[0];
+    };
+    return {
+      lock: only(/pg_advisory_xact_lock/),
+      candidates: only(/JOIN transactions t2/),
+      insert: only(/^INSERT INTO transaction_pairs/),
+    };
+  };
+
+  const LIVE = "(tp.is_deleted IS NULL OR tp.is_deleted = FALSE)";
+
+  test("the advisory lock keys on the sharing group, so every member's run and manual pairing serialize", async () => {
+    const { lock } = await run();
+    expect(lock.sql).toBe(
+      "SELECT pg_advisory_xact_lock(hashtext(" +
+        "(SELECT min(member::text) FROM unnest(sharing_user_ids($1)) member)" +
+        " || ':transfers'))",
+    );
+    expect(lock.values).toEqual(["user-1"]);
+  });
+
+  test("candidates stay the user's own transactions on both sides of the join", async () => {
+    const { candidates } = await run();
+    expect(candidates.sql).toContain(
+      "FROM transactions t1 JOIN transactions t2 ON t1.user_id = t2.user_id AND t1.user_id = $1 AND t2.amount = -t1.amount",
+    );
+    expect(candidates.values).toEqual(["user-1", 7, 500]);
+  });
+
+  test("a live pair owned by anyone in the group keeps either transaction out of the candidates", async () => {
+    const { candidates } = await run();
+    expect(candidates.sql).toContain(
+      "AND NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+        ` WHERE tp.user_id = ANY(sharing_user_ids($1)) AND ${LIVE} AND tp.status <> 'rejected'` +
+        " AND ( tp.transaction_id_a IN (t1.transaction_id, t2.transaction_id)" +
+        " OR tp.transaction_id_b IN (t1.transaction_id, t2.transaction_id) ) )" +
+        " AND NOT EXISTS (",
+    );
+  });
+
+  test("a rejection by anyone in the group keeps that same pair out of the candidates", async () => {
+    const { candidates } = await run();
+    expect(candidates.sql).toContain(
+      "AND NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+        ` WHERE tp.user_id = ANY(sharing_user_ids($1)) AND ${LIVE} AND tp.status = 'rejected'` +
+        " AND ( (tp.transaction_id_a = t1.transaction_id AND tp.transaction_id_b = t2.transaction_id)" +
+        " OR (tp.transaction_id_a = t2.transaction_id AND tp.transaction_id_b = t1.transaction_id) ) )" +
+        " ORDER BY ",
+    );
+  });
+
+  test("the insert is owned by the user and skipped when the group already pairs either transaction", async () => {
+    const { insert } = await run();
+    expect(insert.sql).toContain(
+      "INSERT INTO transaction_pairs (pair_id, user_id, transaction_id_a, transaction_id_b, status)" +
+        " SELECT $1, $2, $3, $4, 'suggested'" +
+        " WHERE NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+        ` WHERE tp.user_id = ANY(sharing_user_ids($2)) AND ${LIVE} AND tp.status <> 'rejected'` +
+        " AND ( tp.transaction_id_a IN ($3, $4) OR tp.transaction_id_b IN ($3, $4) ) )" +
+        " AND NOT EXISTS (",
+    );
+    expect(insert.values).toEqual([expect.any(String), "user-1", "txn-a", "txn-b"]);
+  });
+
+  test("the insert is skipped when the group holds any row for this same pair, deleted or not", async () => {
+    const { insert } = await run();
+    const guard =
+      " AND NOT EXISTS ( SELECT 1 FROM transaction_pairs tp" +
+      " WHERE tp.user_id = ANY(sharing_user_ids($2))" +
+      " AND ( (tp.transaction_id_a = $3 AND tp.transaction_id_b = $4)" +
+      " OR (tp.transaction_id_a = $4 AND tp.transaction_id_b = $3) ) )";
+    // Anchored on the end of the statement: nothing follows the guard to widen it.
+    expect(insert.sql.slice(-guard.length)).toBe(guard);
+  });
+});
