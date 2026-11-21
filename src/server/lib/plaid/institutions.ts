@@ -7,6 +7,48 @@ import { getClient } from "./util";
 // app-level credential shared by every user of the deployment.
 const institutionQueue = new Queue({ maxInflight: 4 });
 
+/**
+ * Plaid ids come from Link's own catalog, so an id it rejects is not expected
+ * to start resolving soon; the one that plausibly could, a freshly connected
+ * item's, is forgotten when the item is created.
+ */
+export const UNRESOLVABLE_INSTITUTION_TTL = 1000 * 60 * 60;
+const MAX_UNRESOLVABLE_INSTITUTIONS = 10_000;
+
+// Same scope as the queue: the round trips it saves are metered per deployment.
+const unresolvableUntil = new Map<string, number>();
+
+/** Plaid's answer for an institution_id outside its catalog. */
+const isUnknownInstitutionError = (error: unknown): boolean =>
+  (error as { response?: { data?: { error_code?: string } } })?.response?.data?.error_code ===
+  "INVALID_INSTITUTION";
+
+const rememberUnresolvable = (id: string) => {
+  unresolvableUntil.delete(id);
+  if (unresolvableUntil.size >= MAX_UNRESOLVABLE_INSTITUTIONS) {
+    // Insertion order with one TTL: the first key is the soonest to expire.
+    const soonest = unresolvableUntil.keys().next().value;
+    if (soonest !== undefined) unresolvableUntil.delete(soonest);
+  }
+  unresolvableUntil.set(id, Date.now() + UNRESOLVABLE_INSTITUTION_TTL);
+};
+
+/**
+ * True while Plaid's last answer for `id` was that no such institution exists.
+ * Transient failures are never recorded, so they are asked again next time.
+ */
+export const isUnresolvableInstitution = (id: string): boolean => {
+  const expiresAt = unresolvableUntil.get(id);
+  if (expiresAt === undefined) return false;
+  if (Date.now() < expiresAt) return true;
+  unresolvableUntil.delete(id);
+  return false;
+};
+
+export const forgetUnresolvableInstitution = (id: string) => {
+  unresolvableUntil.delete(id);
+};
+
 const getInstitution = async (
   user: MaskedUser,
   id: string,
@@ -47,6 +89,7 @@ const getInstitution = async (
       status,
     };
   } catch (error) {
+    if (isUnknownInstitutionError(error)) rememberUnresolvable(id);
     logger.error("Failed to get institution data", { institutionId: id }, error);
   }
 };
