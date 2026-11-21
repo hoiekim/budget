@@ -58,7 +58,10 @@ fn empty() -> Body {
 }
 
 fn set_header(response: &mut HttpResponse, name: &str, value: &str) {
-    if let (Ok(name), Ok(value)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(value)) {
+    // A header value is a byte string: each character up to U+00FF is sent as
+    // its one byte, as Bun sends it.
+    let Some(bytes) = value.chars().map(|c| u8::try_from(u32::from(c)).ok()).collect::<Option<Vec<u8>>>() else { return };
+    if let (Ok(name), Ok(value)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_bytes(&bytes)) {
         response.headers_mut().append(name, value);
     }
 }

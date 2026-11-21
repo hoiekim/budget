@@ -854,8 +854,9 @@ fn parse_zone(zone: &str) -> Option<i64> {
 
 /// `Date.parse(text)`: milliseconds since the epoch, or NaN.
 pub fn date_parse(text: &str) -> f64 {
-    let trimmed = text.trim();
-    let ms = parse_iso(trimmed).or_else(|| parse_legacy(trimmed)).unwrap_or(f64::NAN);
+    // The ISO form is read as written: white space around it sends the text
+    // to the legacy forms, which have no `T`.
+    let ms = parse_iso(text).or_else(|| parse_legacy(text.trim())).unwrap_or(f64::NAN);
     time_clip(ms)
 }
 

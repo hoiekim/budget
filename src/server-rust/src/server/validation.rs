@@ -17,7 +17,7 @@ pub fn require_query_string(req: &Request, param: &str) -> Validation<String> {
         None => Err(format!("Missing required parameter: {param}")),
         // Repeated params (e.g. ?id=a&id=b) are parsed as arrays.
         Some(QueryValue::Many(_)) => Err(format!("Parameter {param} must be a single value, not an array")),
-        Some(QueryValue::One(value)) if value.trim().is_empty() => Err(format!("Parameter {param} cannot be empty")),
+        Some(QueryValue::One(value)) if js_trim(value).is_empty() => Err(format!("Parameter {param} cannot be empty")),
         Some(QueryValue::One(value)) => Ok(value.clone()),
     }
 }
@@ -52,8 +52,9 @@ pub fn require_string_field(obj: &Obj, field: &str) -> Validation<String> {
 static TICKER_SYMBOL_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z0-9.:-]{1,16}$").unwrap());
 
 /// `String.prototype.trim` whitespace: Unicode white space plus line terminators and the BOM.
+/// U+0085 (next line) is white space to Unicode but not to JavaScript.
 pub fn js_trim(text: &str) -> &str {
-    text.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+    text.trim_matches(|c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
 }
 
 /// A ticker-symbol field, returned trimmed and upper-cased.

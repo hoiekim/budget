@@ -3,18 +3,25 @@
  * `scripts/test-issuer.ts`: discovery, an Ed25519 key set, and token,
  * introspection and revocation endpoints whose answers a test replaces
  * through `state`. Tokens name the `https` issuer; the servers reach this
- * fake over plain HTTP through `AUTH_BACKCHANNEL_URL`.
+ * fake over plain HTTP through `AUTH_BACKCHANNEL_URL`, or, when started
+ * without one, at the issuer's own host through the upstream proxy.
+ *
+ * A test that needs an answer `state` cannot express (another status for
+ * discovery or the key set, a slow endpoint) registers its own handler on
+ * `stack.upstream.hub` for `ISSUER_HOST`: the newest handler is asked first.
  */
 import { generateKeyPairSync, sign as edSign, type KeyObject } from "node:crypto";
 import { jsonResponse, type UpstreamHub, type UpstreamRequest } from "./hub";
 
 export const ISSUER = "https://auth.example.test";
 export const ISSUER_HOST = "issuer";
+/** The host a server calls when it has no back channel: the issuer's own. */
+export const ISSUER_PUBLIC_HOST = new URL(ISSUER).host;
 export const CLIENT_ID = "budget";
 export const CLIENT_SECRET = "conformance-client-secret";
 export const REDIRECT_URI = "https://budget.example.test/api/auth/callback";
 
-type Handler = (form: URLSearchParams, request: UpstreamRequest) => Response;
+type Handler = (form: URLSearchParams, request: UpstreamRequest) => Response | Promise<Response>;
 
 const nowS = () => Math.floor(Date.now() / 1000);
 
@@ -31,6 +38,7 @@ export class FakeIssuer {
     this.jwk = { ...publicKey.export({ format: "jwk" }), kid: "k1", alg: "EdDSA", use: "sig" };
     this.reset();
     hub.on(ISSUER_HOST, (request) => this.handle(request));
+    hub.on(ISSUER_PUBLIC_HOST, (request) => this.handle(request));
     this.server = this.listen(0);
     this.port = this.server.port!;
   }
@@ -79,7 +87,7 @@ export class FakeIssuer {
     };
   }
 
-  private handle(request: UpstreamRequest): Response {
+  private handle(request: UpstreamRequest): Response | Promise<Response> {
     if (this.state.down) return new Response(null, { status: 503 });
     switch (request.path) {
       case "/.well-known/openid-configuration":
@@ -102,8 +110,11 @@ export class FakeIssuer {
     else this.server = this.listen(this.port);
   }
 
+  /** The requests for `path`, over the back channel or at the issuer's own host. */
   seen(path: string): UpstreamRequest[] {
-    return this.hub.seen(ISSUER_HOST).filter((request) => request.path === path);
+    return this.hub.requests.filter(
+      (request) => (request.host === ISSUER_HOST || request.host === ISSUER_PUBLIC_HOST) && request.path === path,
+    );
   }
 
   jwt(header: object, payload: object, key: KeyObject = this.privateKey): string {
