@@ -196,8 +196,12 @@ pub fn to_js_string(value: &Json) -> String {
     }
 }
 
-/// `Math.round`: halves round toward positive infinity.
+/// `Math.round`: halves round toward positive infinity, and a value in
+/// `[-0.5, -0]` rounds to negative zero.
 pub fn math_round(value: f64) -> f64 {
+    if value.is_sign_negative() && value >= -0.5 {
+        return -0.0;
+    }
     (value + 0.5).floor()
 }
 
