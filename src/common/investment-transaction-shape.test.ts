@@ -6,6 +6,7 @@ import {
   normalizeShareMovement,
   shapePatchFor,
   isNormalizableRow,
+  shareMovementDirection,
   type ShareMovement,
   type IntentField,
 } from "./investment-transaction-shape";
@@ -261,5 +262,33 @@ describe("the patch a single edit writes", () => {
 
   test("an edit that changes nothing writes nothing", () => {
     expect(shapePatchFor("manual", canonicalBuy, "price", { price: 30 })).toEqual({});
+  });
+});
+
+describe("the direction a row moves shares", () => {
+  const direction = (type: InvestmentTransactionType, quantity: number) =>
+    shareMovementDirection({ type, quantity });
+
+  test("a canonical buy arrives, a canonical sell leaves", () => {
+    expect(direction(InvestmentTransactionType.Buy, 10)).toBe("buy");
+    expect(direction(InvestmentTransactionType.Sell, -5)).toBe("sell");
+  });
+
+  test("a sell with a positive quantity leaves", () => {
+    expect(direction(InvestmentTransactionType.Sell, 5)).toBe("sell");
+  });
+
+  test("a buy with a negative quantity leaves", () => {
+    expect(direction(InvestmentTransactionType.Buy, -5)).toBe("sell");
+  });
+
+  test("a zero quantity falls back to the type", () => {
+    expect(direction(InvestmentTransactionType.Buy, 0)).toBe("buy");
+    expect(direction(InvestmentTransactionType.Sell, 0)).toBe("sell");
+  });
+
+  test("a type that moves no shares has no direction", () => {
+    expect(direction(InvestmentTransactionType.Cash, 0)).toBeNull();
+    expect(direction(InvestmentTransactionType.Fee, -1)).toBeNull();
   });
 });

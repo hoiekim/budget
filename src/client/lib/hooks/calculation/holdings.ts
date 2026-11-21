@@ -1,5 +1,4 @@
-import { DERIVED_HOLDING_SNAPSHOT_PREFIX, getYearMonthString, LocalDate } from "common";
-import { InvestmentTransactionType } from "common/lib/plaid-enums";
+import { DERIVED_HOLDING_SNAPSHOT_PREFIX, getYearMonthString, LocalDate, shareMovementDirection } from "common";
 import { HoldingValueSummary, HoldingsValueData } from "../../models/Calculations";
 import {
   HoldingSnapshotDictionary,
@@ -203,6 +202,10 @@ export interface CostBasisPosition {
  * the basis, not all of it. Subtracting proceeds instead would drive a
  * profitable position's basis to zero while the shares are still held.
  *
+ * Direction comes from {@link shareMovementDirection}, not from `type`
+ * alone: a buy row with a negative quantity is a sale and removes basis for
+ * the shares leaving.
+ *
  * Types other than buy and sell leave the position alone: a dividend or a
  * transfer moves no shares, so there is no basis to attribute to it.
  */
@@ -210,13 +213,14 @@ export const foldCostBasis = (
   position: CostBasisPosition,
   t: InvestmentTransaction,
 ): CostBasisPosition => {
-  const { type, price, quantity, fees } = t;
+  const { price, quantity, fees } = t;
+  const direction = shareMovementDirection(t);
   let { totalCost, totalQuantity } = position;
 
-  if (type === InvestmentTransactionType.Buy) {
+  if (direction === "buy") {
     totalCost += price * quantity + (fees || 0);
     totalQuantity += quantity;
-  } else if (type === InvestmentTransactionType.Sell && totalQuantity > 0) {
+  } else if (direction === "sell" && totalQuantity > 0) {
     // Plaid encodes sell quantities as NEGATIVE, so take the magnitude —
     // otherwise `-=` would ADD shares and basis back instead of removing them
     // (cf. benchmark.ts, which already uses -Math.abs for sells).
