@@ -21,9 +21,14 @@
     "dev-server": "bun --watch ./src/server/start.ts",
     "test": "bun test --preload ./scripts/test-preload.ts src",
     "test:coverage": "bun test --preload ./scripts/test-preload.ts --coverage --coverage-reporter=lcov src && bun scripts/check-coverage.ts",
-    "lint": "bun --bun eslint src scripts vite.config.ts healthcheck.js",
-    "lint:fix": "bun --bun eslint src scripts vite.config.ts healthcheck.js --fix",
-    "typecheck": "bun run --bun tsc --noEmit",
+    "test:conformance": "bun conformance/run.ts",
+    "test:conformance:bun": "bun conformance/run.ts --target bun",
+    "test:conformance:rust": "bun conformance/run.ts --target rust",
+    "build-server-rust": "cargo build --release --bin budget-server && mkdir -p build/server-rust && cp target/release/budget-server build/server-rust/budget-server",
+    "start-server-rust": "./build/server-rust/budget-server",
+    "lint": "bun --bun eslint src scripts conformance vite.config.ts healthcheck.js",
+    "lint:fix": "bun --bun eslint src scripts conformance vite.config.ts healthcheck.js --fix",
+    "typecheck": "bun run --bun tsc --noEmit && bun run --bun tsc --noEmit -p conformance",
     "preview": "vite preview"
   },
   "devDependencies": {

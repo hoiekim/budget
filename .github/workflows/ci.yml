@@ -53,3 +53,53 @@ jobs:
         run: bun install
       - name: Build
         run: bun run build
+
+  # The Rust backend's own unit tests, then the one HTTP suite run against
+  # both backends with a comparison of their answers (conformance/README.md).
+  conformance:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('bun.lockb') }}
+          restore-keys: bun-
+      - name: Install dependencies
+        run: bun install
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+      # Every started server keeps a pool of 20 connections, and the two
+      # backends are tested at the same time.
+      - name: Raise the Postgres connection limit
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -c "ALTER SYSTEM SET max_connections = 400"
+          docker restart ${{ job.services.postgres.id }}
+          until docker exec ${{ job.services.postgres.id }} pg_isready -U postgres; do sleep 1; done
+      - name: Rust unit tests
+        run: cargo test
+      - name: Conformance suite against both backends
+        run: bun run test:conformance
+
