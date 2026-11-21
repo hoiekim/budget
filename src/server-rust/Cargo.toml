@@ -16,6 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+argon2 = "0.6.0"
 async-trait = "0.1.92"
 base64 = "0.23.1"
 bcrypt = "0.19.3"

@@ -74,16 +74,7 @@ pub fn require_number_field(obj: &Obj, field: &str) -> Validation<f64> {
     }
 }
 
-static BARE_DATE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}$").unwrap());
-
-/// `new LocalDate(text)`: a bare `YYYY-MM-DD` is midnight local time, anything else parses as `Date` does.
-pub fn local_date(text: &str) -> JsDate {
-    if BARE_DATE.is_match(text) {
-        JsDate::parse(&format!("{text}T00:00:00"))
-    } else {
-        JsDate::parse(text)
-    }
-}
+pub use crate::common::date::local_date;
 
 /// An optional caller-supplied date field as a `LocalDate`; absent, null or empty is `None`.
 pub fn optional_date_field(obj: &Obj, field: &str, label: Option<&str>) -> Validation<Option<JsDate>> {
