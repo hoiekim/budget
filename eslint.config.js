@@ -5,7 +5,15 @@ import globals from "globals";
 
 export default [
   {
-    files: ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "scripts/**/*.tsx", "vite.config.ts", "healthcheck.js"],
+    files: [
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "scripts/**/*.ts",
+      "scripts/**/*.tsx",
+      "conformance/**/*.ts",
+      "vite.config.ts",
+      "healthcheck.js",
+    ],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -72,6 +80,6 @@ export default [
     rules: { "no-restricted-imports": "off" },
   },
   {
-    ignores: ["build/**", "node_modules/**", "coverage/**", "*.config.js"],
+    ignores: ["build/**", "node_modules/**", "coverage/**", "target/**", "*.config.js"],
   },
 ];
