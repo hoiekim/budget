@@ -303,23 +303,40 @@ describe("stage helpers", () => {
       expect(sharingKeyOf(sharingOf(ANN, BEN))).toBe("u-ann,u-ben");
     });
 
+    const fetched = (sharing: Sharing) => ({ ...emptyStage1(), sharing });
+
     test("the cache is stale once someone joined, someone left, or the user stopped sharing", () => {
-      const fetched = (sharing: Sharing) => ({ ...emptyStage1(), sharing });
-      expect(isSharingStale(fetched(sharingOf(ANN, BEN, CAT)), "u-ann,u-ben")).toBe(true);
-      expect(isSharingStale(fetched(sharingOf(ANN)), "u-ann,u-ben")).toBe(true);
-      expect(isSharingStale(fetched(sharingOf()), "u-ann,u-ben")).toBe(true);
-      expect(isSharingStale(fetched(sharingOf(ANN, BEN)), "")).toBe(true);
+      const cachedFor = "u-ann,u-ben";
+      expect(isSharingStale(fetched(sharingOf(ANN, BEN, CAT)), cachedFor, undefined)).toBe(true);
+      expect(isSharingStale(fetched(sharingOf(ANN)), cachedFor, undefined)).toBe(true);
+      expect(isSharingStale(fetched(sharingOf()), cachedFor, undefined)).toBe(true);
+      expect(isSharingStale(fetched(sharingOf(ANN, BEN)), "", undefined)).toBe(true);
     });
 
-    test("the cache is current while the same people share, whatever else changed", () => {
-      const stage1 = { ...emptyStage1(), sharing: sharingOf(BEN, ANN) };
-      expect(isSharingStale(stage1, "u-ann,u-ben")).toBe(false);
-      expect(isSharingStale(emptyStage1(), "")).toBe(false);
+    test("a tab still showing the old group is stale after another tab has refilled the cache", () => {
+      const now = fetched(sharingOf(ANN, BEN, CAT));
+      const cachedFor = sharingKeyOf(now.sharing);
+      expect(isSharingStale(now, cachedFor, sharingOf(ANN, BEN))).toBe(true);
+      expect(isSharingStale(fetched(sharingOf()), "", sharingOf(ANN, BEN))).toBe(true);
     });
 
-    test("a failed fetch never calls the cache stale", () => {
+    test("a tab that has not synced yet goes by the cache alone", () => {
+      const now = fetched(sharingOf(ANN, BEN));
+      expect(isSharingStale(now, "u-ann,u-ben", undefined)).toBe(false);
+      expect(isSharingStale(now, "", undefined)).toBe(true);
+    });
+
+    test("nothing is stale while the same people share, whatever else changed", () => {
+      const now = fetched(sharingOf(BEN, ANN));
+      const shown: Sharing = { members: [ANN, BEN], invitations: [] };
+      expect(isSharingStale(now, "u-ann,u-ben", shown)).toBe(false);
+      expect(isSharingStale(emptyStage1(), "", { members: [], invitations: [] })).toBe(false);
+    });
+
+    test("a failed fetch never calls anything stale", () => {
       const stage1 = { ...emptyStage1(), sharingFailed: true };
-      expect(isSharingStale(stage1, "u-ann,u-ben")).toBe(false);
+      expect(isSharingStale(stage1, "u-ann,u-ben", undefined)).toBe(false);
+      expect(isSharingStale(stage1, "", sharingOf(ANN, BEN))).toBe(false);
     });
 
     test("Stage 1 paints the fetched sharing, and the apply step replaces it", () => {
@@ -331,6 +348,10 @@ describe("stage helpers", () => {
         members: [],
         invitations: [],
       });
+    });
+
+    test("data that no sync has filled yet names no sharing state", () => {
+      expect(new Data().sharing).toBeUndefined();
     });
 
     test("a failed fetch keeps the previous sharing instead of painting nobody", () => {

@@ -31,7 +31,7 @@ export const Configuration = () => {
 
   const isOwn = (item: Item) => !item.user_id || item.user_id === user?.user_id;
   const ownerNameOf = (item: Item) =>
-    sharing.members.find((member) => member.user_id === item.user_id)?.username;
+    sharing?.members.find((member) => member.user_id === item.user_id)?.username;
 
   const itemsRow = items
     .toArray()

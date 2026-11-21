@@ -17,7 +17,7 @@ const alertFailure = (message?: string) => {
 
 export const SharingSection = () => {
   const { user, data } = useAppContext();
-  const { members, invitations } = data.sharing;
+  const { members, invitations } = data.sharing ?? { members: [], invitations: [] };
   const { invite, accept, dismiss, remove } = useSharing();
 
   const [username, setUsername] = useState("");

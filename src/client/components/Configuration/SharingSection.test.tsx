@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import type { Sharing } from "server";
-import { Data, Properties } from "client";
+import { Data, Properties, globalData } from "client";
 import { buildContext, renderWithContext, resetDom, stubFetch, type FetchStubRoute } from "test-render";
 import { SharingSection } from "./SharingSection";
 
@@ -24,6 +24,7 @@ afterEach(() => {
   fetchStub = undefined;
   spies.forEach((spy) => spy.mockRestore());
   spies = [];
+  globalData.update(new Data());
   resetDom();
 });
 
@@ -56,6 +57,7 @@ const renderSection = (
   }) as typeof globalThis.fetch;
 
   let data = new Data({ sharing });
+  globalData.update(data);
   renderWithContext(
     <Properties>
       <SharingSection />
@@ -63,8 +65,10 @@ const renderSection = (
     buildContext({
       user,
       data,
+      // As the app's own `setData` does, keep the tab-wide mirror in step.
       setData: (next) => {
         data = typeof next === "function" ? next(data) : next;
+        globalData.update(data);
       },
     }),
   );

@@ -775,11 +775,22 @@ export const fetchStage1 = async (
 };
 
 /**
- * Whether the cache and its cursor were filled for another set of people than
- * the user shares data with now. A fetch that failed says nothing either way.
+ * Whether a warm sync would build on data fetched for another set of people
+ * than the user shares with now. Every tab of a browser shares the cache and
+ * its cursor (`cachedFor`), but each holds its own copy in memory (`shown`,
+ * `undefined` before the tab's first sync): once one tab has refilled the
+ * cache, the others still show the old group's rows. A fetch that failed says
+ * nothing either way.
  */
-export const isSharingStale = (fetched: Stage1Fetched, lastSyncedSharing: string): boolean =>
-  !fetched.sharingFailed && sharingKeyOf(fetched.sharing) !== lastSyncedSharing;
+export const isSharingStale = (
+  fetched: Stage1Fetched,
+  cachedFor: string,
+  shown: Sharing | undefined,
+): boolean => {
+  if (fetched.sharingFailed) return false;
+  const sharingKey = sharingKeyOf(fetched.sharing);
+  return sharingKey !== cachedFor || (shown !== undefined && sharingKey !== sharingKeyOf(shown));
+};
 
 /** Warm paint: hand the cached `Data` to React with the loading flags set.
  *  Mutates the cached object's status (it is the cache's own object, not
@@ -1121,7 +1132,7 @@ const debounceDomain = (
 
 export const useSync = () => {
   const { user, setData } = useAppContext();
-  const _sync = useCallback(async function syncEverything(): Promise<void> {
+  const _sync = useCallback(async function syncEverything(startCold = false): Promise<void> {
     if (!user) return;
     setData((oldData) => {
       const newData = new Data(oldData);
@@ -1150,6 +1161,7 @@ export const useSync = () => {
       // → cold (full fetch, no cursor on the wire) so the time-partitioned
       // history can re-hydrate from scratch.
       const isWarm =
+        !startCold &&
         !!cached &&
         cached.accounts.size > 0 &&
         (cached.transactions.size > 0 ||
@@ -1211,12 +1223,13 @@ export const useSync = () => {
 
       // Once someone has joined or left, a delta brings in none of a
       // newcomer's older rows and drops none of a leaver's, so the sync starts
-      // over cold: it purges the cache and fetches in full.
-      if (isSharingStale(stage1, readLastSyncedSharing())) {
+      // over cold: it purges the cache and fetches in full. The cursor goes
+      // first, so that a cold run that fails is not followed by a warm one.
+      if (isSharingStale(stage1, readLastSyncedSharing(), globalData.sharing)) {
         writeLastSyncedSharing(sharingKeyOf(stage1.sharing));
         if (isWarm) {
           removeLastSyncedCursor();
-          return syncEverything();
+          return syncEverything(true);
         }
       }
 
@@ -1450,6 +1463,10 @@ export const useSync = () => {
           case TableName.SharingInvitations: {
             const r = await fetchSharing();
             if (r.networkFailed) return;
+            // The answer names the members too. Taking new members from here
+            // would hide from the next sync that every table has to follow.
+            const shown = globalData.sharing;
+            if (!shown || sharingKeyOf(r.sharing) !== sharingKeyOf(shown)) return _sync();
             setData((oldData) => {
               const next = new Data(oldData);
               next.sharing = r.sharing;

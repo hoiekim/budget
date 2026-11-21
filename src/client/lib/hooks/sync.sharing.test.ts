@@ -3,7 +3,7 @@ import { createElement, type ReactNode } from "react";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { TableName } from "common";
 import type { Sharing } from "server";
-import { Context, Data } from "client";
+import { Context, Data, globalData } from "client";
 import { buildContext, resetDom, stubFetch } from "test-render";
 import { useSync } from "./sync";
 
@@ -21,11 +21,15 @@ afterEach(() => {
   cleanup();
   fetchStub?.restore();
   fetchStub = undefined;
+  globalData.update(new Data());
   resetDom();
 });
 
-/** Mounts `useSync` over a server that answers accounts and sharing, and fails everything else. */
-const mountSync = () => {
+/**
+ * Mounts `useSync` over a server that answers accounts and sharing, and fails
+ * everything else. `shown` is the sharing state the tab already holds.
+ */
+const mountSync = (shown?: Sharing) => {
   fetchStub = stubFetch([
     { path: "/api/sharing", response: { status: "success", body: SHARING } },
     {
@@ -33,12 +37,15 @@ const mountSync = () => {
       response: { status: "success", body: { accounts: [], items: [], holdings: [] } },
     },
   ]);
-  let data = new Data();
+  let data = new Data({ sharing: shown });
+  globalData.update(data);
   const context = buildContext({
     user: ME,
     data,
+    // As the app's own `setData` does, keep the tab-wide mirror in step.
     setData: (next) => {
       data = typeof next === "function" ? next(data) : next;
+      globalData.update(data);
     },
   });
   const wrapper = ({ children }: { children: ReactNode }) =>
@@ -67,11 +74,26 @@ describe("useSync and sharing", () => {
   });
 
   test("an invitation event refetches the sharing state and nothing else", async () => {
-    const mounted = mountSync();
+    const mounted = mountSync({ members: SHARING.members, invitations: [] });
     mounted.sync.syncDomain(TableName.SharingInvitations);
     await settle();
     expect(mounted.paths()).toEqual(["/api/sharing"]);
     expect(mounted.data().sharing).toEqual(SHARING);
+  });
+
+  test("an invitation event that finds other members refetches every table instead", async () => {
+    const mounted = mountSync({ members: [], invitations: [] });
+    mounted.sync.syncDomain(TableName.SharingInvitations);
+    await settle();
+    expect(mounted.paths()).toContain("/api/accounts");
+    expect(mounted.paths()).toContain("/api/transactions");
+  });
+
+  test("an invitation event before the tab's first sync refetches every table", async () => {
+    const mounted = mountSync();
+    mounted.sync.syncDomain(TableName.SharingInvitations);
+    await settle();
+    expect(mounted.paths()).toContain("/api/accounts");
   });
 
   test("a membership event refetches every table", async () => {
@@ -92,6 +114,6 @@ describe("useSync and sharing", () => {
       await mounted.sync.clean();
     });
     expect(window.localStorage.getItem(LAST_SYNCED_SHARING_KEY)).toBeNull();
-    expect(mounted.data().sharing).toEqual({ members: [], invitations: [] });
+    expect(mounted.data().sharing).toBeUndefined();
   });
 });

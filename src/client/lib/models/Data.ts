@@ -329,9 +329,10 @@ export class Data {
 
   /** Who the user shares data with, and the invitations still open, from
    *  `GET /api/sharing`. Fetched in Stage 1 of every sync and kept in memory
-   *  only. Every other table already holds the whole group's rows; only the
-   *  configuration page tells whose a connection is. */
-  sharing: Sharing = { members: [], invitations: [] };
+   *  only; `undefined` until a sync has fetched it. Its members are the
+   *  people whose rows the other tables hold. Only the configuration page
+   *  tells whose a connection is. */
+  sharing: Sharing | undefined = undefined;
 
   constructor(init?: Partial<Data>) {
     assign(this, init);
