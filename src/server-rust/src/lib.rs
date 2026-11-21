@@ -8,6 +8,7 @@
 //! - `start.rs` is `src/server/start.ts`
 //! - `js.rs` holds the JavaScript value semantics both rely on
 
+pub mod common;
 pub mod js;
 pub mod routes;
 pub mod server;
