@@ -119,7 +119,11 @@ const exchangePlaidToken = async (
   public_token: string,
   institution_id: string,
 ): Promise<JSONItem> => {
-  const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token);
+  const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token, {
+    maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS,
+  });
+  // Unbounded: the item now exists at Plaid, and shedding here would lose its
+  // single-use access token.
   const { consented_products = [], products = [] } = await plaid.getItem(access_token);
   return {
     item_id,

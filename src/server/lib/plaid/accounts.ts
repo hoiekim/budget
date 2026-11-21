@@ -1,12 +1,16 @@
 import { PlaidError, PlaidErrorType, Products } from "plaid";
 import { MaskedUser, updateItemStatus, upsertItems, logger } from "server";
 import { JSONItem, JSONHolding, JSONSecurity, ItemStatus, PlaidAccount } from "common";
-import { getClient, ignorable_error_codes } from "./util";
+import { PlaidClientDeps, getClient, ignorable_error_codes, plaidQueue } from "./util";
 
 export type ItemError = PlaidError & { item_id: string };
 
-export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
-  const client = getClient(user);
+export const getAccounts = async (
+  user: MaskedUser,
+  items: JSONItem[],
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+) => {
+  const client = getClientFn(user);
 
   type PlaidAccountsResponse = {
     items: JSONItem[];
@@ -23,7 +27,7 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
   const fetchJobs = items.map(async (item) => {
     const { item_id, access_token } = item;
     try {
-      const response = await client.accountsGet({ access_token });
+      const response = await plaidQueue.add(() => client.accountsGet({ access_token }));
       allAccounts.push(response.data.accounts as PlaidAccount[]);
       data.items.push({ ...item });
     } catch (error: unknown) {
@@ -52,8 +56,12 @@ export const getAccounts = async (user: MaskedUser, items: JSONItem[]) => {
   return data;
 };
 
-export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
-  const client = getClient(user);
+export const getHoldings = async (
+  user: MaskedUser,
+  items: JSONItem[],
+  { getClient: getClientFn = getClient }: PlaidClientDeps = {},
+) => {
+  const client = getClientFn(user);
 
   type PlaidHoldingsResponse = {
     items: JSONItem[];
@@ -77,7 +85,7 @@ export const getHoldings = async (user: MaskedUser, items: JSONItem[]) => {
     const { item_id, access_token } = item;
     if (!item.available_products.includes(Products.Investments)) return;
     try {
-      const response = await client.investmentsHoldingsGet({ access_token });
+      const response = await plaidQueue.add(() => client.investmentsHoldingsGet({ access_token }));
       const { accounts, holdings, securities } = response.data;
 
       allAccounts.push(accounts as PlaidAccount[]);
