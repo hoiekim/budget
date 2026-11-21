@@ -16,6 +16,7 @@ import {
   JSONTransaction,
   SimpleFinAccountBase,
 } from "common";
+import { blankSecurity } from "../security";
 
 export interface SimpleFinAccount {
   id: string;
@@ -215,21 +216,7 @@ export const translateHolding = (
     iso_currency_code,
     close_price,
     close_price_as_of,
-    isin: null,
-    cusip: null,
-    sedol: null,
-    institution_security_id: null,
-    institution_id: null,
-    proxy_security_id: null,
-    is_cash_equivalent: null,
-    type: null,
-    update_datetime: null,
-    unofficial_currency_code: null,
-    market_identifier_code: null,
-    sector: null,
-    industry: null,
-    option_contract: null,
-    fixed_income: null,
+    ...blankSecurity(),
   };
 
   const holding: JSONHolding = {

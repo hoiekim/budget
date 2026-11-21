@@ -18,6 +18,7 @@ import {
   HOLDINGS,
   SNAPSHOTS,
 } from "common/constants";
+import { blankSecurity } from "../security";
 
 
 export interface RefreshSecuritySnapshotsResult {
@@ -63,23 +64,9 @@ const getBenchmarkSecurityId = async (): Promise<string | null> => {
       ticker_symbol: BENCHMARK_TICKER,
       name: "Vanguard S&P 500 ETF",
       iso_currency_code: "USD",
-      type: "etf",
       close_price: null,
       close_price_as_of: null,
-      isin: null,
-      cusip: null,
-      sedol: null,
-      institution_security_id: null,
-      institution_id: null,
-      proxy_security_id: null,
-      is_cash_equivalent: null,
-      update_datetime: null,
-      unofficial_currency_code: null,
-      market_identifier_code: null,
-      sector: null,
-      industry: null,
-      option_contract: null,
-      fixed_income: null,
+      ...blankSecurity({ type: "etf" }),
     },
   ]);
   return written && written.status < 400 ? BENCHMARK_SECURITY_ID : null;
@@ -107,21 +94,7 @@ const securitySnapshotOf = (security: JSONSecurity, { price, tradingDate }: Clos
       // is untouched.
       name: null,
       iso_currency_code: null,
-      isin: null,
-      cusip: null,
-      sedol: null,
-      institution_security_id: null,
-      institution_id: null,
-      proxy_security_id: null,
-      is_cash_equivalent: null,
-      type: null,
-      update_datetime: null,
-      unofficial_currency_code: null,
-      market_identifier_code: null,
-      sector: null,
-      industry: null,
-      option_contract: null,
-      fixed_income: null,
+      ...blankSecurity(),
     },
   };
 };
