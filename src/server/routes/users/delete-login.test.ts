@@ -1,11 +1,3 @@
-/**
- * Tests for DELETE /api/login.
- *
- * The route calls `req.session.destroy(cb)` and returns success.
- * If the callback receives an error, the route throws — the Route base
- * class catches it and returns a 500 error envelope.
- */
-
 import { describe, test, expect, beforeEach, afterAll } from "bun:test";
 import { TEST_ISSUER, startFakeIssuer } from "test-issuer";
 
@@ -40,10 +32,11 @@ function makeReq(
       id: "s-1",
       user: undefined,
       auth: opts.auth,
-      regenerate() {},
-      destroy(cb?: (err?: Error) => void) {
+      async regenerate() {},
+      async destroy() {
         destroyCalled = true;
-        cb?.(opts.destroyErr);
+        await Promise.resolve();
+        if (opts.destroyErr) throw opts.destroyErr;
       },
     },
     ip: "127.0.0.1",
@@ -75,7 +68,7 @@ describe("delete-login", () => {
     expect(result?.status).toBe("success");
   });
 
-  test("destroy callback error → Route layer surfaces 500 error envelope", async () => {
+  test("session store delete fails → 500 error envelope, not success", async () => {
     const { req } = makeReq({ destroyErr: new Error("session store down") });
     const res = fakeRes();
     const result = await deleteLoginRoute.execute(req, res);
@@ -107,6 +100,19 @@ describe("delete-login", () => {
       expect(logoutUrl.searchParams.get("post_logout_redirect_uri")).toBe("https://budget.example.test/");
       await settle();
       expect(issuer.seen("/oauth/revoke")[0].form.get("token")).toBe("rt_1");
+    });
+
+    test("still revokes its refresh token when the session store delete fails", async () => {
+      configureSso(issuer.config(), { fetch: issuer.fetch });
+      const { req } = makeReq({ auth, destroyErr: new Error("session store down") });
+      const res = fakeRes();
+      const result = await deleteLoginRoute.execute(req, res);
+
+      expect(result?.status).toBe("error");
+      expect((res as { statusCode: number }).statusCode).toBe(500);
+      expect(result?.body?.logoutUrl).toBeUndefined();
+      await settle();
+      expect(issuer.seen("/oauth/revoke").map((r) => r.form.get("token"))).toEqual(["rt_1"]);
     });
 
     test("signs out even when the provider fails to revoke", async () => {

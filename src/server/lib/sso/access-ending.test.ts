@@ -77,7 +77,7 @@ const signInWithPassword = () =>
       headers: {},
       query: {},
       body: { username: "admin", password: PASSWORD },
-      session: { id: "s-1", regenerate: (cb: () => void) => cb(), destroy() {} },
+      session: { id: "s-1", async regenerate() {}, async destroy() {} },
       ip: "203.0.113.20",
     } as unknown as Parameters<typeof postLoginRoute.execute>[0],
     {

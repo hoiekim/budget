@@ -100,13 +100,12 @@ const makeReq = (query: Record<string, string>, cookie?: string, session?: Sessi
     query,
     body: undefined,
     session: Object.assign(stub, {
-      regenerate(cb: (err?: Error) => void) {
+      async regenerate() {
         stub.regenerated += 1;
         stub.id = "s-new";
         stub.user = undefined;
-        cb();
       },
-      destroy() {},
+      async destroy() {},
     }),
     ip: "127.0.0.1",
   } as unknown as Parameters<typeof getAuthCallbackRoute.execute>[0];
