@@ -29,6 +29,8 @@ export interface UpstreamRequest {
   form: URLSearchParams;
   /** Milliseconds since the epoch when it arrived. */
   at: number;
+  /** The `unordered` window it arrived in, if any. */
+  unordered?: number;
 }
 
 export type UpstreamHandler = (
@@ -56,6 +58,8 @@ export class UpstreamHub {
   readonly unhandled: UpstreamRequest[] = [];
   private readonly handlers = new Map<string, UpstreamHandler[]>();
   private readonly down = new Set<string>();
+  private windows = 0;
+  private openWindow: number | undefined;
   private readonly sockets = new Set<net.Socket>();
   private readonly tls: ReturnType<typeof Bun.serve>;
   private readonly proxy: net.Server;
@@ -137,6 +141,7 @@ export class UpstreamHub {
       json: parseJson(body),
       form: new URLSearchParams(body),
       at: Date.now(),
+      unordered: this.openWindow,
     };
     this.requests.push(seen);
     if (this.down.has(host)) return new Response(null, { status: 503 });
@@ -162,6 +167,23 @@ export class UpstreamHub {
       const at = list.indexOf(handler);
       if (at !== -1) list.splice(at, 1);
     };
+  }
+
+  /**
+   * Runs `run`, marking the requests that arrive meanwhile as one window whose
+   * order the transcript comparison ignores (it compares them as a set, per
+   * host). For a request the reference server answers with upstream calls it
+   * starts at once and that reach the upstream in no fixed order; every call
+   * must have arrived by the time `run` resolves.
+   */
+  async unordered<T>(run: () => Promise<T>): Promise<T> {
+    this.windows += 1;
+    this.openWindow = this.windows;
+    try {
+      return await run();
+    } finally {
+      this.openWindow = undefined;
+    }
   }
 
   /** Makes `host` unreachable (connections are dropped) until set back. */

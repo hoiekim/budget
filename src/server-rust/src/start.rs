@@ -663,6 +663,7 @@ pub async fn run() -> anyhow::Result<()> {
         _ = accept => unreachable!("the accept loop never ends"),
     };
     logger::info(&format!("{signal} received — shutting down gracefully"), None);
+    crate::server::compute_tools::schedule::stop_scheduled_sync();
     logger::info("HTTP server closed", None);
     pool().end();
     logger::info("Database pool closed", None);

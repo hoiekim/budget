@@ -296,6 +296,7 @@ export class Stack {
         path: request.path,
         search: request.search,
         body: { headers, body: request.json ?? request.body },
+        ...(request.unordered === undefined ? {} : { unordered: request.unordered }),
       });
     }
     this.upstreamRecorded = requests.length;

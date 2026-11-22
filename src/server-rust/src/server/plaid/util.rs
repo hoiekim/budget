@@ -168,6 +168,11 @@ impl PlaidClient {
     /// POSTs `body` to `endpoint` (`/link/token/create`) and answers with the
     /// response's data: its parsed JSON, or its text when it is not JSON.
     pub async fn request(&self, endpoint: &str, body: &Json) -> Result<Json, PlaidError> {
+        // Inside `in_call_order`, wait for the calls asked for before this one.
+        let _turn = match CALL_ORDER.try_with(Arc::clone) {
+            Ok(order) => Some(order.lock_owned().await),
+            Err(_) => None,
+        };
         if let Transport::Fake(transport) = &self.transport {
             return transport(endpoint, body).await;
         }
@@ -199,6 +204,24 @@ impl PlaidClient {
     pub(crate) async fn call(&self, endpoint: &str, body: &Json) -> anyhow::Result<Json> {
         Ok(self.request(endpoint, body).await?)
     }
+}
+
+tokio::task_local! {
+    /// The turn of each Plaid call of the task, while `in_call_order` runs.
+    static CALL_ORDER: Arc<tokio::sync::Mutex<()>>;
+}
+
+/// Runs `work` with its Plaid calls made one at a time, each in the order it
+/// was asked for, whatever runs concurrently inside `work`.
+///
+/// The TypeScript starts some Plaid calls at once (an item's transactions and
+/// investment transactions, its accounts and holdings), and they reach Plaid
+/// in the order they were started, each page after the first following its
+/// own answer. Two requests in flight at once here could reach Plaid in
+/// either order; taking turns keeps the order they were started in: the
+/// first page of each, then the next pages as their answers come back.
+pub async fn in_call_order<F: std::future::Future>(work: F) -> F::Output {
+    CALL_ORDER.scope(Arc::new(tokio::sync::Mutex::new(())), work).await
 }
 
 /// The client for `user`: the sandbox for the demo user, otherwise production
@@ -292,6 +315,35 @@ mod tests {
     fn only_no_investment_accounts_is_ignorable() {
         assert!(is_ignorable_error_code("NO_INVESTMENT_ACCOUNTS"));
         assert!(!is_ignorable_error_code("PRODUCTS_NOT_SUPPORTED"));
+    }
+
+    #[tokio::test]
+    async fn in_call_order_calls_take_turns_in_the_order_they_were_asked_for() {
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorder = log.clone();
+        let transport: FakeTransport = Arc::new(move |endpoint: &str, _body: &Json| {
+            let (endpoint, log) = (endpoint.to_string(), recorder.clone());
+            Box::pin(async move {
+                log.lock().unwrap().push(format!("start {endpoint}"));
+                tokio::task::yield_now().await;
+                log.lock().unwrap().push(format!("end {endpoint}"));
+                Ok(json!({}))
+            })
+        });
+        let client = PlaidClient::fake(transport);
+        let pages = |name: &'static str, count: usize| {
+            let client = client.clone();
+            async move {
+                for page in 1..=count {
+                    client.request(&format!("{name}#{page}"), &json!({})).await.unwrap();
+                }
+            }
+        };
+        in_call_order(async { futures::join!(pages("tx", 3), pages("inv", 1)) }).await;
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["start tx#1", "end tx#1", "start inv#1", "end inv#1", "start tx#2", "end tx#2", "start tx#3", "end tx#3"]
+        );
     }
 
     #[tokio::test]
