@@ -1,6 +1,16 @@
 import { describe, test, expect, mock, beforeEach, afterAll, afterEach, setSystemTime } from "bun:test";
-import { restoreLeaves } from "test-helpers";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { ItemStatus } from "common";
+
+// The route starts its emit without awaiting it: the emit reads the owner's
+// sharing group from the database, then tells every member. In the fake
+// database u-1 and u-2 share data, and anyone else shares with nobody.
+const { driver, resetSqlMocks } = createFakeSql(async (_sql, values = []) => {
+  const user_ids = values[0] === "u-1" ? ["u-1", "u-2"] : [values[0]];
+  return { rows: user_ids.map((user_id) => ({ user_id })), rowCount: user_ids.length };
+});
+
+mock.module("../../lib/postgres/sql-driver", () => driver);
 
 // `mock.module` is process-global in Bun, and `restoreLeaves` only restores the
 // driver / `password` leaves. So we capture the real `server` barrel + the deep
@@ -32,7 +42,6 @@ const mockGetUserItem = mock(
     }) as unknown,
 );
 const mockUpsertItems = mock(async (_user: unknown, _items: unknown[]) => [] as unknown[]);
-const mockEmitToUser = mock((_userId: string, _domain: string, _payload?: unknown) => {});
 const mockSendAlarm = mock(async () => {});
 const mockLogger = {
   info: mock(() => {}),
@@ -54,7 +63,6 @@ mock.module("server", () => ({
   updateItemStatus: mockUpdateItemStatus,
   getUserItem: mockGetUserItem,
   upsertItems: mockUpsertItems,
-  emitToUser: mockEmitToUser,
 }));
 
 mock.module("server/lib/alarm", () => ({
@@ -69,7 +77,34 @@ mock.module("server/lib/logger", () => ({
 
 const { postPlaidHookRoute } = await import("./post-plaid-hook");
 
+// One open tab per user, u-3 being a bystander: `[user, event]` for every
+// event a tab received.
+const delivered: [userId: string, event: string][] = [];
+const tabs = ["u-1", "u-2", "u-3"].map((userId) => ({
+  userId,
+  subscriber: {
+    send: (event: string) => {
+      delivered.push([userId, event]);
+    },
+    close: () => {},
+  },
+}));
+
+/** What the tabs received, once the emit the route left running has settled. */
+const emitted = async () => {
+  await Bun.sleep(0);
+  return delivered;
+};
+
+/** `event` reaching the owner u-1 and u-2, who shares data with them, and nobody else. */
+const toSharingGroup = (event: string) => [
+  ["u-1", event],
+  ["u-2", event],
+];
+
 afterAll(() => {
+  // Emitted events stay buffered per user for the rest of the process otherwise.
+  realServer.resetRingBufferForTests();
   mock.module("server", () => realServer);
   mock.module("server/lib/alarm", () => realAlarm);
   mock.module("server/lib/logger", () => realLogger);
@@ -100,12 +135,18 @@ beforeEach(() => {
   }));
   mockUpsertItems.mockReset();
   mockUpsertItems.mockImplementation(async () => []);
-  mockEmitToUser.mockReset();
   mockSendAlarm.mockReset();
   mockSendAlarm.mockImplementation(async () => {});
   mockLogger.info.mockReset();
   mockLogger.warn.mockReset();
   mockLogger.error.mockReset();
+  resetSqlMocks();
+  delivered.length = 0;
+  for (const { userId, subscriber } of tabs) realServer.registerSubscriber(userId, subscriber);
+});
+
+afterEach(() => {
+  for (const { userId, subscriber } of tabs) realServer.unregisterSubscriber(userId, subscriber);
 });
 
 interface ReqOpts {
@@ -229,8 +270,7 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
     // Emit ONLY `transactions` — client's syncDomain case body handles both
     // series in one /api/transactions fetch, so emitting investment_transactions
     // would double-fire the same fetch.
-    expect(mockEmitToUser).toHaveBeenCalledTimes(1);
-    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "transactions");
+    expect(await emitted()).toEqual(toSharingGroup("transactions-updated"));
   });
 
   test("SYNC_UPDATES_AVAILABLE does NOT emit when nothing changed", async () => {
@@ -245,7 +285,7 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
       webhook_code: "SYNC_UPDATES_AVAILABLE",
       item_id: "item-7",
     });
-    expect(mockEmitToUser).not.toHaveBeenCalled();
+    expect(await emitted()).toEqual([]);
   });
 
   test("SYNC_UPDATES_AVAILABLE with null sync result → failed", async () => {
@@ -256,7 +296,7 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
       item_id: "item-7",
     });
     expect(result).toMatchObject({ status: "failed" });
-    expect(mockEmitToUser).not.toHaveBeenCalled();
+    expect(await emitted()).toEqual([]);
   });
 
   for (const code of [
@@ -273,7 +313,7 @@ describe("post-plaid-hook — TRANSACTIONS", () => {
       });
       expect(result).toMatchObject({ status: "success" });
       expect(mockSyncPlaidTransactions).not.toHaveBeenCalled();
-      expect(mockEmitToUser).not.toHaveBeenCalled();
+      expect(await emitted()).toEqual([]);
     });
   }
 
@@ -299,7 +339,7 @@ describe("post-plaid-hook — ITEM", () => {
     expect(mockUpdateItemStatus).not.toHaveBeenCalled();
   });
 
-  test("PENDING_EXPIRATION → marks item BAD and emits accounts to owner without alarms", async () => {
+  test("PENDING_EXPIRATION → marks item BAD and emits accounts to the owner's sharing group without alarms", async () => {
     const { result } = await run({
       webhook_type: "ITEM",
       webhook_code: "PENDING_EXPIRATION",
@@ -312,11 +352,11 @@ describe("post-plaid-hook — ITEM", () => {
       "PENDING_EXPIRATION",
     );
     expect(mockSendAlarm).not.toHaveBeenCalled();
-    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
+    expect(await emitted()).toEqual(toSharingGroup("accounts-updated"));
     expect(result).toMatchObject({ status: "success" });
   });
 
-  test("ERROR + ITEM_LOGIN_REQUIRED → marks item BAD and emits accounts to owner without alarms", async () => {
+  test("ERROR + ITEM_LOGIN_REQUIRED → marks item BAD and emits accounts to the owner's sharing group without alarms", async () => {
     const { result } = await run({
       webhook_type: "ITEM",
       webhook_code: "ERROR",
@@ -330,7 +370,7 @@ describe("post-plaid-hook — ITEM", () => {
       "ITEM_LOGIN_REQUIRED",
     );
     expect(mockSendAlarm).not.toHaveBeenCalled();
-    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
+    expect(await emitted()).toEqual(toSharingGroup("accounts-updated"));
     expect(result).toMatchObject({ status: "success" });
   });
 
@@ -355,7 +395,7 @@ describe("post-plaid-hook — ITEM", () => {
     });
     expect(result).toMatchObject({ status: "failed" });
     expect(mockUpdateItemStatus).not.toHaveBeenCalled();
-    expect(mockEmitToUser).not.toHaveBeenCalled();
+    expect(await emitted()).toEqual([]);
   });
 
   test("PENDING_EXPIRATION with failed status update → failed, no alarm", async () => {
@@ -370,7 +410,7 @@ describe("post-plaid-hook — ITEM", () => {
   });
 
   for (const code of ["USER_ACCOUNT_REVOKED", "ITEM_UPDATED"]) {
-    test(`${code} → refreshes item products and emits accounts to owner`, async () => {
+    test(`${code} → refreshes item products and emits accounts to the owner's sharing group`, async () => {
       const { result } = await run({
         webhook_type: "ITEM",
         webhook_code: code,
@@ -379,7 +419,7 @@ describe("post-plaid-hook — ITEM", () => {
       expect(mockGetUserItem).toHaveBeenCalledWith("item-5");
       expect(mockGetItem).toHaveBeenCalledWith("access-tok");
       expect(mockUpsertItems).toHaveBeenCalled();
-      expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "accounts");
+      expect(await emitted()).toEqual(toSharingGroup("accounts-updated"));
       expect(result).toMatchObject({ status: "success" });
     });
   }
@@ -420,8 +460,7 @@ describe("post-plaid-hook — HOLDINGS", () => {
       item_id: "item-h",
     });
     expect(mockSyncPlaidTransactions).toHaveBeenCalledWith("item-h");
-    expect(mockEmitToUser).toHaveBeenCalledTimes(1);
-    expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "transactions");
+    expect(await emitted()).toEqual(toSharingGroup("transactions-updated"));
     expect(result).toMatchObject({ status: "success" });
   });
 
@@ -452,8 +491,7 @@ describe("post-plaid-hook — INVESTMENTS_TRANSACTIONS", () => {
         item_id: "item-iv",
       });
       expect(mockSyncPlaidTransactions).toHaveBeenCalledWith("item-iv");
-      expect(mockEmitToUser).toHaveBeenCalledTimes(1);
-      expect(mockEmitToUser).toHaveBeenCalledWith("u-1", "transactions");
+      expect(await emitted()).toEqual(toSharingGroup("transactions-updated"));
       expect(result).toMatchObject({ status: "success" });
     });
   }

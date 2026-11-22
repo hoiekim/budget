@@ -24,6 +24,7 @@ import {
   successResult,
   errorResult,
   noChangeResult,
+  sharedWith,
 } from "../database";
 import { withTransaction } from "../client";
 import { logger } from "../../logger";
@@ -31,7 +32,7 @@ import { logger } from "../../logger";
 export type PartialAccount = { account_id: string } & Partial<JSONAccount>;
 
 export const getAccounts = async (user: MaskedUser): Promise<JSONAccount[]> => {
-  const models = await accountsTable.query({ [USER_ID]: user.user_id });
+  const models = await accountsTable.query({ [USER_ID]: sharedWith(user) });
   return models.map((m) => m.toJSON());
 };
 
@@ -39,7 +40,7 @@ export const getAccount = async (
   user: MaskedUser,
   account_id: string,
 ): Promise<JSONAccount | null> => {
-  const model = await accountsTable.queryOne({ [USER_ID]: user.user_id, [ACCOUNT_ID]: account_id });
+  const model = await accountsTable.queryOne({ [USER_ID]: sharedWith(user), [ACCOUNT_ID]: account_id });
   return model?.toJSON() ?? null;
 };
 
@@ -47,7 +48,7 @@ const getAccountsByItem = async (
   user: MaskedUser,
   item_id: string,
 ): Promise<JSONAccount[]> => {
-  const models = await accountsTable.query({ [USER_ID]: user.user_id, [ITEM_ID]: item_id });
+  const models = await accountsTable.query({ [USER_ID]: sharedWith(user), [ITEM_ID]: item_id });
   return models.map((m) => m.toJSON());
 };
 
@@ -57,7 +58,7 @@ export const searchAccounts = async (
   user: MaskedUser,
   options: { account_id?: string; item_id?: string; institution_id?: string; type?: string } = {},
 ): Promise<JSONAccount[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (options.account_id) filters[ACCOUNT_ID] = options.account_id;
   if (options.item_id) filters[ITEM_ID] = options.item_id;
   if (options.institution_id) filters[INSTITUTION_ID] = options.institution_id;
@@ -72,7 +73,7 @@ export const searchAccountsById = async (
   account_ids: string[],
 ): Promise<JSONAccount[]> => {
   if (!account_ids.length) return [];
-  const models = await accountsTable.queryByIds(account_ids, { [USER_ID]: user.user_id });
+  const models = await accountsTable.queryByIds(account_ids, { [USER_ID]: sharedWith(user) });
   return models.map((m) => m.toJSON());
 };
 
@@ -172,7 +173,7 @@ export const updateAccounts = async (
         account.account_id,
         row,
         undefined,
-        user.user_id,
+        sharedWith(user),
         undefined,
         undefined,
         true,
@@ -193,31 +194,29 @@ export const deleteAccounts = async (
   account_ids: string[],
 ): Promise<{ deleted: number }> => {
   if (!account_ids.length) return { deleted: 0 };
-  const { user_id } = user;
-
   // Wrap all delete operations in a transaction for atomicity.
   // If any operation fails, all changes are rolled back.
   return withTransaction(async (client) => {
     for (const account_id of account_ids) {
-      await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, sharedWith(user), client);
       await investmentTransactionsTable.bulkSoftDeleteByColumn(
         ACCOUNT_ID,
         account_id,
-        user_id,
+        sharedWith(user),
         client,
       );
-      await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, sharedWith(user), client);
       // Account-balance snapshots store the account in `account_id`; holding
       // snapshots store it in `holding_account_id` (their `account_id` is NULL).
       // Soft-delete both so deleting an account leaves no orphaned holding history.
-      await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
-      await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, account_id, user_id, client);
-      await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, user_id, client);
+      await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, sharedWith(user), client);
+      await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, account_id, sharedWith(user), client);
+      await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, account_id, sharedWith(user), client);
     }
 
     await softDeleteTransactionPairsByAccounts(user, account_ids, client);
 
-    const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: user_id }, client);
+    const deleted = await accountsTable.bulkSoftDelete(account_ids, { [USER_ID]: sharedWith(user) }, client);
     return { deleted };
   });
 };

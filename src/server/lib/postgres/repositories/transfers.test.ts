@@ -123,20 +123,26 @@ describe("getTransferPairs", () => {
 });
 
 // Helpers for staging the response sequence of a `pairTransactions`
-// transaction. Stages: BEGIN, advisory lock, existence pre-check (FOR
-// SHARE), collision SELECT, INSERT, cleanup UPDATE, COMMIT (7 calls).
+// transaction. Stages: BEGIN, membership lock, transfer lock, existence
+// pre-check (FOR SHARE), collision SELECT, INSERT, cleanup UPDATE, COMMIT
+// (8 calls).
 // On error path the existence/collision rejection replaces the
 // INSERT+cleanup+COMMIT with a ROLLBACK.
-function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
+function stagePairOk(
+  insertPairId: string,
+  collisionRows: unknown[] = [],
+  transactions = [
+    { transaction_id: "tx-a", user_id: "usr-1" },
+    { transaction_id: "tx-b", user_id: "usr-1" },
+  ],
+) {
   // BEGIN
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-  // advisory lock
+  // membership lock, then the group's transfer lock
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // existence pre-check (FOR SHARE) — both alive: 2 rows
-  mockReservedUnsafe.mockResolvedValueOnce({
-    rows: [{ transaction_id: "tx-a" }, { transaction_id: "tx-b" }],
-    rowCount: 2,
-  });
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: transactions, rowCount: 2 });
   // collision SELECT
   mockReservedUnsafe.mockResolvedValueOnce({ rows: collisionRows, rowCount: collisionRows.length });
   // INSERT ... RETURNING
@@ -153,11 +159,15 @@ function stagePairOk(insertPairId: string, collisionRows: unknown[] = []) {
 function stagePairCollision(collidingPairId: string) {
   // BEGIN
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-  // advisory lock
+  // membership lock, then the group's transfer lock
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // existence pre-check (FOR SHARE) — both alive: 2 rows
   mockReservedUnsafe.mockResolvedValueOnce({
-    rows: [{ transaction_id: "tx-a" }, { transaction_id: "tx-b" }],
+    rows: [
+      { transaction_id: "tx-a", user_id: "usr-1" },
+      { transaction_id: "tx-b", user_id: "usr-1" },
+    ],
     rowCount: 2,
   });
   // collision SELECT returns a colliding row → triggers ROLLBACK
@@ -172,12 +182,13 @@ function stagePairCollision(collidingPairId: string) {
 function stagePairMissingTransaction(whichAlive: { a: boolean; b: boolean }) {
   // BEGIN
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-  // advisory lock
+  // membership lock, then the group's transfer lock
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // existence pre-check (FOR SHARE) — at most one row if a transaction missing.
-  const rows: { transaction_id: string }[] = [];
-  if (whichAlive.a) rows.push({ transaction_id: "tx-a" });
-  if (whichAlive.b) rows.push({ transaction_id: "tx-b" });
+  const rows: { transaction_id: string; user_id: string }[] = [];
+  if (whichAlive.a) rows.push({ transaction_id: "tx-a", user_id: "usr-1" });
+  if (whichAlive.b) rows.push({ transaction_id: "tx-b", user_id: "usr-1" });
   mockReservedUnsafe.mockResolvedValueOnce({ rows, rowCount: rows.length });
   // ROLLBACK
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -191,9 +202,9 @@ describe("pairTransactions", () => {
     const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.pair_id).toBe("pair-new");
-    // BEGIN + lock + existence + collision + INSERT + cleanup + COMMIT = 7 calls.
-    expect(mockReservedUnsafe).toHaveBeenCalledTimes(7);
-    // All seven on the connection holding the advisory lock. One issued on the
+    // BEGIN + 2 locks + existence + collision + INSERT + cleanup + COMMIT = 8 calls.
+    expect(mockReservedUnsafe).toHaveBeenCalledTimes(8);
+    // All eight on the connection holding the advisory locks. One issued on the
     // pool instead would commit outside it, and outside the ROLLBACK.
     expect(mockUnsafe).not.toHaveBeenCalled();
     const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
@@ -220,8 +231,50 @@ describe("pairTransactions", () => {
     if (result.ok) expect(result.pair_id).toBe("pair-existing");
   });
 
+  test("stores the pair under the owner of its first transaction, whoever in the group asked", async () => {
+    const transactions = [
+      { transaction_id: "tx-b", user_id: "usr-3" },
+      { transaction_id: "tx-a", user_id: "usr-2" },
+    ];
+    for (const [first, second] of [
+      ["tx-a", "tx-b"],
+      ["tx-b", "tx-a"],
+    ]) {
+      clearSqlMocks();
+      stagePairOk("pair-shared", [], transactions);
+      await pairTransactions(mockUser as never, first, second);
+      const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
+        /INSERT INTO transaction_pairs/i.test(c[0] as string),
+      )!;
+      expect((insertCall[1] as unknown[]).slice(1)).toEqual(["usr-2", "tx-a", "tx-b", "suggested"]);
+    }
+  });
+
+  test("refuses a pair whose rows are not the two transactions asked for", async () => {
+    // BEGIN, membership lock, transfer lock, existence pre-check, ROLLBACK
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
+    mockReservedUnsafe.mockResolvedValueOnce({
+      rows: [
+        { transaction_id: "tx-a", user_id: "usr-1" },
+        { transaction_id: "tx-other", user_id: "usr-1" },
+      ],
+      rowCount: 2,
+    });
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const result = await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(result.ok).toBe(false);
+    expect(
+      mockReservedUnsafe.mock.calls.some((c) => /INSERT INTO transaction_pairs/i.test(c[0] as string)),
+    ).toBe(false);
+  });
+
   test("canonicalizes (a, b) so reversed inputs hit the same row shape", async () => {
-    stagePairOk("pair-1");
+    stagePairOk("pair-1", [], [
+      { transaction_id: "tx-a", user_id: "usr-1" },
+      { transaction_id: "tx-z", user_id: "usr-1" },
+    ]);
     await pairTransactions(mockUser as never, "tx-z", "tx-a");
     const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
@@ -273,7 +326,7 @@ describe("pairTransactions", () => {
     if (!result.ok) {
       expect(result.error).toMatch(/already in another confirmed transfer pair/i);
     }
-    // BEGIN + lock + collision SELECT + ROLLBACK = 4 calls, no INSERT.
+    // No INSERT after the collision SELECT.
     const insertCalls = mockReservedUnsafe.mock.calls.filter((c) =>
       /INSERT INTO transaction_pairs/i.test(c[0] as string),
     );
@@ -289,20 +342,21 @@ describe("pairTransactions", () => {
 
   test("existence pre-check scopes by user_id, filters is_deleted, uses FOR SHARE", async () => {
     // Verify the existence query's SQL shape so a future refactor can't
-    // silently drop the user_id filter (would allow cross-user pairing)
-    // or drop FOR SHARE (would re-open the deleteTransactions race).
+    // silently drop the user_id filter (would allow pairing a stranger's
+    // transaction) or drop FOR SHARE (would re-open the deleteTransactions race).
     stagePairOk("pair-new");
     await pairTransactions(mockUser as never, "tx-a", "tx-b");
     const existenceCall = mockReservedUnsafe.mock.calls.find((c) => {
       const sql = c[0] as string;
-      return /SELECT transaction_id FROM transactions/i.test(sql) && /FOR SHARE/i.test(sql);
+      return /SELECT transaction_id, user_id FROM transactions/i.test(sql) && /FOR SHARE/i.test(sql);
     })!;
     expect(existenceCall).toBeDefined();
     const sql = existenceCall[0] as string;
-    expect(sql).toMatch(/WHERE user_id = \$1/i);
+    expect(sql).toMatch(/WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)\s+AND /i);
     expect(sql).toMatch(/transaction_id = ANY\(\$2/i);
     expect(sql).toMatch(/is_deleted IS NULL OR is_deleted = FALSE/i);
     expect(sql).toMatch(/FOR SHARE/);
+    expect((existenceCall[1] as unknown[])[0]).toBe("usr-1");
   });
 
   test("collision pre-check excludes the SAME (a, b) being re-paired (allows un-reject)", async () => {
@@ -343,8 +397,9 @@ describe("pairTransactions", () => {
   });
 });
 
-// Helpers for confirmTransferPair: BEGIN, advisory lock, lookup SELECT,
-// collision SELECT, UPDATE confirmed, cleanup UPDATE, COMMIT (7 calls).
+// Helpers for confirmTransferPair: BEGIN, membership lock, transfer lock,
+// lookup SELECT, collision SELECT, UPDATE confirmed, cleanup UPDATE, COMMIT
+// (8 calls).
 function stageConfirmOk(
   pairTxnA = "tx-a",
   pairTxnB = "tx-b",
@@ -352,7 +407,8 @@ function stageConfirmOk(
 ) {
   // BEGIN
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-  // advisory lock
+  // membership lock, then the group's transfer lock
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // lookup SELECT
   mockReservedUnsafe.mockResolvedValueOnce({
@@ -375,7 +431,8 @@ function stageConfirmOk(
 function stageConfirmCollision(pairTxnA: string, pairTxnB: string) {
   // BEGIN
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-  // advisory lock
+  // membership lock, then the group's transfer lock
+  mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
   // lookup SELECT
   mockReservedUnsafe.mockResolvedValueOnce({
@@ -411,7 +468,8 @@ describe("confirmTransferPair", () => {
   test("returns ok=false when pair not found", async () => {
     // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-    // advisory lock
+    // membership lock, then the group's transfer lock
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 });
     // lookup SELECT returns no rows
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
@@ -504,5 +562,32 @@ describe("canonicalizePairIds", () => {
       transaction_id_a: "a",
       transaction_id_b: "z",
     });
+  });
+});
+
+describe("transfer-pair writes lock the sharing membership, then the group", () => {
+  beforeEach(() => clearSqlMocks());
+
+  const LOCKS = [
+    ["SELECT pg_advisory_xact_lock_shared(hashtext('sharing'))", undefined],
+    [
+      "SELECT pg_advisory_xact_lock(hashtext(" +
+        "(SELECT min(member::text) FROM unnest(sharing_user_ids($1)) member) || ':transfers'))",
+      ["usr-1"],
+    ],
+  ];
+  const opening = () =>
+    mockReservedUnsafe.mock.calls.slice(0, 3).map(([sql, values]) => [String(sql).replace(/\s+/g, " ").trim(), values]);
+
+  test("pairing", async () => {
+    stagePairOk("pair-new");
+    await pairTransactions(mockUser as never, "tx-a", "tx-b");
+    expect(opening()).toEqual([["BEGIN", undefined], ...LOCKS]);
+  });
+
+  test("confirming", async () => {
+    stageConfirmOk("tx-a", "tx-b");
+    await confirmTransferPair(mockUser as never, "pair-1");
+    expect(opening()).toEqual([["BEGIN", undefined], ...LOCKS]);
   });
 });

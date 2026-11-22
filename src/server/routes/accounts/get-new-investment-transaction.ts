@@ -1,8 +1,10 @@
 import { AccountType, InvestmentTransactionType } from "plaid";
 import {
   Route,
+  accountsTable,
   createManualInvestmentTransaction,
   getAccount,
+  getRowOwner,
   getSecurity,
   requireQueryString,
   validateFields,
@@ -134,7 +136,10 @@ export const getNewInvestmentTransactionRoute = new Route<NewInvestmentTransacti
     // walker only counts txns up to the window end). Format:
     // YYYY-MM-DD. Anything else is a validation error, not a silent
     // fall back to today — the caller asked for a specific date.
-    const created = await createManualInvestmentTransaction(user, {
+    const owner = await getRowOwner(user, accountsTable, account_id);
+    if (!owner) return { status: "failed", message: "Account not found." };
+
+    const created = await createManualInvestmentTransaction(owner, {
       account_id,
       security_id,
       price,

@@ -18,6 +18,7 @@ pub mod rejected_category;
 pub mod section;
 pub mod security;
 pub mod session;
+pub mod sharing;
 pub mod snapshot;
 pub mod split_transaction;
 pub mod transaction;
@@ -56,6 +57,8 @@ pub fn tables() -> Vec<&'static Table> {
         &api_key::TABLE,
         &rejected_category::TABLE,
         &cpi_snapshot::TABLE,
+        &sharing::MEMBERS_TABLE,
+        &sharing::INVITATIONS_TABLE,
     ]
 }
 
@@ -98,6 +101,8 @@ mod tests {
                 "api_keys",
                 "rejected_categories",
                 "cpi_snapshots",
+                "sharing_members",
+                "sharing_invitations",
             ]
         );
     }

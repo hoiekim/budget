@@ -1,4 +1,11 @@
-import { Route, dismissRecurring, requireQueryString, validationError } from "server";
+import {
+  Route,
+  dismissRecurring,
+  getRowOwner,
+  recurringsTable,
+  requireQueryString,
+  validationError,
+} from "server";
 
 // DELETE /recurrings?id=<recurring_id> — the user's "this isn't right"
 // action on a suggested-or-confirmed recurring. Routes through
@@ -16,7 +23,8 @@ export const dismissRecurringRoute = new Route("DELETE", "/recurrings", async (r
   const idResult = requireQueryString(req, "id");
   if (!idResult.success) return validationError(idResult.error!);
 
-  const result = await dismissRecurring(user, idResult.data!);
+  const owner = (await getRowOwner(user, recurringsTable, idResult.data!)) ?? user;
+  const result = await dismissRecurring(owner, idResult.data!);
   if (!result.ok) {
     return { status: "failed", message: result.error };
   }

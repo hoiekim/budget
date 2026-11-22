@@ -98,9 +98,22 @@ return { status: "failed", message: "User is not found." };
 return { status: "failed", message: "Wrong password." };
 ```
 
+## Data Sharing
+
+Users who accept each other's invitation form a sharing group (`sharing_members`: one row per user, so a user is in at most one group; `sharing_invitations` holds the unanswered offers). Members read and write each other's rows as their own. Nobody else's access changes.
+
+- **Rows keep their owner.** Sharing never rewrites `user_id`. A row created under a parent takes the parent's owner, not the requester's: an account its item's, a transaction, split, snapshot or holding its account's, a section its budget's, a category its section's, a recurring its transactions', a transfer pair one of its two transactions'. Routes read that owner with `getRowOwner(user, table, id)` and pass it to the repository (`pairTransactions` reads it off the transactions it locks). So when sharing ends, a connection or a budget leaves with everything under it, and nobody is left holding rows inside someone else's account.
+- **The scope is resolved in SQL, per statement.** `sharing_user_ids($user)` (created at start, `models/sharing.ts`) answers the user and their group; an owner predicate written with `sharedWith(user)` (Table methods) or `sharedWithSql(column, "$n")` (hand-written SQL) becomes `user_id = ANY(sharing_user_ids($n))`. `sharedWith` is a filter only: a write that tries to store it as a column value throws. Nothing about the group is cached in the session, so leaving a group takes effect at the next query, on every copy of the app.
+- **What is not shared:** sessions, API keys and the `users` row. An API key still acts as its owner, and so reaches what its owner shares. The sharing routes accept cookie sessions only.
+- **Who may change a group.** Any member can invite, withdraw any invitation sent from the group, and remove any member; an invitee accepts or declines their own invitations. Members already read and write everything in the group, so none of this gives one more than they had. A user must leave their group before accepting an invitation into another: accepting never merges two groups, which would show one group's data to people its members never agreed to.
+- **Invitations name an existing username**, and the answer says when there is none: a signed-in user can learn which usernames exist. The `demo` account, which anyone can sign in to on a public instance, can neither invite nor be invited (`DEMO_USERNAME`), so a visitor can use it neither to probe usernames nor to talk a real user into sharing with an account the public reads.
+- **Transfer detection runs once per sharing group**, over every member's transactions, so a transfer between two people's accounts is suggested like one between a single person's (`runTransferDetection`); someone who shares with nobody gets a run of their own, as before. The other jobs (sync, auto-suggest, recurring detection) still run one owner at a time. A pair belongs to the owner of its first transaction, whether detection or a person made it, so it leaves with that transaction when sharing ends; a pair with a side on each side of the split is soft-deleted, the way a pair is when one of its transactions is.
+- **Membership changes wait for transfer-pair writes, and the other way round.** Joining or leaving holds `SHARING_MEMBERSHIP_LOCK_KEY` exclusively; detection, pairing and confirming hold it shared, then the group's own lock (`lockTransferPairs`, keyed with `sharingLockKeySql`). So no pair is written across people who have just stopped sharing, and no run reads a group that changes under it. Always take the shared membership lock first: the other order can deadlock against a waiting membership change.
+- **Events** (`/events`) for a write go to every member's open tabs (`emitToSharingGroup`). A membership change tells every former and current member, and each of their open tabs then starts over from nothing (`isSharingStale` in `client/lib/hooks/sync.ts`): a delta fetch would bring none of a newcomer's older rows and take away none of a leaver's. The cache and its cursor belong to the browser and what a tab shows belongs to the tab, so a tab checks both: one that finds the cache already refilled by another tab still drops the rows it holds in memory.
+
 ## Resource Ownership Verification
 
-**Every delete/update route must verify the resource belongs to the authenticated user.**
+**Every delete/update route must verify the resource belongs to the authenticated user, or to someone who shares data with them.** Pass `sharedWith(user)` where a data table's owner goes; pass the bare `user.user_id` only where the row must be the user's own (API keys, sessions).
 
 Repository-level `softDelete` by primary key alone is NOT sufficient:
 
@@ -118,5 +131,5 @@ await snapshotsTable.softDelete(snapshot_id);
 // `repositories/snapshots.ts` `deleteSnapshotById`), so the ownership check
 // lives in the write itself without raw SQL — matching DATABASE.md's
 // "Use `Table` class methods instead of direct SQL/pool operations".
-await snapshotsTable.softDelete(snapshot_id, user.user_id);
+await snapshotsTable.softDelete(snapshot_id, sharedWith(user));
 ```

@@ -8,6 +8,7 @@ use crate::server::logger;
 use crate::server::postgres::client::{pool, Executor};
 use crate::server::postgres::database::{build_create_index, build_create_table, build_select_duplicate_keys};
 use crate::server::postgres::migration::run_migrations;
+use crate::server::postgres::models::sharing::CREATE_SHARING_USER_IDS_FUNCTION;
 use crate::server::postgres::models::{tables, IndexKey};
 use crate::server::postgres::repositories::users::{search_user, write_user};
 
@@ -40,6 +41,8 @@ async fn create_schema() -> anyhow::Result<()> {
         pool().query(&build_create_table(table.name, table.schema, table.constraints), &[]).await?;
     }
     logger::info("Database tables created/verified successfully", None);
+
+    pool().query(CREATE_SHARING_USER_IDS_FUNCTION, &[]).await?;
 
     let schemas: Vec<(&str, &[(&str, &str)])> = tables.iter().map(|t| (t.name, t.schema)).collect();
     run_migrations(&schemas).await?;

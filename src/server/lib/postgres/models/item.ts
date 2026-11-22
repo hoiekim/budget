@@ -94,6 +94,7 @@ export class ItemModel extends Model<JSONItem, ItemSchema> implements ItemRow {
   toJSON(): JSONItem {
     return {
       item_id: this.item_id,
+      user_id: this.user_id,
       access_token: this.access_token,
       institution_id: this.institution_id,
       available_products: this.available_products,

@@ -21,7 +21,7 @@
 // rows, which is what makes the mapping assertions meaningful.
 import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
-import { IS_NOT_NULL } from "../database";
+import { IS_NOT_NULL, sharedWith } from "../database";
 
 const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
 
@@ -446,6 +446,157 @@ describe("Table deletes", () => {
         `DELETE FROM widgets WHERE label ${op} $1 RETURNING widget_id`,
       );
     }
+  });
+});
+
+// `sharedWith(user)` in an owner slot: the same statements as the plain-owner
+// forms above, with `user_id = $N` widened to the user's sharing group and the
+// plain id bound at the same index.
+describe("Table methods scoped with sharedWith", () => {
+  const owner = () => sharedWith({ user_id: "u1" });
+
+  test("query: a sharedWith filter becomes the group predicate, numbered with its neighbours", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const out = await widgetsTable.query({ label: "a", user_id: owner(), note: "n" });
+    expect(out).toHaveLength(1);
+    expect(lastCall().sql).toBe(
+      "SELECT * FROM widgets WHERE label = $1 AND user_id = ANY(sharing_user_ids($2)) AND note = $3 AND (is_deleted IS NULL OR is_deleted = FALSE)",
+    );
+    expect(lastCall().values).toStrictEqual(["a", "u1", "n"]);
+  });
+
+  test("query: options.user_id as sharedWith becomes the group predicate at $1", async () => {
+    await widgetsTable.query(
+      { label: "a" },
+      { user_id: owner(), inFilters: { widget_id: ["w-1", "w-2"] }, limit: 10 },
+    );
+    expect(lastCall().sql).toBe(
+      "SELECT * FROM widgets WHERE user_id = ANY(sharing_user_ids($1)) AND label = $2 AND widget_id IN ($3, $4) AND (is_deleted IS NULL OR is_deleted = FALSE) LIMIT $5",
+    );
+    expect(lastCall().values).toStrictEqual(["u1", "a", "w-1", "w-2", 10]);
+  });
+
+  test("update: the owner guard becomes the group predicate between the key and the extra guards", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const out = await widgetsTable.update(
+      "w-1",
+      { label: "b" },
+      ["widget_id"],
+      owner(),
+      undefined,
+      [{ column: "note", value: "n" }],
+      true,
+    );
+    expect(out).toEqual(row());
+    expect(lastCall().sql).toBe(
+      "UPDATE widgets SET updated = CURRENT_TIMESTAMP, label = $1 WHERE widget_id = $2 AND user_id = ANY(sharing_user_ids($3)) AND note = $4 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING widget_id",
+    );
+    expect(lastCall().values).toStrictEqual(["b", "w-1", "u1", "n"]);
+  });
+
+  test("softDelete: the owner guard becomes the group predicate at $2", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ widget_id: "w-1" }], rowCount: 1 });
+    expect(await widgetsTable.softDelete("w-1", owner())).toBe(true);
+    expect(lastCall().sql).toBe(
+      "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE widget_id = $1 AND user_id = ANY(sharing_user_ids($2)) RETURNING widget_id",
+    );
+    expect(lastCall().values).toStrictEqual(["w-1", "u1"]);
+  });
+
+  test("queryByIds: a sharedWith filter is numbered after the ids, skipping undefined filters", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [row()], rowCount: 1 });
+    const out = await widgetsTable.queryByIds(["w-1", "w-2"], {
+      note: undefined,
+      user_id: owner(),
+      label: "a",
+    });
+    expect(out).toHaveLength(1);
+    expect(lastCall().sql).toBe(
+      "SELECT * FROM widgets WHERE widget_id IN ($1, $2) AND (is_deleted IS NULL OR is_deleted = FALSE) AND user_id = ANY(sharing_user_ids($3)) AND label = $4",
+    );
+    expect(lastCall().values).toStrictEqual(["w-1", "w-2", "u1", "a"]);
+  });
+
+  test("bulkSoftDelete: a sharedWith filter is numbered after the ids", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    expect(await widgetsTable.bulkSoftDelete(["w-1", "w-2"], { label: "a", user_id: owner() })).toBe(2);
+    expect(lastCall().sql).toBe(
+      "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE widget_id IN ($1, $2) AND label = $3 AND user_id = ANY(sharing_user_ids($4)) RETURNING widget_id",
+    );
+    expect(lastCall().values).toStrictEqual(["w-1", "w-2", "a", "u1"]);
+  });
+
+  test("bulkSoftDeleteByColumn: single value and array both take the group predicate at $2", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    expect(await widgetsTable.bulkSoftDeleteByColumn("label", "a", owner())).toBe(1);
+    expect(lastCall().sql).toBe(
+      "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE label = $1 AND user_id = ANY(sharing_user_ids($2)) RETURNING widget_id",
+    );
+    expect(lastCall().values).toStrictEqual(["a", "u1"]);
+
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 2 });
+    expect(await widgetsTable.bulkSoftDeleteByColumn("label", ["a", "b"], owner())).toBe(2);
+    expect(lastCall().sql).toBe(
+      "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE label = ANY($1) AND user_id = ANY(sharing_user_ids($2)) RETURNING widget_id",
+    );
+    expect(lastCall().values).toStrictEqual([["a", "b"], "u1"]);
+  });
+
+  test("bulkSoftDeleteByRelatedColumn: the group predicate follows the subquery at $2", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 3 });
+    expect(
+      await widgetsTable.bulkSoftDeleteByRelatedColumn(
+        "label",
+        {
+          table: "labels",
+          selectColumn: "label",
+          matchColumn: "account_id",
+          matchValues: ["a1", "a2"],
+        },
+        owner(),
+      ),
+    ).toBe(3);
+    expect(lastCall().sql).toBe(
+      "UPDATE widgets SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE label IN (SELECT label FROM labels WHERE account_id = ANY($1)) AND user_id = ANY(sharing_user_ids($2)) RETURNING widget_id",
+    );
+    expect(lastCall().values).toStrictEqual([["a1", "a2"], "u1"]);
+  });
+
+  test.each([
+    ["insert", () => widgetsTable.insert({ widget_id: "w-1", user_id: owner() })],
+    ["upsert", () => widgetsTable.upsert({ widget_id: "w-1", user_id: owner() })],
+    ["upsertMany", () => widgetsTable.upsertMany([{ widget_id: "w-1", user_id: owner() }])],
+    ["update", () => widgetsTable.update("w-1", { user_id: owner() })],
+  ] as Array<[string, () => Promise<unknown>]>)(
+    "%s refuses sharedWith as a column value, without issuing a query",
+    async (_method, write) => {
+      await expect(write()).rejects.toThrow(
+        "sharedWith() scopes a query to a sharing group; it is not a value to store",
+      );
+      expect(mockUnsafe).not.toHaveBeenCalled();
+      expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    },
+  );
+
+  test("an explicit client carries the sharedWith-scoped writes, never the pool", async () => {
+    const client = { query: mockReservedUnsafe };
+    mockReservedUnsafe.mockResolvedValue({ rows: [], rowCount: 1 });
+    await widgetsTable.update("w-1", { label: "b" }, undefined, owner(), client as never);
+    await widgetsTable.bulkSoftDelete(["w-1"], { user_id: owner() }, client as never);
+    await widgetsTable.bulkSoftDeleteByColumn("label", "a", owner(), client as never);
+    await widgetsTable.bulkSoftDeleteByRelatedColumn(
+      "label",
+      { table: "labels", selectColumn: "label", matchColumn: "account_id", matchValues: ["a1"] },
+      owner(),
+      client as never,
+    );
+    expect(mockReservedUnsafe.mock.calls.map((c) => c[1])).toStrictEqual([
+      ["b", "w-1", "u1"],
+      ["w-1", "u1"],
+      ["a", "u1"],
+      [["a1"], "u1"],
+    ]);
+    expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
 

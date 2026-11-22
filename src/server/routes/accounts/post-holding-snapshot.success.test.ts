@@ -657,3 +657,124 @@ describe("post-holding-snapshot create mode", () => {
     expect(findCall(/select[\s\S]*from\s+accounts/i)).toBeNull();
   });
 });
+
+describe("post-holding-snapshot on an account someone else in the sharing group owns", () => {
+  const OWNER_LOOKUP = /from\s+accounts\s+r\s+join\s+users\b/i;
+  const SNAPSHOT_INSERT = /^\s*insert\s+into\s+snapshots\b/i;
+  const HOLDINGS_INSERT = /^\s*insert\s+into\s+holdings\b/i;
+
+  /** The value a single-row INSERT binds to `column`, read off its own column list. */
+  const boundTo = (insert: { sql: string; values: unknown[] }, column: string): unknown => {
+    const [, columnList, valueList] = /\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i.exec(insert.sql)!;
+    const columns = columnList.split(",").map((c) => c.trim());
+    const placeholders = valueList.split(",").map((p) => p.trim());
+    return insert.values[Number(placeholders[columns.indexOf(column)].slice(1)) - 1];
+  };
+
+  const ownerRow = () => ({ user_id: "u-owner", username: "owner" });
+
+  test("create writes the holding snapshot under the account owner's user_id", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [ownerRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-1", quantity: 3, snapshot_date: "2024-03-15" }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const snapshotInsert = findCall(SNAPSHOT_INSERT);
+    expect(snapshotInsert).not.toBeNull();
+    expect(boundTo(snapshotInsert!, "user_id")).toBe("u-owner");
+    expect(snapshotInsert!.values).not.toContain("u-member");
+    expect(boundTo(snapshotInsert!, "holding_account_id")).toBe("acct-9");
+  });
+
+  test("create writes the holdings row under the account owner's user_id", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [ownerRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-1", quantity: 3, snapshot_date: "2024-03-15" }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const holdingsInsert = findCall(HOLDINGS_INSERT);
+    expect(holdingsInsert).not.toBeNull();
+    expect(boundTo(holdingsInsert!, "user_id")).toBe("u-owner");
+    expect(holdingsInsert!.values).not.toContain("u-member");
+    expect(boundTo(holdingsInsert!, "account_id")).toBe("acct-9");
+  });
+
+  test("the create-mode owner lookup is scoped to the caller's sharing group", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [ownerRow()];
+
+    await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", security_id: "sec-1", quantity: 3 }, "u-member"),
+      fakeRes(),
+    );
+
+    const lookup = findCall(OWNER_LOOKUP);
+    expect(lookup).not.toBeNull();
+    expect(lookup!.sql).toMatch(/r\.account_id = \$1 AND r\.user_id = ANY\(sharing_user_ids\(\$2\)\)/);
+    expect(lookup!.values).toEqual(["acct-9", "u-member"]);
+  });
+
+  test("update scopes the snapshot UPDATE to the caller's sharing group", async () => {
+    snapshotRows = [holdingSnapshotRow({ user_id: "u-owner" })];
+    accountRows = [ownerRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 7 }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const upd = findCall(/^\s*update\s+snapshots\b/i);
+    expect(upd).not.toBeNull();
+    const scope = /\buser_id = ANY\(sharing_user_ids\(\$(\d+)\)\)/.exec(upd!.sql);
+    expect(scope).not.toBeNull();
+    expect(upd!.values[Number(scope![1]) - 1]).toBe("u-member");
+    expect(upd!.sql).not.toMatch(/\buser_id = \$\d+/);
+    // The edit never moves the row to another owner.
+    expect(upd!.sql.split(/\bWHERE\b/i)[0]).not.toMatch(/\buser_id\b/);
+  });
+
+  test("update mirrors the holdings row under the account owner's user_id", async () => {
+    snapshotRows = [holdingSnapshotRow({ user_id: "u-owner" })];
+    accountRows = [ownerRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 7 }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const lookup = findCall(OWNER_LOOKUP);
+    expect(lookup).not.toBeNull();
+    expect(lookup!.values).toEqual(["acct-1", "u-member"]);
+
+    const holdingsInsert = findCall(HOLDINGS_INSERT);
+    expect(holdingsInsert).not.toBeNull();
+    expect(boundTo(holdingsInsert!, "user_id")).toBe("u-owner");
+    expect(holdingsInsert!.values).not.toContain("u-member");
+    expect(boundTo(holdingsInsert!, "holding_id")).toBe("acct-1-sec-1");
+  });
+
+  test("update writes no holdings row when the snapshot's account has no owner in reach", async () => {
+    snapshotRows = [holdingSnapshotRow({ user_id: "u-owner" })];
+    accountRows = [];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 7 }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(findCall(/^\s*update\s+snapshots\b/i)).not.toBeNull();
+    expect(findCall(OWNER_LOOKUP)).not.toBeNull();
+    expect(findCall(HOLDINGS_INSERT)).toBeNull();
+  });
+});

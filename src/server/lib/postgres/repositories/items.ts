@@ -28,13 +28,13 @@ import {
 } from "../models";
 import { softDeleteTransactionPairsByAccounts } from "./transactions";
 import { pool, withTransaction } from "../client";
-import { UpsertResult, successResult, errorResult } from "../database";
+import { UpsertResult, successResult, errorResult, sharedWith } from "../database";
 import { logger } from "../../logger";
 
 export type PartialItem = { item_id: string } & Partial<JSONItem>;
 
 export const getItem = async (user: MaskedUser, item_id: string): Promise<JSONItem | null> => {
-  const model = await itemsTable.queryOne({ [USER_ID]: user.user_id, [ITEM_ID]: item_id });
+  const model = await itemsTable.queryOne({ [USER_ID]: sharedWith(user), [ITEM_ID]: item_id });
   return model?.toJSON() ?? null;
 };
 
@@ -47,7 +47,7 @@ export const searchItems = async (
   user: MaskedUser,
   options: { item_id?: string; institution_id?: string; provider?: ItemProvider } = {},
 ): Promise<JSONItem[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (options.item_id) filters[ITEM_ID] = options.item_id;
   if (options.institution_id) filters[INSTITUTION_ID] = options.institution_id;
   if (options.provider) filters.provider = options.provider;
@@ -129,7 +129,7 @@ export const updateItemStatus = async (
     item_id,
     { status, status_reason: status_reason ?? null },
     undefined,
-    user.user_id,
+    sharedWith(user),
   );
   return updated !== null;
 };
@@ -152,36 +152,34 @@ export const updateItemSyncStatus = async (
 };
 
 export const deleteItem = async (user: MaskedUser, item_id: string): Promise<boolean> => {
-  const { user_id } = user;
-
-  const accounts = await accountsTable.query({ [ITEM_ID]: item_id, [USER_ID]: user_id });
+  const accounts = await accountsTable.query({ [ITEM_ID]: item_id, [USER_ID]: sharedWith(user) });
   const accountIds = accounts.map((a) => a.account_id);
 
   return withTransaction(async (client) => {
     // Batch each cascade over all of the item's accounts in one round-trip
     // (`column = ANY($1)`) instead of 6 queries per account.
     // bulkSoftDeleteByColumn short-circuits an empty array, so no guard needed.
-    await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await transactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, sharedWith(user), client);
     await investmentTransactionsTable.bulkSoftDeleteByColumn(
       ACCOUNT_ID,
       accountIds,
-      user_id,
+      sharedWith(user),
       client,
     );
-    await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await splitTransactionsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, sharedWith(user), client);
     await softDeleteTransactionPairsByAccounts(user, accountIds, client);
     // Account-balance snapshots store the account in `account_id`; holding
     // snapshots store it in `holding_account_id` (their `account_id` is NULL).
     // Soft-delete both so removing an item leaves no orphaned holding history.
-    await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
-    await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, accountIds, user_id, client);
-    await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, user_id, client);
+    await snapshotsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, sharedWith(user), client);
+    await snapshotsTable.bulkSoftDeleteByColumn(HOLDING_ACCOUNT_ID, accountIds, sharedWith(user), client);
+    await holdingsTable.bulkSoftDeleteByColumn(ACCOUNT_ID, accountIds, sharedWith(user), client);
 
     if (accountIds.length > 0) {
-      await accountsTable.bulkSoftDelete(accountIds, { [USER_ID]: user_id }, client);
+      await accountsTable.bulkSoftDelete(accountIds, { [USER_ID]: sharedWith(user) }, client);
     }
 
-    const deleted = await itemsTable.bulkSoftDelete([item_id], { [USER_ID]: user_id }, client);
+    const deleted = await itemsTable.bulkSoftDelete([item_id], { [USER_ID]: sharedWith(user) }, client);
     return deleted > 0;
   });
 };

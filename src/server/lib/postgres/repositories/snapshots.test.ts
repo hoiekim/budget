@@ -100,7 +100,7 @@ describe("searchSnapshots", () => {
     expect(result).toHaveLength(2);
 
     const userScopedSql = mockUnsafe.mock.calls[0][0] as string;
-    expect(userScopedSql).toContain("user_id = $1");
+    expect(userScopedSql).toContain("WHERE user_id = ANY(sharing_user_ids($1)) AND ");
     expect(mockUnsafe.mock.calls[0][1]).toEqual(["usr-1", "2026-01-01", STREAM_BATCH_SIZE]);
 
     const securitySql = mockUnsafe.mock.calls[1][0] as string;

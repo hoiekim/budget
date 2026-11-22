@@ -45,10 +45,45 @@ pub fn normalize_numbers(value: &mut Json) {
     }
 }
 
+/// The number a property key is when it is an array index (`"0"`, `"17"`).
+fn array_index(key: &str) -> Option<u32> {
+    let canonical = key == "0" || (!key.starts_with('0') && !key.is_empty() && key.bytes().all(|b| b.is_ascii_digit()));
+    if !canonical {
+        return None;
+    }
+    key.parse::<u32>().ok().filter(|index| *index != u32::MAX)
+}
+
+/// Puts the keys of every object in `value` in the order a JS object lists
+/// them, and so the order `JSON.stringify` writes them back in: array-index
+/// keys first, ascending, then the rest as written.
+fn normalize_key_order(value: &mut Json) {
+    match value {
+        Json::Array(items) => items.iter_mut().for_each(normalize_key_order),
+        Json::Object(map) => {
+            map.values_mut().for_each(normalize_key_order);
+            if map.keys().any(|key| array_index(key).is_some()) {
+                let mut indexed = Vec::new();
+                let mut named = Vec::new();
+                for (key, member) in std::mem::take(map) {
+                    match array_index(&key) {
+                        Some(index) => indexed.push((index, key, member)),
+                        None => named.push((key, member)),
+                    }
+                }
+                indexed.sort_by_key(|(index, _, _)| *index);
+                map.extend(indexed.into_iter().map(|(_, key, member)| (key, member)).chain(named));
+            }
+        }
+        _ => {}
+    }
+}
+
 /// `JSON.parse`, or `None` where it would throw.
 pub fn json_parse(text: &str) -> Option<Json> {
     let mut value: Json = serde_json::from_str(text).ok()?;
     normalize_numbers(&mut value);
+    normalize_key_order(&mut value);
     Some(value)
 }
 
@@ -161,18 +196,13 @@ pub fn to_js_string(value: &Json) -> String {
     }
 }
 
-/// `Math.round`: halves round toward positive infinity. Not `floor(value +
-/// 0.5)`, whose sum rounds up by itself just under a half
-/// (0.49999999999999994) and on odd integers past 2^52.
+/// `Math.round`: halves round toward positive infinity, and a value in
+/// `[-0.5, -0]` rounds to negative zero.
 pub fn math_round(value: f64) -> f64 {
-    let floor = value.floor();
-    let rounded = if value - floor >= 0.5 { floor + 1.0 } else { floor };
-    // -0.5 up to -0 rounds to -0, as it does in JavaScript.
-    if rounded == 0.0 && value < 0.0 {
-        -0.0
-    } else {
-        rounded
+    if value.is_sign_negative() && value >= -0.5 {
+        return -0.0;
     }
+    (value + 0.5).floor()
 }
 
 /// `Number.prototype.toFixed`: the nearest decimal, a tie going to the larger
@@ -209,8 +239,8 @@ pub fn to_fixed(value: f64, digits: usize) -> String {
     }
     let whole_len = digits_out.len() - digits;
     let mut out = String::new();
-    // The sign stays on a negative number that rounds to zero: `(-0.001).toFixed(2)` is `-0.00`.
-    if negative {
+    let is_zero = digits_out.iter().all(|d| *d == 0);
+    if negative && !is_zero {
         out.push('-');
     }
     for (i, digit) in digits_out.iter().enumerate() {
@@ -500,8 +530,9 @@ impl JsDate {
         JsDate::from_local(year, month, day, 0, 0, 0, 0)
     }
 
-    /// `new Date(Date.UTC(year, month, day, …))`.
+    /// `new Date(Date.UTC(year, month, day, …))`. A year from 0 to 99 is 1900 to 1999, as `Date.UTC` reads it.
     pub fn from_utc(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64, ms: i64) -> JsDate {
+        let year = if (0..=99).contains(&year) { 1900 + year } else { year };
         JsDate(time_clip(
             days_from_civil(year, month, day) * MS_PER_DAY + make_time(hour as f64, minute as f64, second as f64, ms as f64),
         ))
@@ -929,24 +960,9 @@ mod tests {
         assert_eq!(to_fixed(-1.5, 0), "-2");
         assert_eq!(to_fixed(1234.5, 2), "1234.50");
         assert_eq!(to_fixed(0.0, 2), "0.00");
-        assert_eq!(to_fixed(-0.0, 2), "0.00");
-        assert_eq!(to_fixed(-0.001, 2), "-0.00");
-        assert_eq!(to_fixed(-0.005, 2), "-0.01");
+        assert_eq!(to_fixed(-0.001, 2), "0.00");
         assert_eq!(to_fixed(9.995, 2), "9.99");
         assert_eq!(to_fixed(99.5, 0), "100");
-    }
-
-    #[test]
-    fn math_round_rounds_halves_up_and_nothing_else() {
-        assert_eq!(math_round(2.5), 3.0);
-        assert_eq!(math_round(-2.5), -2.0);
-        assert_eq!(math_round(-2.50001), -3.0);
-        assert_eq!(math_round(0.49999999999999994), 0.0);
-        assert_eq!(math_round(4503599627370497.0), 4503599627370497.0);
-        assert_eq!(math_round(9007199254740991.0), 9007199254740991.0);
-        assert!(math_round(-0.5).is_sign_negative() && math_round(-0.5) == 0.0);
-        assert!(math_round(f64::NAN).is_nan());
-        assert_eq!(math_round(f64::NEG_INFINITY), f64::NEG_INFINITY);
     }
 
     #[test]

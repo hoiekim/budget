@@ -74,12 +74,13 @@ describe("post-transfer-pair", () => {
     expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
-  // `confirmTransferPair` now runs in a DB transaction: BEGIN, advisory
-  // lock, lookup SELECT, collision SELECT, UPDATE status, cleanup UPDATE,
+  // `confirmTransferPair` now runs in a DB transaction: BEGIN, two advisory
+  // locks, lookup SELECT, collision SELECT, UPDATE status, cleanup UPDATE,
   // COMMIT.
   function stageConfirmOk(pairTxnA = "tx-a", pairTxnB = "tx-b") {
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
-    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // membership lock
+    mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // transfer lock
     mockReservedUnsafe.mockResolvedValueOnce({
       rows: [{ transaction_id_a: pairTxnA, transaction_id_b: pairTxnB }],
       rowCount: 1,
@@ -91,7 +92,7 @@ describe("post-transfer-pair", () => {
   }
 
   describe("confirm-existing-pair branch (pair_id is a string)", () => {
-    test("happy path: UPDATE scoped to session user_id, returns the pair_id", async () => {
+    test("happy path: UPDATE scoped to the session user and whoever shares data with them, returns the pair_id", async () => {
       stageConfirmOk();
 
       const result = await postTransferPairRoute.execute(
@@ -106,7 +107,9 @@ describe("post-transfer-pair", () => {
         return /UPDATE transaction_pairs/i.test(sql) && /'confirmed'/i.test(sql);
       })!;
       expect(updateCall).toBeDefined();
-      expect(updateCall[0] as string).toMatch(/WHERE pair_id = \$1\s+AND user_id = \$2/);
+      expect(updateCall[0] as string).toMatch(
+        /WHERE pair_id = \$1\s+AND user_id = ANY\(sharing_user_ids\(\$2\)\)/,
+      );
       expect(updateCall[1] as unknown[]).toEqual(["a8e9c6d4-1234-4abc-8def-0123456789ab", "u-1"]);
     });
 
@@ -210,7 +213,10 @@ describe("post-transfer-pair", () => {
     });
 
     test("accepts a 255-char transaction_id at the column's length limit", async () => {
-      stagePairOk("p-new");
+      stagePairOk("p-new", [
+        { transaction_id: "x".repeat(255), user_id: "u-1" },
+        { transaction_id: "t-b", user_id: "u-1" },
+      ]);
 
       const result = await postTransferPairRoute.execute(
         makeReq({ transaction_id_a: "x".repeat(255), transaction_id_b: "t-b" }),
@@ -219,13 +225,20 @@ describe("post-transfer-pair", () => {
       expect(result?.status).toBe("success");
     });
 
-    // `pairTransactions` runs in a DB transaction: BEGIN, advisory lock,
+    // `pairTransactions` runs in a DB transaction: BEGIN, two advisory locks,
     // existence pre-check, collision SELECT, INSERT, cleanup UPDATE, COMMIT.
-    function stagePairOk(insertPairId: string) {
+    function stagePairOk(
+      insertPairId: string,
+      transactions = [
+        { transaction_id: "t-a", user_id: "u-1" },
+        { transaction_id: "t-b", user_id: "u-1" },
+      ],
+    ) {
       mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
-      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // membership lock
+      mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // transfer lock
       mockReservedUnsafe.mockResolvedValueOnce({
-        rows: [{ transaction_id: "t-a" }, { transaction_id: "t-b" }],
+        rows: transactions,
         rowCount: 2,
       }); // existence pre-check (FOR SHARE), both alive
       mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // collision
@@ -237,7 +250,7 @@ describe("post-transfer-pair", () => {
       mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // COMMIT
     }
 
-    test("happy path with status=confirmed: INSERT scoped to session user_id", async () => {
+    test("happy path with status=confirmed: the pair is stored under its transactions' owner", async () => {
       stagePairOk("p-new");
 
       const result = await postTransferPairRoute.execute(
@@ -292,20 +305,27 @@ describe("post-transfer-pair", () => {
       expect((insertCall[1] as unknown[])[4]).toBe("suggested");
     });
 
-    test("cross-user new pair: route forwards the session user_id, never a client value", async () => {
-      stagePairOk("p-new");
+    test("new pair: the session user scopes the lookup and the stored owner comes from the transactions, never from the client", async () => {
+      stagePairOk("p-new", [
+        { transaction_id: "t-a", user_id: "u-owner" },
+        { transaction_id: "t-b", user_id: "u-A" },
+      ]);
 
       await postTransferPairRoute.execute(
         makeReq(
-          { transaction_id_a: "t-a", transaction_id_b: "t-b" },
+          { transaction_id_a: "t-a", transaction_id_b: "t-b", user_id: "u-client" },
           { user: { user_id: "u-A", username: "a" } },
         ),
         fakeRes(),
       );
+      const existenceCall = mockReservedUnsafe.mock.calls.find((c) =>
+        /SELECT transaction_id, user_id FROM transactions/i.test(c[0] as string),
+      )!;
+      expect((existenceCall[1] as unknown[])[0]).toBe("u-A");
       const insertCall = mockReservedUnsafe.mock.calls.find((c) =>
         /INSERT INTO transaction_pairs/i.test(c[0] as string),
       )!;
-      expect((insertCall[1] as unknown[])[1]).toBe("u-A");
+      expect((insertCall[1] as unknown[])[1]).toBe("u-owner");
     });
   });
 });

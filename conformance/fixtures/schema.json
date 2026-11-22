@@ -1871,6 +1871,83 @@
       "column_default": null
     },
     {
+      "table_name": "sharing_invitations",
+      "column_name": "invitation_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "sharing_invitations",
+      "column_name": "inviter_user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_invitations",
+      "column_name": "invitee_user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_invitations",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
+      "table_name": "sharing_members",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_members",
+      "column_name": "group_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_members",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
       "table_name": "snapshots",
       "column_name": "snapshot_id",
       "data_type": "character varying",
@@ -2869,6 +2946,31 @@
       "indexdef": "CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (session_id)"
     },
     {
+      "tablename": "sharing_invitations",
+      "indexname": "idx_sharing_invitations_invitee_user_id",
+      "indexdef": "CREATE INDEX idx_sharing_invitations_invitee_user_id ON public.sharing_invitations USING btree (invitee_user_id)"
+    },
+    {
+      "tablename": "sharing_invitations",
+      "indexname": "sharing_invitations_pair_unique",
+      "indexdef": "CREATE UNIQUE INDEX sharing_invitations_pair_unique ON public.sharing_invitations USING btree (inviter_user_id, invitee_user_id)"
+    },
+    {
+      "tablename": "sharing_invitations",
+      "indexname": "sharing_invitations_pkey",
+      "indexdef": "CREATE UNIQUE INDEX sharing_invitations_pkey ON public.sharing_invitations USING btree (invitation_id)"
+    },
+    {
+      "tablename": "sharing_members",
+      "indexname": "idx_sharing_members_group_id",
+      "indexdef": "CREATE INDEX idx_sharing_members_group_id ON public.sharing_members USING btree (group_id)"
+    },
+    {
+      "tablename": "sharing_members",
+      "indexname": "sharing_members_pkey",
+      "indexdef": "CREATE UNIQUE INDEX sharing_members_pkey ON public.sharing_members USING btree (user_id)"
+    },
+    {
       "tablename": "snapshots",
       "indexname": "idx_snapshots_account_id",
       "indexdef": "CREATE INDEX idx_snapshots_account_id ON public.snapshots USING btree (account_id)"
@@ -3198,6 +3300,42 @@
       "definition": "PRIMARY KEY (session_id)"
     },
     {
+      "table_name": "sharing_invitations",
+      "constraint_name": "sharing_invitations_invitee_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (invitee_user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "sharing_invitations",
+      "constraint_name": "sharing_invitations_inviter_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (inviter_user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "sharing_invitations",
+      "constraint_name": "sharing_invitations_pair_unique",
+      "constraint_type": "u",
+      "definition": "UNIQUE (inviter_user_id, invitee_user_id)"
+    },
+    {
+      "table_name": "sharing_invitations",
+      "constraint_name": "sharing_invitations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (invitation_id)"
+    },
+    {
+      "table_name": "sharing_members",
+      "constraint_name": "sharing_members_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (user_id)"
+    },
+    {
+      "table_name": "sharing_members",
+      "constraint_name": "sharing_members_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    },
+    {
       "table_name": "snapshots",
       "constraint_name": "snapshots_pkey",
       "constraint_type": "p",
@@ -3274,6 +3412,13 @@
       "constraint_name": "users_username_key",
       "constraint_type": "u",
       "definition": "UNIQUE (username)"
+    }
+  ],
+  "functions": [
+    {
+      "name": "sharing_user_ids",
+      "arguments": "viewer uuid",
+      "definition": "CREATE OR REPLACE FUNCTION public.sharing_user_ids(viewer uuid)\n RETURNS uuid[]\n LANGUAGE sql\n STABLE PARALLEL SAFE\nAS $function$\n    SELECT array_append(\n      ARRAY(\n        SELECT peer.user_id FROM sharing_members peer\n        WHERE peer.user_id <> viewer\n          AND peer.group_id = (\n            SELECT own.group_id FROM sharing_members own WHERE own.user_id = viewer\n          )\n      ),\n      viewer\n    )\n  $function$\n"
     }
   ]
 }
