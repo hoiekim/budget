@@ -155,8 +155,19 @@ export const compareTranscripts = (filter: string[] = []): { compared: number; p
 
     const [bunUp, rustUp] = [upstreamOf(bun), upstreamOf(rust)];
     for (const key of new Set([...bunUp.keys(), ...rustUp.keys()])) {
-      const pick = (records: UpstreamRecord[] | undefined) =>
-        (records ?? []).map((r) => JSON.stringify(canonical({ call: `${r.method} ${r.path}`, search: r.search, body: r.body })));
+      const pick = (records: UpstreamRecord[] | undefined) => {
+        const calls = (records ?? []).map((r) => JSON.stringify(canonical({ call: `${r.method} ${r.path}`, search: r.search, body: r.body })));
+        // The calls of one `unordered` window arrive in no fixed order: compare them sorted.
+        const list = records ?? [];
+        for (let start = 0; start < list.length; ) {
+          let end = start + 1;
+          const window = list[start].unordered;
+          if (window !== undefined) while (end < list.length && list[end].unordered === window) end++;
+          if (end - start > 1) calls.splice(start, end - start, ...calls.slice(start, end).sort());
+          start = end;
+        }
+        return calls;
+      };
       const [a, b] = [pick(bunUp.get(key)), pick(rustUp.get(key))];
       if (a.length !== b.length) problems.push(`${name}: ${key}: bun made ${a.length} calls, rust ${b.length}`);
       for (let i = 0; i < Math.min(a.length, b.length); i++) {

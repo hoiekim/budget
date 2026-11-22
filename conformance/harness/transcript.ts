@@ -31,6 +31,8 @@ export interface UpstreamRecord {
   path: string;
   search: string;
   body: unknown;
+  /** Set on calls that arrived in an `unordered` window: their order is not compared. */
+  unordered?: number;
 }
 
 export type TranscriptRecord = HttpRecord | UpstreamRecord;

@@ -70,11 +70,18 @@ pub struct UserItem {
 }
 
 pub async fn get_user_item(item_id: &str) -> anyhow::Result<Option<UserItem>> {
+    get_user_item_of(&json!(item_id)).await
+}
+
+/// [`get_user_item`] for an id that may be any value a request carried: it is
+/// bound as it is, so a number fails in the database as it does in the
+/// TypeScript, and `undefined` is passed as null.
+pub async fn get_user_item_of(item_id: &Json) -> anyhow::Result<Option<UserItem>> {
     // JOIN with users to attach `username`, which is outside `Table::query`'s surface.
     let result = pool()
         .query(
             "SELECT i.*, u.username FROM items i JOIN users u ON i.user_id = u.user_id WHERE i.item_id = $1 AND (i.is_deleted IS NULL OR i.is_deleted = FALSE)",
-            &[json!(item_id)],
+            std::slice::from_ref(item_id),
         )
         .await?;
     let Some(row) = result.rows.into_iter().next() else { return Ok(None) };

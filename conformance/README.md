@@ -78,6 +78,11 @@ Rules that keep the suite the same on both servers and on any machine:
   for the server process.
 - Mark an exchange whose answer is inherently different per run with
   `noCompare: true` so the transcript diff skips it; say why in a comment.
+- Wrap a request whose upstream calls the Bun server starts at once, and
+  which reach the upstream in no fixed order there, in
+  `stack.upstream.hub.unordered(() => …)`: the diff then compares the calls
+  that arrived meanwhile as a set, per host. Use it only where the Bun
+  server's own order is racy, and say why in a comment.
 - Wait for background effects with `stack.waitFor(() => …)` or
   `stack.waitForLog(…)`, never with a fixed sleep.
 - Write the test against the Bun server first: it is the reference. Then run
