@@ -85,15 +85,19 @@ describe("searchTransactions", () => {
     expect(investments).toEqual([]);
   });
 
-  test("scopes both the transactions and the investment transactions read to the user", async () => {
+  test("scopes both the transactions and the investment transactions read to the user and whoever shares data with them", async () => {
     mockUnsafe.mockResolvedValue({ rows: [], rowCount: 0 });
 
     await readBoth({ user_id: "usr-99", username: "test" });
 
     const [txSql, txValues] = queryAt(0);
     const [invSql, invValues] = queryAt(1);
-    expect(txSql).toStartWith("SELECT * FROM transactions WHERE user_id = $1");
-    expect(invSql).toStartWith("SELECT * FROM investment_transactions WHERE user_id = $1");
+    expect(txSql).toStartWith(
+      "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND ",
+    );
+    expect(invSql).toStartWith(
+      "SELECT * FROM investment_transactions WHERE user_id = ANY(sharing_user_ids($1)) AND ",
+    );
     expect(txValues[0]).toBe("usr-99");
     expect(invValues[0]).toBe("usr-99");
   });

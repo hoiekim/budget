@@ -143,6 +143,39 @@ pub fn mutation_side_effect_domains(method: &str, path: &str) -> &'static [&'sta
     }
 }
 
+/// The tab a request came from, from its `X-Tab-Id`, so that tab can
+/// recognise the event as its own. An empty header names no tab.
+pub fn origin_tab_payload(headers: &std::collections::HashMap<String, String>) -> Option<String> {
+    headers.get("x-tab-id").filter(|tab| !tab.is_empty()).cloned()
+}
+
+/// [`emit_to_user`] for a user and everyone sharing data with them: what one
+/// of them writes, all of them see. Finding the group is a query, so a caller
+/// on a response path spawns this rather than awaiting it. It never fails:
+/// when the group can't be read, the user alone is told.
+pub async fn emit_to_sharing_group(user_id: &str, domain: &str, origin_tab_id: Option<&str>) {
+    let user_ids = match crate::server::postgres::repositories::sharing::get_sharing_user_ids(user_id, None).await {
+        Ok(user_ids) => user_ids,
+        Err(error) => {
+            crate::server::logger::warn(
+                "Sharing group lookup failed; the event reaches its author only",
+                Some(&crate::ctx! { "userId": user_id, "domain": domain }),
+                Some(&error),
+            );
+            vec![user_id.to_string()]
+        }
+    };
+    for id in user_ids {
+        emit_to_user(&id, domain, origin_tab_id);
+    }
+}
+
+/// Spawns [`emit_to_sharing_group`], the TypeScript's `void emitToSharingGroup(…)`.
+pub fn spawn_emit_to_sharing_group(user_id: &str, domain: &str, origin_tab_id: Option<String>) {
+    let (user_id, domain) = (user_id.to_string(), domain.to_string());
+    tokio::spawn(async move { emit_to_sharing_group(&user_id, &domain, origin_tab_id.as_deref()).await });
+}
+
 pub fn register_subscriber(user_id: &str, subscriber: Arc<Subscriber>) {
     REGISTRY.lock().unwrap().subscribers.entry(user_id.to_string()).or_default().push(subscriber);
 }

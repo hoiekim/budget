@@ -9,7 +9,7 @@ use subtle::ConstantTimeEq;
 use crate::filters;
 use crate::js::{Json, JsDate, Obj};
 use crate::server::postgres::client::{pool, Executor};
-use crate::server::postgres::database::AdditionalWhere;
+use crate::server::postgres::database::{AdditionalWhere, Filter};
 use crate::server::postgres::models::api_key;
 use crate::server::postgres::models::UpdateArgs;
 
@@ -91,7 +91,7 @@ pub async fn revoke_api_key(key_id: &str, user_id: &str) -> anyhow::Result<bool>
             &data,
             UpdateArgs {
                 returning: Some(&["key_id"]),
-                user_id: Some(user_id),
+                user_id: Some(Filter::from(user_id)),
                 extra_where: &[AdditionalWhere::new("revoked_at", Json::Null)],
                 ..Default::default()
             },

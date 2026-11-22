@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { PATH } from "client";
+import { ItemProvider } from "common";
+import type { Sharing } from "server";
+import { Data, Item, ItemDictionary, PATH } from "client";
 import { PlaidLinkProvider } from "client/components";
-import { buildContext, buildRouter, renderWithContext, resetDom, stubFetch } from "test-render";
+import {
+  buildContext,
+  buildRouter,
+  renderWithContext,
+  resetDom,
+  stubFetch,
+  type FetchStubRoute,
+} from "test-render";
 import { Configuration } from ".";
 
 let fetchStub: ReturnType<typeof stubFetch> | undefined;
@@ -77,5 +86,103 @@ describe("Configuration logout", () => {
     const { signedOut, assigned } = await logOut({ status: "success" });
     expect(signedOut).toEqual([undefined]);
     expect(assigned).toEqual([]);
+  });
+});
+
+const ME = { user_id: "u-me", username: "me" };
+const ANN = { user_id: "u-ann", username: "ann" };
+
+const plaidItem = (item_id: string, user_id: string) =>
+  new Item({ item_id, user_id, provider: ItemProvider.PLAID, institution_id: null });
+const manualItem = (item_id: string, user_id: string) =>
+  new Item({ item_id, user_id, provider: ItemProvider.MANUAL });
+
+const renderConfiguration = (items: Item[], sharing: Sharing, routes: FetchStubRoute[] = []) => {
+  fetchStub = stubFetch([
+    { path: "/api/api-keys", response: { status: "success", body: { api_keys: [] } } },
+    ...routes,
+  ]);
+  removePlaidScript = preloadPlaidScript();
+  const { router, calls } = buildRouter(PATH.CONFIG);
+  const data = new Data({
+    items: new ItemDictionary(items.map((item) => [item.id, item])),
+    sharing,
+  });
+  const rendered = renderWithContext(
+    <PlaidLinkProvider>
+      <Configuration />
+    </PlaidLinkProvider>,
+    buildContext({ user: ME, data, router }),
+  );
+  const connections = () =>
+    [...rendered.container.querySelectorAll("button.connection")].map((button) => ({
+      name: button.querySelector("div")?.textContent?.replace(/ /g, " "),
+      owner: button.querySelector(".owner")?.textContent ?? null,
+    }));
+  return { calls, connections, requests: () => fetchStub!.calls.requests };
+};
+
+const SHARING_WITH_ANN: Sharing = { members: [ANN, ME], invitations: [] };
+const SHARING_WITH_NOBODY: Sharing = { members: [], invitations: [] };
+
+describe("Configuration connections", () => {
+  it("names each connection's owner while the user shares data", () => {
+    const { connections } = renderConfiguration(
+      [plaidItem("MINE01", ME.user_id), plaidItem("HERS01", ANN.user_id)],
+      SHARING_WITH_ANN,
+    );
+    expect(connections()).toEqual([
+      { name: "MINE01  via Plaid", owner: "me" },
+      { name: "HERS01  via Plaid", owner: "ann" },
+    ]);
+  });
+
+  it("names no owner while the user shares with nobody", () => {
+    const { connections } = renderConfiguration(
+      [plaidItem("MINE01", ME.user_id)],
+      SHARING_WITH_NOBODY,
+    );
+    expect(connections()).toEqual([{ name: "MINE01  via Plaid", owner: null }]);
+  });
+
+  it("lists another person's manual accounts as a connection, and keeps the user's own off the list", () => {
+    const { connections } = renderConfiguration(
+      [manualItem("mine", ME.user_id), manualItem("hers", ANN.user_id)],
+      SHARING_WITH_ANN,
+    );
+    expect(connections()).toEqual([{ name: "Manual Accounts", owner: "ann" }]);
+  });
+
+  it("opens the user's own manual accounts, not another person's", async () => {
+    const { calls } = renderConfiguration(
+      [manualItem("hers", ANN.user_id), manualItem("mine", ME.user_id)],
+      SHARING_WITH_ANN,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "See Manual Accounts" }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(calls.go.map(({ path, params }) => [path, params?.get("item_id")])).toEqual([
+      [PATH.CONNECTION_DETAIL, "mine"],
+    ]);
+  });
+
+  it("makes the user a manual item of their own when only another person has one", async () => {
+    const created = { item_id: "new", user_id: ME.user_id, provider: ItemProvider.MANUAL };
+    const { calls, requests } = renderConfiguration(
+      [manualItem("hers", ANN.user_id)],
+      SHARING_WITH_ANN,
+      [{ path: "/api/public-token", response: { status: "success", body: { item: created } } }],
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "See Manual Accounts" }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(requests().map(({ method, url }) => `${method} ${url}`)).toContain(
+      "POST /api/public-token?provider=manual",
+    );
+    expect(calls.go.map(({ path, params }) => [path, params?.get("item_id")])).toEqual([
+      [PATH.CONNECTION_DETAIL, "new"],
+    ]);
   });
 });

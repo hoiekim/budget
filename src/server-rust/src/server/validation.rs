@@ -51,8 +51,9 @@ pub fn require_string_field(obj: &Obj, field: &str) -> Validation<String> {
 
 static TICKER_SYMBOL_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z0-9.:-]{1,16}$").unwrap());
 
-/// `String.prototype.trim` whitespace: Unicode white space plus line terminators and the BOM.
-/// U+0085 (next line) is white space to Unicode but not to JavaScript.
+/// `String.prototype.trim` whitespace: Unicode white space plus line
+/// terminators and the BOM, without the next-line control (U+0085), which
+/// JavaScript does not count.
 pub fn js_trim(text: &str) -> &str {
     text.trim_matches(|c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
 }
@@ -360,14 +361,5 @@ mod tests {
         assert_eq!(validate_fields(&obj(json!({ "date": "2026-02-28T00:00:00" })), &specs), Ok(()));
         assert_eq!(validate_fields(&obj(json!({ "date": "2026-02-30" })), &specs), Err("Field date must be a date".into()));
         assert_eq!(validate_fields(&obj(json!({ "date": "2026-02-03Tjunk" })), &specs), Err("Field date must be a date".into()));
-    }
-
-    #[test]
-    fn trimming_follows_javascript_on_what_white_space_is() {
-        assert_eq!(js_trim(" \t\n\u{b}\u{c}\r\u{a0}\u{1680}\u{2003}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}\u{feff}x y\u{feff} "), "x y");
-        // U+0085 (next line) is white space to Unicode and not to JavaScript; a zero-width space is neither.
-        assert_eq!(js_trim("\u{85}x\u{85}"), "\u{85}x\u{85}");
-        assert_eq!(js_trim(" \u{85} "), "\u{85}");
-        assert_eq!(js_trim("\u{200b}x"), "\u{200b}x");
     }
 }

@@ -179,3 +179,80 @@ describe("post-public-token", () => {
     expect(mockUnsafe).not.toHaveBeenCalled();
   });
 });
+
+describe("post-public-token provider=manual in a sharing group", () => {
+  const ITEM_INSERT = /^\s*INSERT INTO items\b/i;
+
+  type ManualItemBody = { item: Record<string, unknown> };
+
+  /** The value a single-row INSERT binds to `column`, read off its own column list. */
+  const boundTo = (insert: unknown[], column: string): unknown => {
+    const [sql, values] = insert as [string, unknown[]];
+    const [, columnList, valueList] = /\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i.exec(sql)!;
+    const columns = columnList.split(",").map((c) => c.trim());
+    const placeholders = valueList.split(",").map((p) => p.trim());
+    return values[Number(placeholders[columns.indexOf(column)].slice(1)) - 1];
+  };
+
+  const itemInsert = () => mockUnsafe.mock.calls.find((call) => ITEM_INSERT.test(call[0] as string));
+
+  test("the manual-item lookup covers the caller's sharing group and only manual items", async () => {
+    await postPublicTokenRoute.execute(makeReq({ provider: "manual" }, {}), fakeRes());
+
+    const [sql, values] = mockUnsafe.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toMatch(/FROM items\b/i);
+    expect(sql).toMatch(/user_id = ANY\(sharing_user_ids\(\$1\)\)/);
+    expect(sql).toMatch(/provider = \$2/);
+    expect(values).toEqual(["u-1", "manual"]);
+  });
+
+  test("another member's manual item does not block creating the caller's own", async () => {
+    mockUnsafe.mockResolvedValueOnce({
+      rows: [itemRow({ item_id: "i-peer", user_id: "u-peer", provider: "manual" })],
+      rowCount: 1,
+    });
+
+    const result = await postPublicTokenRoute.execute(makeReq({ provider: "manual" }, {}), fakeRes());
+
+    expect(result?.status).toBe("success");
+    const { item } = (result as unknown as { body: ManualItemBody }).body;
+    expect(item.user_id).toBe("u-1");
+    expect(item.provider).toBe("manual");
+    expect(item.item_id).not.toBe("i-peer");
+    expect(item).not.toHaveProperty("access_token");
+
+    const insert = itemInsert();
+    expect(insert).toBeDefined();
+    expect(boundTo(insert!, "user_id")).toBe("u-1");
+    expect(boundTo(insert!, "item_id")).toBe(item.item_id);
+    expect(boundTo(insert!, "provider")).toBe("manual");
+    expect(insert![1]).not.toContain("u-peer");
+  });
+
+  test("with no manual item in the group the caller's is created and returned as theirs", async () => {
+    const result = await postPublicTokenRoute.execute(
+      makeReq({ provider: "manual" }, {}, { user: { user_id: "u-solo", username: "solo" } }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const { item } = (result as unknown as { body: ManualItemBody }).body;
+    expect(item.user_id).toBe("u-solo");
+    expect(boundTo(itemInsert()!, "user_id")).toBe("u-solo");
+  });
+
+  test("the caller's own manual item still refuses a second one, even beside another member's", async () => {
+    mockUnsafe.mockResolvedValueOnce({
+      rows: [
+        itemRow({ item_id: "i-peer", user_id: "u-peer", provider: "manual" }),
+        itemRow({ item_id: "i-own", user_id: "u-1", provider: "manual" }),
+      ],
+      rowCount: 2,
+    });
+
+    const result = await postPublicTokenRoute.execute(makeReq({ provider: "manual" }, {}), fakeRes());
+
+    expect(result).toEqual({ status: "failed", message: "Manual item already exists for the user" });
+    expect(itemInsert()).toBeUndefined();
+  });
+});

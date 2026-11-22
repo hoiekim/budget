@@ -36,7 +36,7 @@ describe("the production posture (NODE_ENV=production)", () => {
     const line = await stack.waitFor(() => stack.logs.find((l) => l.includes('"API request"') && l.includes("10.4.0.1")), {
       what: "the access log line",
     });
-    const entry = JSON.parse(line) as { level: string; message: string; timestamp: string; context: Record<string, unknown> };
+    const entry = JSON.parse(line ?? "") as { level: string; message: string; timestamp: string; context: Record<string, unknown> };
     expect(entry.level).toBe("info");
     expect(entry.message).toBe("API request");
     expect(Number.isNaN(Date.parse(entry.timestamp))).toBe(false);

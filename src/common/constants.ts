@@ -31,6 +31,8 @@ export enum TableName {
   ApiKeys = "api_keys",
   RejectedCategories = "rejected_categories",
   CpiSnapshots = "cpi_snapshots",
+  SharingMembers = "sharing_members",
+  SharingInvitations = "sharing_invitations",
 }
 
 export const USERS = TableName.Users;
@@ -53,6 +55,8 @@ export const CHARTS = TableName.Charts;
 export const API_KEYS = TableName.ApiKeys;
 export const REJECTED_CATEGORIES = TableName.RejectedCategories;
 export const CPI_SNAPSHOTS = TableName.CpiSnapshots;
+export const SHARING_MEMBERS = TableName.SharingMembers;
+export const SHARING_INVITATIONS = TableName.SharingInvitations;
 
 /**
  * Id prefix of the holding snapshots the client derives from a holding's
@@ -76,6 +80,12 @@ export const RESTATED_FROM = "restated_from";
  * restated holding, recording `{ ex_date, cash_amount_per_share, shares_held }`.
  */
 export const REINVESTED_DISTRIBUTION = "reinvested_distribution";
+
+/**
+ * The account anyone can sign in to on a public demo instance. It takes no
+ * part in data sharing: whatever it could read, every visitor could.
+ */
+export const DEMO_USERNAME = "demo";
 
 export const BUDGET_NAME_REQUIRED_MESSAGE = "Budget name cannot be empty.";
 export const SECTION_NAME_REQUIRED_MESSAGE = "Section name cannot be empty.";

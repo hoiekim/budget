@@ -37,7 +37,7 @@ use crate::server::logger;
 use crate::server::node_env::is_production;
 use crate::server::postgres::{initialize_postgres, pool};
 use crate::server::rate_limit::{get_client_ip, pre_session_shed_message, start_rate_limit_cleanup};
-use crate::server::realtime::{self, emit_to_user, mutation_emit_domain, mutation_side_effect_domains};
+use crate::server::realtime::{self, emit_to_sharing_group, mutation_emit_domain, mutation_side_effect_domains, origin_tab_payload};
 use crate::server::request_limits::MAX_REQUEST_BODY_SIZE;
 use crate::server::route::{ApiResponse, Ctx, QueryValue, RawBody, Reply, Request, Route, Session};
 use crate::server::security_headers::{response_security_headers, SECURITY_HEADERS};
@@ -340,17 +340,22 @@ async fn handle_api_request(parts: IncomingParts, api_path: &str, log: &mut Obj)
             (BodyExt::boxed_unsync(StreamBody::new(frames)), Some("application/json"))
         }
         Reply::Api(result) => {
-            // A successful mutation tells the acting user's open tabs to
-            // re-sync. The caller's `X-Tab-Id` is echoed so the tab that made
-            // the change can skip its own event.
+            // A successful mutation tells the open tabs of the acting user and
+            // of everyone sharing data with them to re-sync. The caller's
+            // `X-Tab-Id` is echoed so the tab that made the change can skip
+            // its own event.
             if let (Some(domain), "success", Some(user)) =
                 (mutation_emit_domain(&method, api_path), result.status, &ctx.session.user)
             {
-                let origin_tab_id = ctx.req.headers.get("x-tab-id").filter(|tab| !tab.is_empty());
-                emit_to_user(&user.user_id, domain, origin_tab_id.map(String::as_str));
-                for side_effect in mutation_side_effect_domains(&method, api_path) {
-                    emit_to_user(&user.user_id, side_effect, None);
-                }
+                let origin_tab_id = origin_tab_payload(&ctx.req.headers);
+                let side_effects = mutation_side_effect_domains(&method, api_path);
+                let user_id = user.user_id.clone();
+                tokio::spawn(async move {
+                    emit_to_sharing_group(&user_id, domain, origin_tab_id.as_deref()).await;
+                    for side_effect in side_effects {
+                        emit_to_sharing_group(&user_id, side_effect, None).await;
+                    }
+                });
             }
             (full(json_stringify(&result.to_json())), Some("application/json"))
         }

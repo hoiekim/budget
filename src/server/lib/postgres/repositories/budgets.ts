@@ -13,12 +13,13 @@ import {
   USER_ID,
 } from "../models";
 import { withTransaction } from "../client";
+import { sharedWith } from "../database";
 
 export const searchBudgets = async (
   user: MaskedUser,
   options: { budget_id?: string } = {},
 ): Promise<JSONBudget[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (options.budget_id) filters[BUDGET_ID] = options.budget_id;
   const models = await budgetsTable.query(filters);
   return models.map((m) => m.toJSON());
@@ -58,24 +59,24 @@ export const updateBudget = async (
   if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
-  const model = await budgetsTable.update(budget_id, updates, undefined, user.user_id);
+  const model = await budgetsTable.update(budget_id, updates, undefined, sharedWith(user));
   return model !== null;
 };
 
 export const deleteBudget = async (user: MaskedUser, budget_id: string): Promise<boolean> => {
-  const sections = await sectionsTable.query({ [USER_ID]: user.user_id, [BUDGET_ID]: budget_id });
+  const sections = await sectionsTable.query({ [USER_ID]: sharedWith(user), [BUDGET_ID]: budget_id });
   const sectionIds = sections.map((s) => s.section_id);
 
   return withTransaction(async (client) => {
     for (const sid of sectionIds) {
-      await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, sid, user.user_id, client);
+      await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, sid, sharedWith(user), client);
     }
 
     if (sectionIds.length > 0) {
-      await sectionsTable.bulkSoftDelete(sectionIds, { [USER_ID]: user.user_id }, client);
+      await sectionsTable.bulkSoftDelete(sectionIds, { [USER_ID]: sharedWith(user) }, client);
     }
 
-    const deleted = await budgetsTable.bulkSoftDelete([budget_id], { [USER_ID]: user.user_id }, client);
+    const deleted = await budgetsTable.bulkSoftDelete([budget_id], { [USER_ID]: sharedWith(user) }, client);
     return deleted > 0;
   });
 };
@@ -93,13 +94,13 @@ export const getOwnedLabelIds = async (
   const [budgets, categories] = await Promise.all([
     ids.budget_ids.length
       ? budgetsTable.query(
-          { [USER_ID]: user.user_id },
+          { [USER_ID]: sharedWith(user) },
           { inFilters: { [BUDGET_ID]: ids.budget_ids }, excludeDeleted: false },
         )
       : [],
     ids.category_ids.length
       ? categoriesTable.query(
-          { [USER_ID]: user.user_id },
+          { [USER_ID]: sharedWith(user) },
           { inFilters: { [CATEGORY_ID]: ids.category_ids }, excludeDeleted: false },
         )
       : [],
@@ -111,7 +112,7 @@ export const getOwnedLabelIds = async (
 };
 
 export const getSections = async (user: MaskedUser, budget_id?: string): Promise<JSONSection[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (budget_id) filters[BUDGET_ID] = budget_id;
   const models = await sectionsTable.query(filters);
   return models.map((m) => m.toJSON());
@@ -124,7 +125,7 @@ export const createSection = async (
   // The foreign key proves only that the budget exists; it has to be the caller's. A budget that
   // isn't theirs gets the same answer as one that doesn't exist, so the answer reveals neither.
   if (!data.budget_id) return null;
-  const budget = await budgetsTable.queryOne({ [BUDGET_ID]: data.budget_id, [USER_ID]: user.user_id });
+  const budget = await budgetsTable.queryOne({ [BUDGET_ID]: data.budget_id, [USER_ID]: sharedWith(user) });
   if (!budget) return null;
   const row = SectionModel.fromJSON(
     {
@@ -134,7 +135,7 @@ export const createSection = async (
       roll_over_start_date: data.roll_over_start_date,
       capacities: data.capacities || [],
     },
-    user.user_id,
+    budget.user_id,
   );
   const result = await sectionsTable.insert(row, ["*"]);
   if (!result) return null;
@@ -155,14 +156,14 @@ export const updateSection = async (
   if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
-  const model = await sectionsTable.update(section_id, updates, undefined, user.user_id);
+  const model = await sectionsTable.update(section_id, updates, undefined, sharedWith(user));
   return model !== null;
 };
 
 export const deleteSection = async (user: MaskedUser, section_id: string): Promise<boolean> => {
   return withTransaction(async (client) => {
-    await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, section_id, user.user_id, client);
-    const deleted = await sectionsTable.bulkSoftDelete([section_id], { [USER_ID]: user.user_id }, client);
+    await categoriesTable.bulkSoftDeleteByColumn(SECTION_ID, section_id, sharedWith(user), client);
+    const deleted = await sectionsTable.bulkSoftDelete([section_id], { [USER_ID]: sharedWith(user) }, client);
     return deleted > 0;
   });
 };
@@ -171,7 +172,7 @@ export const getCategories = async (
   user: MaskedUser,
   section_id?: string,
 ): Promise<JSONCategory[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (section_id) filters[SECTION_ID] = section_id;
   const models = await categoriesTable.query(filters);
   return models.map((m) => m.toJSON());
@@ -182,7 +183,7 @@ export const createCategory = async (
   data: Partial<JSONCategory>,
 ): Promise<JSONCategory | null> => {
   if (!data.section_id) return null;
-  const section = await sectionsTable.queryOne({ [SECTION_ID]: data.section_id, [USER_ID]: user.user_id });
+  const section = await sectionsTable.queryOne({ [SECTION_ID]: data.section_id, [USER_ID]: sharedWith(user) });
   if (!section) return null;
   const row = CategoryModel.fromJSON(
     {
@@ -192,7 +193,7 @@ export const createCategory = async (
       roll_over_start_date: data.roll_over_start_date,
       capacities: data.capacities || [],
     },
-    user.user_id,
+    section.user_id,
   );
   const result = await categoriesTable.insert(row, ["*"]);
   if (!result) return null;
@@ -213,10 +214,10 @@ export const updateCategory = async (
   if (data.capacities !== undefined) updates.capacities = data.capacities; // JSONB takes the array, not a string (see models fromJSON)
 
   if (Object.keys(updates).length === 0) return false;
-  const model = await categoriesTable.update(category_id, updates, undefined, user.user_id);
+  const model = await categoriesTable.update(category_id, updates, undefined, sharedWith(user));
   return model !== null;
 };
 
 export const deleteCategory = async (user: MaskedUser, category_id: string): Promise<boolean> => {
-  return await categoriesTable.softDelete(category_id, user.user_id);
+  return await categoriesTable.softDelete(category_id, sharedWith(user));
 };

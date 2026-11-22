@@ -17,7 +17,8 @@ import {
   SECURITY_HEADERS,
   responseSecurityHeaders,
   MAX_REQUEST_BODY_SIZE,
-  emitToUser,
+  emitToSharingGroup,
+  originTabPayload,
   mutationEmitDomain,
   mutationSideEffectDomains,
   JsonStream,
@@ -424,17 +425,16 @@ async function handleApiRequest(
   }
 
   // Real-time collaboration signal: a successful mutation broadcasts a
-  // `<domain>-updated` event to the acting user's open tabs so they re-sync.
+  // `<domain>-updated` event to the open tabs of the acting user and of
+  // everyone sharing data with them, so they re-sync.
   // `originTabId` (the caller's `X-Tab-Id`) is echoed back so the tab that made
   // the change can filter its own event and skip a redundant self-refetch — its
   // local state was already patched optimistically by `useMutate`.
   const emitDomain = mutationEmitDomain(request.method, apiPath);
   if (emitDomain && result?.status === "success" && session.user) {
-    const tabHeader = headers["x-tab-id"];
-    const originTabId = Array.isArray(tabHeader) ? tabHeader[0] : tabHeader;
-    emitToUser(session.user.user_id, emitDomain, originTabId ? { originTabId } : {});
+    void emitToSharingGroup(session.user.user_id, emitDomain, originTabPayload(headers));
     for (const domain of mutationSideEffectDomains(request.method, apiPath)) {
-      emitToUser(session.user.user_id, domain, {});
+      void emitToSharingGroup(session.user.user_id, domain, {});
     }
   }
 

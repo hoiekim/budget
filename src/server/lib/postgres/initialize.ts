@@ -26,6 +26,9 @@ import {
   apiKeysTable,
   rejectedCategoriesTable,
   cpiSnapshotsTable,
+  sharingMembersTable,
+  sharingInvitationsTable,
+  CREATE_SHARING_USER_IDS_FUNCTION,
 } from "./models";
 
 export const version = "6";
@@ -52,6 +55,8 @@ const tables: Table<unknown, Schema>[] = [
   apiKeysTable,
   rejectedCategoriesTable,
   cpiSnapshotsTable,
+  sharingMembersTable,
+  sharingInvitationsTable,
 ];
 
 /**
@@ -99,6 +104,8 @@ export const initializePostgres = async (): Promise<void> => {
       await pool.query(createTableSql);
     }
     logger.info("Database tables created/verified successfully");
+
+    await pool.query(CREATE_SHARING_USER_IDS_FUNCTION);
 
     // Run automatic schema migrations to add any missing columns
     await runMigrations(tables.map((t) => ({ name: t.name, schema: t.schema })));

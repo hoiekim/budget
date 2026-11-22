@@ -90,7 +90,7 @@ export class UpstreamHub {
     this.sockets.add(client);
     client.on("close", () => this.sockets.delete(client));
     client.on("error", () => client.destroy());
-    client.once("data", (chunk) => {
+    client.once("data", (chunk: Buffer) => {
       const head = chunk.toString("latin1");
       const match = /^CONNECT ([^ :]+):(\d+) HTTP\/1\.[01]\r\n/.exec(head);
       if (!match) {

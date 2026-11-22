@@ -1,11 +1,12 @@
 import { JSONChart, ChartType } from "common";
 import { MaskedUser, chartsTable, ChartModel, CHART_ID, USER_ID } from "../models";
+import { sharedWith } from "../database";
 
 export const searchCharts = async (
   user: MaskedUser,
   options: { chart_id?: string; type?: string } = {},
 ): Promise<JSONChart[]> => {
-  const filters: Record<string, unknown> = { [USER_ID]: user.user_id };
+  const filters: Record<string, unknown> = { [USER_ID]: sharedWith(user) };
   if (options.chart_id) filters[CHART_ID] = options.chart_id;
   if (options.type) filters.type = options.type;
 
@@ -57,10 +58,10 @@ export const updateChart = async (
 
   if (Object.keys(updates).length === 0) return false;
 
-  const model = await chartsTable.update(chart_id, updates, undefined, user.user_id);
+  const model = await chartsTable.update(chart_id, updates, undefined, sharedWith(user));
   return model !== null;
 };
 
 export const deleteChart = async (user: MaskedUser, chart_id: string): Promise<boolean> => {
-  return await chartsTable.softDelete(chart_id, user.user_id);
+  return await chartsTable.softDelete(chart_id, sharedWith(user));
 };

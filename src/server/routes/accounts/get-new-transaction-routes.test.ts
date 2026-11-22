@@ -613,3 +613,121 @@ describe("get-new-investment-transaction route", () => {
     expect(insert!.values).toContain(null);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Accounts shared with the caller: the minted row belongs to the account's owner
+// ---------------------------------------------------------------------------
+
+describe("mint on an account someone else in the sharing group owns", () => {
+  const OWNER_LOOKUP = /\bFROM\s+accounts\s+r\s+JOIN\s+users\b/i;
+  let ownerRow: MaybeRow = null;
+
+  beforeEach(() => {
+    ownerRow = null;
+    // The owner lookup joins `users`; every other statement keeps the table router.
+    mockUnsafe.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (OWNER_LOOKUP.test(sql)) {
+        return ownerRow ? { rows: [ownerRow], rowCount: 1 } : { rows: [], rowCount: 0 };
+      }
+      return queryRouter(sql, values);
+    });
+  });
+
+  /** The value a single-row INSERT binds to `column`, read off its own column list. */
+  const boundTo = (insert: { sql: string; values: unknown[] }, column: string): unknown => {
+    const [, columnList, valueList] = /\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i.exec(insert.sql)!;
+    const columns = columnList.split(",").map((c) => c.trim());
+    const placeholders = valueList.split(",").map((p) => p.trim());
+    return insert.values[Number(placeholders[columns.indexOf(column)].slice(1)) - 1];
+  };
+
+  const ownerLookup = () => mockUnsafe.mock.calls.find((call) => OWNER_LOOKUP.test(call[0] as string));
+
+  test("a cash transaction is inserted under the account owner's user_id", async () => {
+    accountRow = { ...manualCashAccount(), user_id: "u-owner" };
+    itemRow = { ...manualItem(), user_id: "u-owner" };
+    ownerRow = { user_id: "u-owner", username: "owner" };
+
+    const result = await getNewTransactionRoute.execute(
+      makeReq(getNewTransactionRoute, { account_id: "acc-manual-cash" }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const insert = findInsert("transactions");
+    expect(insert).not.toBeNull();
+    expect(boundTo(insert!, "user_id")).toBe("u-owner");
+    expect(insert!.values).not.toContain("u-member");
+    expect(boundTo(insert!, "account_id")).toBe("acc-manual-cash");
+  });
+
+  test("the owner lookup is keyed on the account and scoped to the caller's sharing group", async () => {
+    accountRow = { ...manualCashAccount(), user_id: "u-owner" };
+    itemRow = { ...manualItem(), user_id: "u-owner" };
+    ownerRow = { user_id: "u-owner", username: "owner" };
+
+    await getNewTransactionRoute.execute(
+      makeReq(getNewTransactionRoute, { account_id: "acc-manual-cash" }, "u-member"),
+      fakeRes(),
+    );
+
+    const lookup = ownerLookup();
+    expect(lookup).toBeDefined();
+    expect(lookup![0] as string).toMatch(/r\.account_id = \$1 AND r\.user_id = ANY\(sharing_user_ids\(\$2\)\)/);
+    expect(lookup![1]).toEqual(["acc-manual-cash", "u-member"]);
+  });
+
+  test("a cash mint with no owner in reach answers 'Account not found.' and inserts nothing", async () => {
+    // The account and its manual item resolve, so only the owner lookup can refuse.
+    accountRow = { ...manualCashAccount(), user_id: "u-owner" };
+    itemRow = { ...manualItem(), user_id: "u-owner" };
+    ownerRow = null;
+
+    const result = await getNewTransactionRoute.execute(
+      makeReq(getNewTransactionRoute, { account_id: "acc-manual-cash" }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result).toEqual({ status: "failed", message: "Account not found." });
+    expect(ownerLookup()).toBeDefined();
+    expect(findInsert("transactions")).toBeNull();
+  });
+
+  test("an investment transaction is inserted under the account owner's user_id", async () => {
+    accountRow = { ...plaidInvestAccount(), user_id: "u-owner" };
+    ownerRow = { user_id: "u-owner", username: "owner" };
+
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(
+        getNewInvestmentTransactionRoute,
+        { account_id: "acc-plaid-invest", quantity: "2", price: "30" },
+        "u-member",
+      ),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const insert = findInsert("investment_transactions");
+    expect(insert).not.toBeNull();
+    expect(boundTo(insert!, "user_id")).toBe("u-owner");
+    expect(insert!.values).not.toContain("u-member");
+    expect(boundTo(insert!, "account_id")).toBe("acc-plaid-invest");
+
+    const lookup = ownerLookup();
+    expect(lookup![1]).toEqual(["acc-plaid-invest", "u-member"]);
+  });
+
+  test("an investment mint with no owner in reach answers 'Account not found.' and inserts nothing", async () => {
+    accountRow = { ...plaidInvestAccount(), user_id: "u-owner" };
+    ownerRow = null;
+
+    const result = await getNewInvestmentTransactionRoute.execute(
+      makeReq(getNewInvestmentTransactionRoute, { account_id: "acc-plaid-invest" }, "u-member"),
+      fakeRes(),
+    );
+
+    expect(result).toEqual({ status: "failed", message: "Account not found." });
+    expect(ownerLookup()).toBeDefined();
+    expect(findInsert("investment_transactions")).toBeNull();
+  });
+});

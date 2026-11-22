@@ -8,15 +8,20 @@ import {
   CATEGORY_ID,
   REJECTED_AT,
   pool,
+  sharedWithSql,
 } from "server";
-import { REJECTED_CATEGORIES } from "common/constants";
+import { REJECTED_CATEGORIES, TRANSACTIONS } from "common/constants";
 
 
 /**
  * Record a user's rejection of `category_id` for `transaction_id`. UPSERT
  * so a re-reject of the same pair just refreshes the timestamp.
  *
- * The `WHERE user_id = $2` on the ON CONFLICT DO UPDATE branch is
+ * The row belongs to the transaction's owner, whoever in their sharing group
+ * rejected the category: the suggestion engine reads rejections per owner. A
+ * transaction outside the group inserts nothing.
+ *
+ * The owner check on the ON CONFLICT DO UPDATE branch is
  * defense-in-depth — transaction_id is globally unique today, but if a
  * future schema change ever lets two users share a transaction_id, this
  * guard prevents cross-user clobber.
@@ -31,10 +36,12 @@ export const addRejectedCategory = async (
   const sql = `
     INSERT INTO ${REJECTED_CATEGORIES}
       (${TRANSACTION_ID}, ${USER_ID}, ${CATEGORY_ID})
-    VALUES ($1, $2, $3)
+    SELECT t.${TRANSACTION_ID}, t.${USER_ID}, $3
+    FROM ${TRANSACTIONS} t
+    WHERE t.${TRANSACTION_ID} = $1 AND ${sharedWithSql(`t.${USER_ID}`, "$2")}
     ON CONFLICT (${TRANSACTION_ID}, ${CATEGORY_ID})
     DO UPDATE SET ${REJECTED_AT} = CURRENT_TIMESTAMP
-      WHERE ${REJECTED_CATEGORIES}.${USER_ID} = $2
+      WHERE ${REJECTED_CATEGORIES}.${USER_ID} = EXCLUDED.${USER_ID}
     RETURNING *
   `;
   const result = await pool.query<Record<string, unknown>>(sql, [
@@ -60,7 +67,7 @@ export const removeRejectedCategory = async (
   // simple-PK helpers) assert simple PK and would throw. Carve-out.
   const sql = `
     DELETE FROM ${REJECTED_CATEGORIES}
-    WHERE ${USER_ID} = $1
+    WHERE ${sharedWithSql(USER_ID, "$1")}
       AND ${TRANSACTION_ID} = $2
       AND ${CATEGORY_ID} = $3
   `;

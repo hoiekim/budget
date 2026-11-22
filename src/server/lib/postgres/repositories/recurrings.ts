@@ -7,6 +7,7 @@ import {
   RecurringCadence,
 } from "common";
 import { pool } from "../client";
+import { sharedWith } from "../database";
 import {
   MaskedUser,
   QueryExecutor,
@@ -85,7 +86,7 @@ export const getRecurrings = async (
   options: GetRecurringsOptions = {},
 ): Promise<Recurring[]> => {
   const allRecurrings = await recurringsTable.query(
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     {
       orderBy: RECURRING_ID,
       excludeDeleted: !options.includeDeleted,
@@ -127,7 +128,7 @@ export const getRecurrings = async (
   const txnIds = [...new Set(visibleRecurrings.flatMap((r) => r.transaction_ids))];
 
   const txnModels = await transactionsTable.query(
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     { inFilters: { [TRANSACTION_ID]: txnIds } },
   );
 

@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect, mock, spyOn, beforeEach, afterAll } from "bun:test";
+import { createFakeSql, restoreLeaves } from "test-helpers";
 import { TableName } from "common/constants";
+import { logger } from "./logger";
 import {
   registerSubscriber,
   unregisterSubscriber,
   subscriberCount,
   emitToUser,
+  emitToSharingGroup,
+  originTabPayload,
   getEventsSince,
   currentEventId,
   mutationEmitDomain,
@@ -17,6 +21,15 @@ import {
   SSE_IDLE_TIMEOUT_SECONDS,
   type Subscriber,
 } from "./realtime";
+
+// `emitToSharingGroup` reads the group through the pool. The pool builds its
+// client on first use from whatever driver is installed then, so mocking the
+// driver here is enough, and `restoreLeaves` puts the real one back.
+const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
+
+mock.module("./postgres/sql-driver", () => driver);
+
+afterAll(restoreLeaves);
 
 // Simple recorder subscriber for tests. `send` captures every (event,
 // payload) tuple; `close` records the invocation. `throwOnSend` triggers
@@ -378,5 +391,104 @@ describe("ring buffer", () => {
     emitToUser("u2", TableName.Accounts);
     expect(currentEventId("u1")).toBe("2");
     expect(currentEventId("u2")).toBe("1");
+  });
+});
+
+describe("originTabPayload", () => {
+  it("carries the x-tab-id header as originTabId", () => {
+    expect(originTabPayload({ "x-tab-id": "tab-abc" })).toEqual({ originTabId: "tab-abc" });
+  });
+
+  it("takes the first value when the header arrives as a list", () => {
+    expect(originTabPayload({ "x-tab-id": ["tab-first", "tab-second"] })).toEqual({
+      originTabId: "tab-first",
+    });
+  });
+
+  it("is empty when the header is absent, blank, or an empty list", () => {
+    expect(originTabPayload({})).toEqual({});
+    expect(originTabPayload({ "x-tab-id": undefined })).toEqual({});
+    expect(originTabPayload({ "x-tab-id": "" })).toEqual({});
+    expect(originTabPayload({ "x-tab-id": [] })).toEqual({});
+  });
+});
+
+describe("emitToSharingGroup", () => {
+  const GROUP_LOOKUP = "SELECT unnest(sharing_user_ids($1)) AS user_id";
+
+  beforeEach(resetSqlMocks);
+
+  it("emits to every user the group lookup returns, and to nobody else", async () => {
+    const author = makeRecorder();
+    const peer = makeRecorder();
+    const peerSecondTab = makeRecorder();
+    const outsider = makeRecorder();
+    registerSubscriber("u1", author);
+    registerSubscriber("u2", peer);
+    registerSubscriber("u2", peerSecondTab);
+    registerSubscriber("u4", outsider);
+    mockUnsafe.mockResolvedValueOnce({
+      rows: [{ user_id: "u2" }, { user_id: "u3" }, { user_id: "u1" }],
+      rowCount: 3,
+    });
+
+    await emitToSharingGroup("u1", TableName.Transactions, { originTabId: "tab-abc" });
+
+    const event = { event: "transactions-updated", payload: { originTabId: "tab-abc" } };
+    expect(author.sent).toEqual([event]);
+    expect(peer.sent).toEqual([event]);
+    expect(peerSecondTab.sent).toEqual([event]);
+    expect(outsider.sent).toEqual([]);
+    // A member with no open tab still has the event waiting for its reconnect.
+    expect(bufferedEventCount("u3")).toBe(1);
+    expect(bufferedEventCount("u4")).toBe(0);
+
+    expect(mockUnsafe.mock.calls).toEqual([[GROUP_LOOKUP, ["u1"]]]);
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+  });
+
+  it("sends an empty payload when none is given", async () => {
+    const peer = makeRecorder();
+    registerSubscriber("u2", peer);
+    mockUnsafe.mockResolvedValueOnce({
+      rows: [{ user_id: "u2" }, { user_id: "u1" }],
+      rowCount: 2,
+    });
+
+    await emitToSharingGroup("u1", TableName.Charts);
+
+    expect(peer.sent).toEqual([{ event: "charts-updated", payload: {} }]);
+  });
+
+  it("when the group lookup fails, still emits to the given user alone and does not reject", async () => {
+    const author = makeRecorder();
+    const peer = makeRecorder();
+    registerSubscriber("u1", author);
+    registerSubscriber("u2", peer);
+    const failure = new Error("connection refused");
+    mockUnsafe.mockRejectedValueOnce(failure);
+    const warn = spyOn(logger, "warn").mockImplementation(() => {});
+
+    try {
+      await expect(
+        emitToSharingGroup("u1", TableName.Accounts, { originTabId: "tab-abc" }),
+      ).resolves.toBeUndefined();
+
+      expect(warn.mock.calls).toEqual([
+        [
+          "Sharing group lookup failed; the event reaches its author only",
+          { userId: "u1", domain: TableName.Accounts },
+          failure,
+        ],
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(author.sent).toEqual([
+      { event: "accounts-updated", payload: { originTabId: "tab-abc" } },
+    ]);
+    expect(peer.sent).toEqual([]);
+    expect(bufferedEventCount("u2")).toBe(0);
   });
 });

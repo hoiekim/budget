@@ -45,16 +45,90 @@ pub fn normalize_numbers(value: &mut Json) {
     }
 }
 
+/// The number a property key is when it is an array index (`"0"`, `"17"`).
+fn array_index(key: &str) -> Option<u32> {
+    let canonical = key == "0" || (!key.starts_with('0') && !key.is_empty() && key.bytes().all(|b| b.is_ascii_digit()));
+    if !canonical {
+        return None;
+    }
+    key.parse::<u32>().ok().filter(|index| *index != u32::MAX)
+}
+
+/// Puts the keys of every object in `value` in the order a JS object lists
+/// them, and so the order `JSON.stringify` writes them back in: array-index
+/// keys first, ascending, then the rest as written.
+fn normalize_key_order(value: &mut Json) {
+    match value {
+        Json::Array(items) => items.iter_mut().for_each(normalize_key_order),
+        Json::Object(map) => {
+            map.values_mut().for_each(normalize_key_order);
+            if map.keys().any(|key| array_index(key).is_some()) {
+                let mut indexed = Vec::new();
+                let mut named = Vec::new();
+                for (key, member) in std::mem::take(map) {
+                    match array_index(&key) {
+                        Some(index) => indexed.push((index, key, member)),
+                        None => named.push((key, member)),
+                    }
+                }
+                indexed.sort_by_key(|(index, _, _)| *index);
+                map.extend(indexed.into_iter().map(|(_, key, member)| (key, member)).chain(named));
+            }
+        }
+        _ => {}
+    }
+}
+
 /// `JSON.parse`, or `None` where it would throw.
 pub fn json_parse(text: &str) -> Option<Json> {
     let mut value: Json = serde_json::from_str(text).ok()?;
     normalize_numbers(&mut value);
+    normalize_key_order(&mut value);
     Some(value)
 }
 
-/// `JSON.stringify` for a value that is already JSON.
+fn write_json(value: &Json, out: &mut String) {
+    match value {
+        Json::Null => out.push_str("null"),
+        Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        // The digits `Number.prototype.toString` writes, so text that is
+        // stored or hashed is the same on both servers.
+        Json::Number(n) => match n.as_f64() {
+            Some(f) if f.is_finite() => out.push_str(&number_to_string(f)),
+            _ => out.push_str("null"),
+        },
+        Json::String(text) => out.push_str(&serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())),
+        Json::Array(items) => {
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                write_json(item, out);
+            }
+            out.push(']');
+        }
+        Json::Object(map) => {
+            out.push('{');
+            for (index, (key, member)) in map.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| "\"\"".to_string()));
+                out.push(':');
+                write_json(member, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
+/// `JSON.stringify` for a value that is already JSON, numbers included:
+/// `1.5e-6` prints as `0.0000015` and negative zero as `0`.
 pub fn json_stringify(value: &Json) -> String {
-    serde_json::to_string(value).unwrap_or_else(|_| "null".to_string())
+    let mut out = String::new();
+    write_json(value, &mut out);
+    out
 }
 
 /// JS truthiness of a JSON value; an absent value (`undefined`) is falsy.
@@ -122,8 +196,12 @@ pub fn to_js_string(value: &Json) -> String {
     }
 }
 
-/// `Math.round`: halves round toward positive infinity.
+/// `Math.round`: halves round toward positive infinity, and a value in
+/// `[-0.5, -0]` rounds to negative zero.
 pub fn math_round(value: f64) -> f64 {
+    if value.is_sign_negative() && value >= -0.5 {
+        return -0.0;
+    }
     (value + 0.5).floor()
 }
 
@@ -452,8 +530,9 @@ impl JsDate {
         JsDate::from_local(year, month, day, 0, 0, 0, 0)
     }
 
-    /// `new Date(Date.UTC(year, month, day, …))`.
+    /// `new Date(Date.UTC(year, month, day, …))`. A year from 0 to 99 is 1900 to 1999, as `Date.UTC` reads it.
     pub fn from_utc(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64, ms: i64) -> JsDate {
+        let year = if (0..=99).contains(&year) { 1900 + year } else { year };
         JsDate(time_clip(
             days_from_civil(year, month, day) * MS_PER_DAY + make_time(hour as f64, minute as f64, second as f64, ms as f64),
         ))
@@ -936,5 +1015,7 @@ mod tests {
         let mut value = serde_json::json!({ "a": 5.0, "b": 9007199254740993u64, "c": 1.5 });
         normalize_numbers(&mut value);
         assert_eq!(json_stringify(&value), r#"{"a":5,"b":9007199254740992,"c":1.5}"#);
+        let odd = serde_json::json!([0.0000015, 9000000000000000000u64, 1234567890123456789u64, -0.0, 1e21, "a\"b\n"]);
+        assert_eq!(json_stringify(&odd), r#"[0.0000015,9000000000000000000,1234567890123456800,0,1e+21,"a\"b\n"]"#);
     }
 }

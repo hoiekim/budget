@@ -9,13 +9,13 @@
 use std::fmt;
 
 use futures::stream::{self, BoxStream};
-use serde_json::json;
+
 
 use crate::js::{Json, Obj};
 use crate::server::postgres::client::{or_pool, pool, Executor};
 use crate::server::postgres::database::{
     build_insert, build_select_with_filters, build_soft_delete, build_update, build_upsert, build_upsert_many,
-    AdditionalWhere, Filters, QueryData, SearchFilters, UpdateOptions,
+    equality_condition, AdditionalWhere, Filter, Filters, QueryData, SearchFilters, UpdateOptions,
 };
 
 /// Rows per database read when a result is streamed rather than returned whole.
@@ -123,12 +123,29 @@ pub struct Table {
 pub struct UpdateArgs<'a> {
     /// Defaults to the primary key.
     pub returning: Option<&'a [&'a str]>,
-    /// ANDs `user_id = $N` into the WHERE.
-    pub user_id: Option<&'a str>,
+    /// ANDs an owner condition into the WHERE: `user_id = $N` for an id,
+    /// the sharing-group predicate for [`shared_with`](crate::server::postgres::database::shared_with).
+    pub user_id: Option<Filter>,
     pub client: Option<&'a dyn Executor>,
     pub extra_where: &'a [AdditionalWhere],
     /// Defaults to true: a soft-deleted row is not updated.
     pub exclude_deleted: Option<bool>,
+}
+
+/// ` AND <key> = $N` per filter, numbered after the values already bound;
+/// [`Filter::SharedWith`] widens its column to the sharing group.
+fn append_equality_filters(filters: &[(&str, Filter)], values: &mut Vec<Json>) -> String {
+    let mut sql = String::new();
+    for (key, filter) in filters {
+        match equality_condition(key, filter, values.len() + 1) {
+            Some((condition, value)) => {
+                values.push(value);
+                sql.push_str(&format!(" AND {condition}"));
+            }
+            None => sql.push_str(&format!(" AND {key} IS NOT NULL")),
+        }
+    }
+    sql
 }
 
 fn placeholders(count: usize) -> String {
@@ -288,8 +305,8 @@ impl Table {
     pub async fn update(&self, primary_key_value: &Json, data: &QueryData, args: UpdateArgs<'_>) -> anyhow::Result<Option<Obj>> {
         self.assert_simple_primary_key("update")?;
         let mut additional_where: Vec<AdditionalWhere> = Vec::new();
-        if let Some(user_id) = args.user_id {
-            additional_where.push(AdditionalWhere::new("user_id", user_id));
+        if let Some(owner) = args.user_id {
+            additional_where.push(AdditionalWhere { column: "user_id".to_string(), value: owner });
         }
         additional_where.extend(args.extra_where.iter().cloned());
         let default_returning = [self.primary_key];
@@ -364,15 +381,14 @@ impl Table {
         Ok(upserted)
     }
 
-    pub async fn soft_delete(&self, primary_key_value: &Json, user_id: Option<&str>) -> anyhow::Result<bool> {
+    pub async fn soft_delete(&self, primary_key_value: &Json, owner: Option<Filter>) -> anyhow::Result<bool> {
         self.assert_simple_primary_key("softDelete")?;
-        let user = user_id.map(|id| json!(id));
-        let query = build_soft_delete(self.name, self.primary_key, primary_key_value, user.as_ref().map(|u| ("user_id", u)));
+        let query = build_soft_delete(self.name, self.primary_key, primary_key_value, owner.as_ref().map(|o| ("user_id", o)));
         let result = pool().query(&query.sql, &query.values).await?;
         Ok(result.row_count.unwrap_or(0) > 0)
     }
 
-    pub async fn query_by_ids(&self, ids: &[Json], additional_filters: &[(&str, Json)]) -> anyhow::Result<Vec<Row>> {
+    pub async fn query_by_ids(&self, ids: &[Json], additional_filters: &[(&str, Filter)]) -> anyhow::Result<Vec<Row>> {
         self.assert_simple_primary_key("queryByIds")?;
         if ids.is_empty() {
             return Ok(Vec::new());
@@ -382,10 +398,7 @@ impl Table {
             sql.push_str(" AND (is_deleted IS NULL OR is_deleted = FALSE)");
         }
         let mut values: Vec<Json> = ids.to_vec();
-        for (key, value) in additional_filters {
-            values.push(value.clone());
-            sql.push_str(&format!(" AND {key} = ${}", values.len()));
-        }
+        sql.push_str(&append_equality_filters(additional_filters, &mut values));
         let result = pool().query(&sql, &values).await?;
         self.validate_all(result.rows)
     }
@@ -393,7 +406,7 @@ impl Table {
     pub async fn bulk_soft_delete(
         &self,
         ids: &[Json],
-        additional_filters: &[(&str, Json)],
+        additional_filters: &[(&str, Filter)],
         client: Option<&dyn Executor>,
     ) -> anyhow::Result<u64> {
         self.assert_simple_primary_key("bulkSoftDelete")?;
@@ -407,10 +420,7 @@ impl Table {
             placeholders(ids.len())
         );
         let mut values: Vec<Json> = ids.to_vec();
-        for (key, value) in additional_filters {
-            values.push(value.clone());
-            sql.push_str(&format!(" AND {key} = ${}", values.len()));
-        }
+        sql.push_str(&append_equality_filters(additional_filters, &mut values));
         sql.push_str(&format!(" RETURNING {}", self.primary_key));
         let result = or_pool(client).query(&sql, &values).await?;
         Ok(result.row_count.unwrap_or(0))
@@ -422,7 +432,7 @@ impl Table {
         &self,
         column: &str,
         column_value: &Json,
-        user_id: Option<&str>,
+        owner: Option<Filter>,
         client: Option<&dyn Executor>,
     ) -> anyhow::Result<u64> {
         self.assert_simple_primary_key("bulkSoftDeleteByColumn")?;
@@ -433,9 +443,8 @@ impl Table {
         };
         let mut sql = format!("UPDATE {} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE {predicate}", self.name);
         let mut values = vec![column_value.clone()];
-        if let Some(user_id) = user_id {
-            sql.push_str(" AND user_id = $2");
-            values.push(json!(user_id));
+        if let Some(owner) = owner {
+            sql.push_str(&append_equality_filters(&[("user_id", owner)], &mut values));
         }
         sql.push_str(&format!(" RETURNING {}", self.primary_key));
         let result = or_pool(client).query(&sql, &values).await?;
@@ -453,7 +462,7 @@ impl Table {
         select_column: &str,
         match_column: &str,
         match_values: &[Json],
-        user_id: Option<&str>,
+        owner: Option<Filter>,
         client: Option<&dyn Executor>,
     ) -> anyhow::Result<u64> {
         self.assert_simple_primary_key("bulkSoftDeleteByRelatedColumn")?;
@@ -465,9 +474,8 @@ impl Table {
             self.name
         );
         let mut values = vec![Json::Array(match_values.to_vec())];
-        if let Some(user_id) = user_id {
-            sql.push_str(" AND user_id = $2");
-            values.push(json!(user_id));
+        if let Some(owner) = owner {
+            sql.push_str(&append_equality_filters(&[("user_id", owner)], &mut values));
         }
         sql.push_str(&format!(" RETURNING {}", self.primary_key));
         let result = or_pool(client).query(&sql, &values).await?;
