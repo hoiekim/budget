@@ -202,7 +202,7 @@ describe("a write", () => {
 
 type Member = { user: SeededUser; client: ApiClient };
 
-const tabHeader = (tabId?: string) => ({ headers: tabId === undefined ? {} : { "X-Tab-Id": tabId } });
+const tabHeader = (tabId?: string): { headers: Record<string, string> } => ({ headers: tabId === undefined ? {} : { "X-Tab-Id": tabId } });
 
 /** An invitation from `from` to `to`, through the route; returns its id. */
 /**
