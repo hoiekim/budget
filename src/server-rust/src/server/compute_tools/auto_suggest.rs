@@ -68,7 +68,7 @@ const W_DAY: i64 = 1;
 /// non-identity features (amount 5 + PFC 10 + channel 1 + account 1 + day 1)
 /// scores 18 and clears it. That is deliberate, since the PFC fallback is how
 /// unseen merchants get suggestions at all; `IDENTITY_SCORE_THRESHOLD` keeps
-/// those rows from diluting merchant-driven suggestions (budget#1018).
+/// those rows from diluting merchant-driven suggestions.
 pub const ROW_SCORE_THRESHOLD: i64 = 15;
 
 /// Per-row score floor for the identity tier: only rows matching
@@ -77,7 +77,7 @@ pub const ROW_SCORE_THRESHOLD: i64 = 15;
 /// the tightest separator. The engine tries this tier first and falls back
 /// to `ROW_SCORE_THRESHOLD` only when it yields no suggestion, so the PFC
 /// fallback for unseen merchants is kept while a merchant with confirmed
-/// history is judged on its identity matches alone (budget#1018).
+/// history is judged on its identity matches alone.
 pub const IDENTITY_SCORE_THRESHOLD: i64 = 19;
 
 /// Minimum quality (average per-row score / maximum possible per row) before
@@ -306,7 +306,7 @@ async fn apply_label_to_split(split_transaction_id: &str, user_id: &str, signal:
 ///   band), each row's score the weighted sum of the features it matches.
 /// - Only rows whose score clears the tier's threshold contribute;
 ///   SUM(score) per category picks the winner.
-/// - Two tiers per target (budget#1018): the identity tier counts only rows
+/// - Two tiers per target: the identity tier counts only rows
 ///   matching `merchant_name` or `name`; only when it yields no suggestion
 ///   does the engine fall back to the standard tier, which admits the
 ///   Plaid-PFC fallback for merchants with no history.
