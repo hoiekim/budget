@@ -149,8 +149,16 @@ than of the TypeScript.
   Rust's Unicode tables, which can disagree with JavaScriptCore's for
   characters added in recent Unicode versions.
 - **Concurrent upstream calls.** Where the TypeScript runs calls with
-  `Promise.all` and Bun's order is nonetheless fixed (the detail and price
-  lookups of `POST /validate-ticker`), Rust makes them one after the other
-  so the calls arrive in the same order. Only latency differs. Where parallel
-  Plaid jobs fail before their `try` block, Rust reports the first failure
-  in input order, `Promise.all` the first in time.
+  `Promise.all`, Rust sends them one at a time in Bun's usual order: the
+  detail and price lookups of `POST /validate-ticker`, and the Plaid calls
+  of an item's sync (`plaid::util::in_call_order`). Bun's own order is fixed
+  in the first case and racy in the second, where the tests compare those
+  calls as a set (`hub.unordered`). Only latency differs.
+- **When one of two concurrent branches fails.** `Promise.all` rejects at
+  the first failure and leaves the other branch running in the background;
+  Rust waits for both and reports the first failure in branch order. The
+  upstream calls and database writes come out the same; the timing of the
+  answer and of log lines does not.
+- **`undefined` in log context.** Bun's logger prints a context of only
+  undefined values as `{}`; Rust has no `undefined` and prints nothing. It
+  shows on one webhook log line, for a body without an `item_id`.
