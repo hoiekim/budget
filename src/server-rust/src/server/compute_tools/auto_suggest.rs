@@ -638,8 +638,8 @@ mod tests {
         let weak_max = W_AMOUNT + W_PFC + W_PAYMENT_CHANNEL + W_ACCOUNT + W_DAY;
         assert_eq!(weak_max, 18);
         assert!(IDENTITY_SCORE_THRESHOLD > weak_max);
-        assert!(IDENTITY_SCORE_THRESHOLD < W_NAME);
-        assert!(ROW_SCORE_THRESHOLD < IDENTITY_SCORE_THRESHOLD);
+        const { assert!(IDENTITY_SCORE_THRESHOLD < W_NAME) };
+        const { assert!(ROW_SCORE_THRESHOLD < IDENTITY_SCORE_THRESHOLD) };
     }
 
     // Features

@@ -58,6 +58,14 @@ jobs:
   # both backends with a comparison of their answers (conformance/README.md).
   conformance:
     runs-on: ubuntu-latest
+    # Dates are read and written in the server's local time: run in a zone
+    # with daylight saving as well as in UTC.
+    strategy:
+      fail-fast: false
+      matrix:
+        tz: [UTC, America/Los_Angeles]
+    env:
+      TZ: ${{ matrix.tz }}
 
     services:
       postgres:
@@ -89,6 +97,8 @@ jobs:
         run: bun install
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
       # Every started server keeps a pool of 20 connections, and the two
@@ -98,8 +108,11 @@ jobs:
           docker exec ${{ job.services.postgres.id }} psql -U postgres -c "ALTER SYSTEM SET max_connections = 400"
           docker restart ${{ job.services.postgres.id }}
           until docker exec ${{ job.services.postgres.id }} pg_isready -U postgres; do sleep 1; done
+      - name: Clippy
+        if: matrix.tz == 'UTC'
+        run: cargo clippy --all-targets -- -D warnings
       - name: Rust unit tests
         run: cargo test
       - name: Conformance suite against both backends
-        run: bun run test:conformance
+        run: bun conformance/run.ts --tz "$TZ"
 

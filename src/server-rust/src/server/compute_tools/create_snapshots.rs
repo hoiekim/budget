@@ -309,7 +309,7 @@ mod tests {
     fn the_security_is_written_whole_and_the_snapshot_carries_it() {
         let input = security(json!({}));
         let writes = security_writes(std::slice::from_ref(&input), PriceSnapshotDate::ClosePriceAsOf);
-        assert_eq!(writes.securities, [input.clone()]);
+        assert_eq!(writes.securities, std::slice::from_ref(&input));
         assert_eq!(
             Json::Object(writes.snapshots[0].clone()),
             json!({ "snapshot": { "snapshot_id": "sec-a-20260706", "date": "2026-07-06T12:00:00.000Z" }, "security": input })
