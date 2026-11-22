@@ -116,6 +116,9 @@ const listed = (
   updated: expect.stringMatching(TIMESTAMP),
 });
 
+/** What `POST /recurrings` answers when it creates or adds to a recurring. */
+type RecurringAnswer = { recurring_id: string; recurring: { transactions: { transaction_id: string }[] } };
+
 const byId = <T extends { recurring_id: string }>(list: T[]): T[] => [...list].sort((a, b) => (a.recurring_id < b.recurring_id ? -1 : 1));
 
 const RECURRING_COLUMNS = [
@@ -693,7 +696,7 @@ describe("POST /recurrings with recurring_id and transaction_ids: add to a recur
     const elsewhere = await tx(alice, "e");
     await seedRecurring(stack, alice.id, { merchant_key: "dismissed", status: "dismissed", transaction_ids: [elsewhere.transaction_id] });
     const id = await seedRecurring(stack, alice.id, { transaction_ids: [a.transaction_id] });
-    const result = await alice.client.post<{ recurring: { transactions: { transaction_id: string }[] } }>("/recurrings", {
+    const result = await alice.client.post<RecurringAnswer>("/recurrings", {
       recurring_id: id,
       transaction_ids: [b.transaction_id, a.transaction_id, b.transaction_id, 7, c.transaction_id, elsewhere.transaction_id],
     });
@@ -837,7 +840,7 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
   test("creates a confirmed recurring from one transaction, monthly by default, and answers with it", async () => {
     const alice = await person("alice");
     const a = await tx(alice, "a", { merchant_name: null, name: "Gym Club 8665795717" });
-    const result = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: [a.transaction_id, 9] });
+    const result = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: [a.transaction_id, 9] });
     const id = result.body.recurring_id;
     expect(id).toMatch(UUID);
     const fields = { merchant_key: "gym club", merchant_name: "Gym Club 8665795717", status: "confirmed" };
@@ -885,7 +888,7 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
       }
       const members = [];
       for (const [j, date] of dates.entries()) members.push(await tx(alice, `${i}-${j}`, { merchant_name: merchant, date }));
-      const result = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids(members).reverse() });
+      const result = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids(members).reverse() });
       expect([intervals, (await recurringRow(result.body.recurring_id))!.cadence]).toEqual([intervals, cadence]);
     }
   });
@@ -895,16 +898,16 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
     const a = await tx(alice, "a", { merchant_name: "NETFLIX.COM" });
     const b = await tx(alice, "b", { merchant_name: "Netflix" });
     const c = await tx(alice, "c", { merchant_name: null, name: "Netflix" });
-    const custom = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids([a]), merchant_name: "  Movies\t" });
+    const custom = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids([a]), merchant_name: "  Movies\t" });
     expect(pick(await recurringRow(custom.body.recurring_id), ["merchant_key", "merchant_name"])).toEqual({ merchant_key: "netflix", merchant_name: "Movies" });
     // Landing on the same merchant again merges into that recurring; a blank name is not a name.
-    const merged = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids([b, c]), merchant_name: "  " });
+    const merged = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids([b, c]), merchant_name: "  " });
     expect(merged.body.recurring_id).toBe(custom.body.recurring_id);
     expect(pick(await recurringRow(custom.body.recurring_id), ["merchant_name"])).toEqual({ merchant_name: "Movies" });
     // A name given with the next transaction replaces it; one it already holds would collide.
     expect((await alice.client.post("/recurrings", { transaction_ids: ids([a]), merchant_name: "Again" })).json).toEqual(IN_ANOTHER);
     const d = await tx(alice, "d", { merchant_name: "netflix" });
-    const renamed = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids([d]), merchant_name: "Renamed" });
+    const renamed = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids([d]), merchant_name: "Renamed" });
     expect(renamed.body.recurring_id).toBe(custom.body.recurring_id);
     expect(pick(await recurringRow(custom.body.recurring_id), ["merchant_name"])).toEqual({ merchant_name: "Renamed" });
     expect([...((await recurringRow(custom.body.recurring_id))!.transaction_ids as string[])].sort()).toEqual(ids([a, b, c, d]));
@@ -912,9 +915,9 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
     const bob = await person("bob");
     const tie = [await tx(bob, "x", { merchant_name: "Hulu LLC" }), await tx(bob, "y", { merchant_name: "HULU LLC" })];
     const most = [await tx(bob, "p", { amount: -100, merchant_name: "ACME PAY" }), await tx(bob, "q", { amount: -100, merchant_name: "Acme Pay" }), await tx(bob, "r", { amount: -100, merchant_name: "Acme Pay" })];
-    const tied = await bob.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids(tie).reverse() });
+    const tied = await bob.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids(tie).reverse() });
     expect(pick(await recurringRow(tied.body.recurring_id), ["merchant_key", "merchant_name"])).toEqual({ merchant_key: "hulu llc", merchant_name: "Hulu LLC" });
-    const income = await bob.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids(most) });
+    const income = await bob.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids(most) });
     expect(pick(await recurringRow(income.body.recurring_id), ["merchant_key", "merchant_name", "is_income"])).toEqual({ merchant_key: "acme pay", merchant_name: "Acme Pay", is_income: true });
   });
 
@@ -929,7 +932,7 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
       [[c], suggested, "Beta"],
       [[d, e], deleted, "Gamma"],
     ] as const) {
-      const result = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids([...group]) });
+      const result = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids([...group]) });
       expect(result.body.recurring_id).toBe(id);
       const row = (await recurringRow(id))!;
       expect(pick(row, ["merchant_name", "status", "is_deleted"])).toEqual({ merchant_name: name, status: "confirmed", is_deleted: false });
@@ -953,7 +956,7 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
     const x = await label(alice);
     const a = await tx(alice, "a", { ...pickLabel(x, 1) });
     const b = await tx(alice, "b");
-    const result = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids([a, b]) });
+    const result = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids([a, b]) });
     const id = result.body.recurring_id;
     expect(result.json).toEqual({
       status: "success",
@@ -969,7 +972,7 @@ describe("POST /recurrings with transaction_ids alone: create", () => {
     expect((await alice.client.post("/recurrings", { transaction_ids: [b1.transaction_id, a1.transaction_id] })).json).toEqual(TRANSACTIONS_GONE);
     // The owner is looked up from the first id only when it is a string; otherwise the caller is.
     expect((await alice.client.post("/recurrings", { transaction_ids: [5, b1.transaction_id, b2.transaction_id] })).json).toEqual(TRANSACTIONS_GONE);
-    const result = await alice.client.post<{ recurring_id: string }>("/recurrings", { transaction_ids: ids([b1, b2]) });
+    const result = await alice.client.post<RecurringAnswer>("/recurrings", { transaction_ids: ids([b1, b2]) });
     expect(result.json.status).toBe("success");
     expect(pick(await recurringRow(result.body.recurring_id), ["user_id", "status"])).toEqual({ user_id: bob.id, status: "confirmed" });
     expect(await recurringsOf(alice.id)).toEqual([]);

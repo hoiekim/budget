@@ -81,7 +81,7 @@ export const seedTransaction = async (stack: Stack, user_id: string, tx: SeedTra
  * The `JSONTransaction` both servers answer with for a transaction seeded with
  * `tx`: what no column holds is `null`.
  */
-export const transactionJson = (tx: SeedTransaction): Record<string, unknown> => ({
+export const transactionJson = (tx: SeedTransaction): { transaction_id: string } & Record<string, unknown> => ({
   transaction_id: tx.transaction_id,
   account_id: tx.account_id,
   name: tx.name === undefined ? `Transaction ${tx.transaction_id}` : tx.name,
