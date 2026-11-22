@@ -294,7 +294,10 @@ describe("a key next to a cookie session", () => {
     const signedOut = await newUser();
     const theirKey = await issueKey(signedOut.client);
     const oldCookie = signedOut.client.cookieHeader();
+    const sid = signedOut.client.cookies.get("session_id")!;
     await signedOut.client.delete("/login");
+    // Bun answers before the session row is gone; until then the cookie still names a session.
+    await stack.waitFor(async () => (await stack.db.rows("sessions", { session_id: sid })).length === 0);
     const after = await stack.anonymous().post("/suggest-category", NOTHING_TO_SUGGEST, {
       headers: { Authorization: `Bearer ${theirKey.plaintext}`, Cookie: oldCookie },
     });
