@@ -12,7 +12,7 @@ bun run test:conformance                 # both servers, then compare their answ
 bun run test:conformance:bun             # the Bun server only
 bun run test:conformance:rust            # the Rust server only (builds it first)
 bun conformance/run.ts tests/login.test.ts --tz America/Los_Angeles
-cd conformance && CONFORMANCE_TARGET=rust bun test tests/login.test.ts   # one file, directly
+cd conformance && CONFORMANCE_TARGET=rust bun test --timeout 30000 tests/login.test.ts   # one file, directly
 ```
 
 It needs a PostgreSQL the run may create databases in (default

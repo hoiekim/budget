@@ -70,6 +70,12 @@ for (const target of targets) {
 // Test paths are given relative to the repository root or to conformance/.
 const testArgs = args.map((arg) => (arg.endsWith(".ts") ? arg.replace(/^conformance\//, "") : arg));
 
+// Tests start, restart and wait on real server processes, which can take
+// longer than bun's default of 5 seconds on a slow machine. bunfig.toml cannot
+// raise it (`bun test` does not read a timeout there), so it goes on the
+// command line.
+const TEST_TIMEOUT_MS = "30000";
+
 // Made here, once, before the suites start side by side: each would otherwise
 // make its own set, and one could replace the other's under a running server.
 ensureCerts();
@@ -78,7 +84,7 @@ console.log(`Running the conformance suite against ${targets.join(" and ")} (TZ=
 const results = await Promise.all(
   targets.map(async (target) => ({
     target,
-    ...(await run(["bun", "test", ...testArgs], path.join(REPO_ROOT, "conformance"), {
+    ...(await run(["bun", "test", "--timeout", TEST_TIMEOUT_MS, ...testArgs], path.join(REPO_ROOT, "conformance"), {
       CONFORMANCE_TARGET: target,
       CONFORMANCE_RUST_BIN: rustBinary,
       TZ: tz,

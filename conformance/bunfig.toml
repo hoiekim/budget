@@ -3,4 +3,4 @@
 # test:conformance` or from this directory.
 [test]
 preload = ["./harness/preload.ts"]
-timeout = 30000
+# The per-test timeout is not read from here: run.ts passes --timeout 30000.
