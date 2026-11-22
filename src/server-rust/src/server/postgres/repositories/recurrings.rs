@@ -1,4 +1,16 @@
 //! `src/server/lib/postgres/repositories/recurrings.ts`.
+//!
+//! The result unions become enums carrying the same information:
+//! `RecurringResult` `{ ok: true, recurring_id }` is [`RecurringResult::Ok`]
+//! and `{ ok: false, error }` is [`RecurringResult::Failed`];
+//! `RecurringConfirmResult` `{ ok: true }` is [`RecurringConfirmResult::Ok`]
+//! and `{ ok: false, error }` is [`RecurringConfirmResult::Failed`].
+//! `to_json` gives the object the TypeScript returns.
+//!
+//! A `JSONRecurringLabel` (`{ budget_id, category_id }`) and a
+//! `JSONRecurringSplit` (`{ amount, label }`) stay JSON, as request bodies
+//! and rows do: the stored `splits` are read back raw, and both servers have
+//! to agree on whatever they hold.
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -9,16 +21,16 @@ use serde_json::json;
 use crate::common::constants::{RECURRINGS, SPLIT_TRANSACTIONS, TRANSACTIONS};
 use crate::common::date::get_date_string;
 use crate::filters;
-use crate::js::{math_round, num, number_to_string, to_js_string, to_number, truthy, truthy_opt, Json, JsDate, Obj};
-use crate::server::postgres::client::{pool, Client, Executor};
-use crate::server::postgres::database::{DateRange, SearchFilters};
+use crate::js::{js_length, math_round, num, number_to_string, to_js_string, to_number, truthy, truthy_opt, Json, JsDate, Obj};
+use crate::server::postgres::client::{pool, Executor};
+use crate::server::postgres::database::{shared_with, DateRange, Filter, SearchFilters};
 use crate::server::postgres::models::base::{str_of, value_of};
 use crate::server::postgres::models::common::{
     CADENCE, IS_DELETED, IS_INCOME, LABEL_BUDGET_ID, LABEL_CATEGORY_CONFIDENCE, LABEL_CATEGORY_ID, MERCHANT_KEY,
     MERCHANT_NAME, RECURRING_ID, SPLITS, SPLITS_SINCE, STATUS, TRANSACTION_ID, TRANSACTION_IDS, UPDATED, USER_ID,
 };
 use crate::server::postgres::models::{recurring, transaction, MaskedUser, Row, UpdateArgs};
-use crate::server::postgres::repositories::budgets::{get_owned_label_ids, LabelIds};
+use crate::server::postgres::repositories::budgets::get_owned_label_ids;
 
 /// A recurring as the API delivers it, the TypeScript `Recurring`:
 /// `{ recurring_id, merchant_key, merchant_name, cadence, is_income, status,
@@ -64,6 +76,10 @@ impl RecurringResult {
             RecurringResult::Failed { error } => json!({ "ok": false, "error": error }),
         }
     }
+
+    fn failed(error: &str) -> Self {
+        RecurringResult::Failed { error: error.to_string() }
+    }
 }
 
 /// The TypeScript `RecurringConfirmResult`: `{ ok: true }` is `Ok` and
@@ -87,6 +103,10 @@ impl RecurringConfirmResult {
         RecurringConfirmResult::Failed { error: "Recurring not found.".to_string() }
     }
 }
+
+const TRANSACTIONS_GONE: &str = "One or more transactions no longer exist (deleted or never belonged to this user).";
+const IN_ANOTHER_RECURRING: &str =
+    "One of these transactions is already in another recurring. Remove it from the existing recurring first.";
 
 /// A recurring is visible to the client only when it's active AND not
 /// user-dismissed. `status='dismissed'` is the denylist signal (mirrors
@@ -146,14 +166,19 @@ fn resolve_recurrings(
     active
 }
 
-/// Get all recurrings for a user. Resolves each recurring's
-/// `transaction_ids` to the live transaction JSONs so the response shape
-/// stays denormalized (one entry per recurring, members inline): the same
-/// contract `get_transfer_pairs` keeps for pairs.
+/// Get all recurrings for a user, theirs and those of everyone sharing data
+/// with them. Resolves each recurring's `transaction_ids` to the live
+/// transaction JSONs so the response shape stays denormalized (one entry per
+/// recurring, members inline): the same contract `get_transfer_pairs` keeps
+/// for pairs.
 pub async fn get_recurrings(user: &MaskedUser, options: GetRecurringsOptions) -> anyhow::Result<Vec<Recurring>> {
+    get_recurrings_on(pool(), user, options).await
+}
+
+async fn get_recurrings_on(executor: &dyn Executor, user: &MaskedUser, options: GetRecurringsOptions) -> anyhow::Result<Vec<Recurring>> {
     let all_recurrings = recurring::TABLE
         .query(
-            filters! { USER_ID => user.user_id.as_str() },
+            filters! { USER_ID => shared_with(user) },
             SearchFilters {
                 order_by: Some(RECURRING_ID.to_string()),
                 exclude_deleted: Some(!options.include_deleted),
@@ -167,7 +192,7 @@ pub async fn get_recurrings(user: &MaskedUser, options: GetRecurringsOptions) ->
                     .map(|start| DateRange { column: UPDATED.to_string(), start: Some(start), end: None }),
                 ..Default::default()
             },
-            None,
+            Some(executor),
         )
         .await?;
 
@@ -191,12 +216,12 @@ pub async fn get_recurrings(user: &MaskedUser, options: GetRecurringsOptions) ->
 
     let txn_models = transaction::TABLE
         .query(
-            filters! { USER_ID => user.user_id.as_str() },
+            filters! { USER_ID => shared_with(user) },
             SearchFilters {
                 in_filters: vec![(TRANSACTION_ID.to_string(), txn_ids.into_iter().map(|id| json!(id)).collect())],
                 ..Default::default()
             },
-            None,
+            Some(executor),
         )
         .await?;
 
@@ -241,8 +266,10 @@ impl Label {
     }
 }
 
+const LOCK_RECURRINGS: &str = "SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))";
+
 async fn lock_recurrings(client: &dyn Executor, user_id: &str) -> anyhow::Result<()> {
-    client.query("SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))", &[json!(user_id)]).await?;
+    client.query(LOCK_RECURRINGS, &[json!(user_id)]).await?;
     Ok(())
 }
 
@@ -339,7 +366,8 @@ async fn seed_recurring_label(executor: &dyn Executor, user_id: &str, transactio
 }
 
 /// `split.label.<key>`: one id of a `JSONRecurringSplit`'s label, `None`
-/// where the label has no such key. A split without a label is an error.
+/// where the label has no such key. A split without a label is an error, as
+/// reading through `undefined` is.
 fn split_label_id<'a>(split: &'a Json, key: &str) -> anyhow::Result<Option<&'a Json>> {
     match split.get("label") {
         None | Some(Json::Null) => anyhow::bail!("A recurring split has no label"),
@@ -376,6 +404,17 @@ fn splits_total(splits: &[Json]) -> f64 {
     math_round(sum * 100.0) / 100.0
 }
 
+/// `splits.length === 0` for the stored `splits ?? []`: only a list or text
+/// has a length.
+fn has_no_splits(splits: Option<&Json>) -> bool {
+    match splits {
+        None | Some(Json::Null) => true,
+        Some(Json::Array(splits)) => splits.is_empty(),
+        Some(Json::String(text)) => js_length(text) == 0,
+        Some(_) => false,
+    }
+}
+
 /// Split each of `transaction_ids` dated on or after `since` by a recurring's
 /// default splits. A charge that already has splits keeps them, and one too
 /// small to leave a remainder on the parent is left whole.
@@ -386,14 +425,10 @@ async fn apply_recurring_splits(
     since: &Json,
     transaction_ids: &[Json],
 ) -> anyhow::Result<()> {
-    let splits: &[Json] = match splits {
-        None | Some(Json::Null) => &[],
-        Some(Json::Array(splits)) => splits,
-        Some(_) => anyhow::bail!("A recurring's splits are not an array"),
-    };
-    if splits.is_empty() || !truthy(since) || transaction_ids.is_empty() {
+    if has_no_splits(splits) || !truthy(since) || transaction_ids.is_empty() {
         return Ok(());
     }
+    let Some(Json::Array(splits)) = splits else { anyhow::bail!("A recurring's splits are not a list") };
     let total = splits_total(splits);
     let mut amounts = Vec::with_capacity(splits.len());
     let mut budget_ids = Vec::with_capacity(splits.len());
@@ -444,7 +479,7 @@ async fn apply_recurring_splits(
 fn member_ids(row: &Obj) -> anyhow::Result<&[Json]> {
     match row.get(TRANSACTION_IDS) {
         Some(Json::Array(ids)) => Ok(ids),
-        _ => anyhow::bail!("A recurring's {TRANSACTION_IDS} are not an array"),
+        _ => anyhow::bail!("A recurring's {TRANSACTION_IDS} are not a list"),
     }
 }
 
@@ -506,7 +541,7 @@ pub async fn label_confirmed_recurring(
 /// The `catch` every transaction here ends with: a failure rolls the
 /// transaction back, whether or not the `ROLLBACK` itself succeeds, and is
 /// passed on.
-async fn or_rollback<T>(client: &Client, work: impl Future<Output = anyhow::Result<T>>) -> anyhow::Result<T> {
+async fn or_rollback<T>(client: &dyn Executor, work: impl Future<Output = anyhow::Result<T>>) -> anyhow::Result<T> {
     match work.await {
         Ok(value) => Ok(value),
         Err(error) => {
@@ -522,9 +557,13 @@ async fn or_rollback<T>(client: &Client, work: impl Future<Output = anyhow::Resu
 /// detection runs.
 pub async fn confirm_recurring(user: &MaskedUser, recurring_id: &str) -> anyhow::Result<RecurringConfirmResult> {
     let client = pool().connect().await?;
-    or_rollback(&client, async {
+    confirm_recurring_on(&client, user, recurring_id).await
+}
+
+async fn confirm_recurring_on(client: &dyn Executor, user: &MaskedUser, recurring_id: &str) -> anyhow::Result<RecurringConfirmResult> {
+    or_rollback(client, async {
         client.query("BEGIN", &[]).await?;
-        lock_recurrings(&client, &user.user_id).await?;
+        lock_recurrings(client, &user.user_id).await?;
         let updated = client
             .query(
                 &format!(
@@ -541,7 +580,7 @@ pub async fn confirm_recurring(user: &MaskedUser, recurring_id: &str) -> anyhow:
             client.query("ROLLBACK", &[]).await?;
             return Ok(RecurringConfirmResult::not_found());
         }
-        label_confirmed_recurring(&client, &user.user_id, recurring_id, None).await?;
+        label_confirmed_recurring(client, &user.user_id, recurring_id, None).await?;
         client.query("COMMIT", &[]).await?;
         Ok(RecurringConfirmResult::Ok)
     })
@@ -555,9 +594,18 @@ pub async fn confirm_recurring(user: &MaskedUser, recurring_id: &str) -> anyhow:
 /// is relabeled, and charges joining later keep their own labels.
 pub async fn set_recurring_label(user: &MaskedUser, recurring_id: &str, label: &Obj) -> anyhow::Result<RecurringConfirmResult> {
     let client = pool().connect().await?;
-    or_rollback(&client, async {
+    set_recurring_label_on(&client, user, recurring_id, label).await
+}
+
+async fn set_recurring_label_on(
+    client: &dyn Executor,
+    user: &MaskedUser,
+    recurring_id: &str,
+    label: &Obj,
+) -> anyhow::Result<RecurringConfirmResult> {
+    or_rollback(client, async {
         client.query("BEGIN", &[]).await?;
-        lock_recurrings(&client, &user.user_id).await?;
+        lock_recurrings(client, &user.user_id).await?;
         let found = client
             .query(
                 &format!(
@@ -590,8 +638,8 @@ pub async fn set_recurring_label(user: &MaskedUser, recurring_id: &str, label: &
             // new default.
             let stored = Label::of(row, LABEL_BUDGET_ID, LABEL_CATEGORY_ID);
             let previous =
-                if stored.is_empty() { seed_recurring_label(&client, &user.user_id, member_ids(row)?).await? } else { stored };
-            apply_recurring_label(&client, &user.user_id, &label, member_ids(row)?, &previous).await?;
+                if stored.is_empty() { seed_recurring_label(client, &user.user_id, member_ids(row)?).await? } else { stored };
+            apply_recurring_label(client, &user.user_id, &label, member_ids(row)?, &previous).await?;
         }
         client.query("COMMIT", &[]).await?;
         Ok(RecurringConfirmResult::Ok)
@@ -610,6 +658,11 @@ fn split_label_ids<'a>(splits: &'a [Json], key: &str) -> anyhow::Result<Vec<&'a 
     Ok(ids)
 }
 
+/// Whether every one of `ids` is among `owned`. Only text is ever among them.
+fn all_owned(ids: &[&Json], owned: &HashSet<String>) -> bool {
+    ids.iter().all(|id| id.as_str().is_some_and(|id| owned.contains(id)))
+}
+
 /// Set the splits a recurring's joining charges take, `JSONRecurringSplit`s,
 /// from today on: charges dated earlier, including ones a revived recurring
 /// takes back, are left as they are. An empty list stops splitting new ones.
@@ -617,12 +670,10 @@ fn split_label_ids<'a>(splits: &'a [Json], key: &str) -> anyhow::Result<Vec<&'a 
 pub async fn set_recurring_splits(user: &MaskedUser, recurring_id: &str, splits: &[Json]) -> anyhow::Result<RecurringConfirmResult> {
     let budget_ids = split_label_ids(splits, "budget_id")?;
     let category_ids = split_label_ids(splits, "category_id")?;
-    // An id is text. One that is not is looked up as the text the database
-    // would be sent for it, and is never among the ids found.
-    let as_sent = |ids: &[&Json]| ids.iter().map(|id| to_js_string(id)).collect();
-    let owned =
-        get_owned_label_ids(user, &LabelIds { budget_ids: as_sent(&budget_ids), category_ids: as_sent(&category_ids) }).await?;
-    let all_owned = |ids: &[&Json], owned: &HashSet<String>| ids.iter().all(|id| id.as_str().is_some_and(|id| owned.contains(id)));
+    // An id is text. One that is not is looked up as its text, and is never
+    // among the ids found.
+    let as_text = |ids: &[&Json]| -> Vec<String> { ids.iter().map(|id| to_js_string(id)).collect() };
+    let owned = get_owned_label_ids(user, &as_text(&budget_ids), &as_text(&category_ids)).await?;
     if !all_owned(&budget_ids, &owned.budget_ids) || !all_owned(&category_ids, &owned.category_ids) {
         return Ok(RecurringConfirmResult::Failed { error: "A split's budget or category was not found.".to_string() });
     }
@@ -634,10 +685,33 @@ pub async fn set_recurring_splits(user: &MaskedUser, recurring_id: &str, splits:
         .update(
             &json!(recurring_id),
             &data,
-            UpdateArgs { user_id: Some(&user.user_id), exclude_deleted: Some(true), ..Default::default() },
+            UpdateArgs { user_id: Some(Filter::from(user.user_id.as_str())), exclude_deleted: Some(true), ..Default::default() },
         )
         .await?;
     if updated.is_none() {
+        return Ok(RecurringConfirmResult::not_found());
+    }
+    Ok(RecurringConfirmResult::Ok)
+}
+
+/// One column of the user's own recurring set to `value`; `Recurring not
+/// found.` when no live row of theirs has that id.
+async fn update_own_recurring(
+    user: &MaskedUser,
+    recurring_id: &str,
+    column: &str,
+    value: Json,
+) -> anyhow::Result<RecurringConfirmResult> {
+    let mut data = Obj::new();
+    data.insert(column.into(), value);
+    let result = recurring::TABLE
+        .update(
+            &json!(recurring_id),
+            &data,
+            UpdateArgs { user_id: Some(Filter::from(user.user_id.as_str())), ..Default::default() },
+        )
+        .await?;
+    if result.is_none() {
         return Ok(RecurringConfirmResult::not_found());
     }
     Ok(RecurringConfirmResult::Ok)
@@ -649,30 +723,14 @@ pub async fn set_recurring_splits(user: &MaskedUser, recurring_id: &str, splits:
 /// re-suggested on future runs, as `reject_transfer_pair` does for pairs.
 /// Re-adding goes through `create_recurring`, which un-dismisses.
 pub async fn dismiss_recurring(user: &MaskedUser, recurring_id: &str) -> anyhow::Result<RecurringConfirmResult> {
-    let mut data = Obj::new();
-    data.insert(STATUS.into(), json!("dismissed"));
-    let result = recurring::TABLE
-        .update(&json!(recurring_id), &data, UpdateArgs { user_id: Some(&user.user_id), ..Default::default() })
-        .await?;
-    if result.is_none() {
-        return Ok(RecurringConfirmResult::not_found());
-    }
-    Ok(RecurringConfirmResult::Ok)
+    update_own_recurring(user, recurring_id, STATUS, json!("dismissed")).await
 }
 
 /// Rename a recurring. The name is display-only (grouping runs on
 /// `merchant_key`), and detection never rewrites an existing row's name, so
 /// the user's choice sticks.
 pub async fn rename_recurring(user: &MaskedUser, recurring_id: &str, merchant_name: &str) -> anyhow::Result<RecurringConfirmResult> {
-    let mut data = Obj::new();
-    data.insert(MERCHANT_NAME.into(), json!(merchant_name));
-    let result = recurring::TABLE
-        .update(&json!(recurring_id), &data, UpdateArgs { user_id: Some(&user.user_id), ..Default::default() })
-        .await?;
-    if result.is_none() {
-        return Ok(RecurringConfirmResult::not_found());
-    }
-    Ok(RecurringConfirmResult::Ok)
+    update_own_recurring(user, recurring_id, MERCHANT_NAME, json!(merchant_name)).await
 }
 
 /// `CreateRecurringInput`.
@@ -711,16 +769,24 @@ fn unique_ids(ids: &[String]) -> Vec<String> {
 pub async fn create_recurring(user: &MaskedUser, input: CreateRecurringInput) -> anyhow::Result<RecurringResult> {
     let unique_ids = unique_ids(&input.transaction_ids);
     if unique_ids.is_empty() {
-        return Ok(RecurringResult::Failed { error: "A recurring needs at least one transaction.".to_string() });
+        return Ok(RecurringResult::failed("A recurring needs at least one transaction."));
     }
-
-    let ids = json!(unique_ids);
-
     let recurring_id = uuid::Uuid::new_v4().to_string();
     let client = pool().connect().await?;
-    or_rollback(&client, async {
+    create_recurring_on(&client, user, &recurring_id, &input, &unique_ids).await
+}
+
+async fn create_recurring_on(
+    client: &dyn Executor,
+    user: &MaskedUser,
+    recurring_id: &str,
+    input: &CreateRecurringInput,
+    unique_ids: &[String],
+) -> anyhow::Result<RecurringResult> {
+    let ids = json!(unique_ids);
+    or_rollback(client, async {
         client.query("BEGIN", &[]).await?;
-        client.query("SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))", &[json!(user.user_id)]).await?;
+        client.query(LOCK_RECURRINGS, &[json!(user.user_id)]).await?;
 
         // Existence pre-check: every transaction must exist, be alive, and
         // belong to this user. `FOR SHARE` serializes against a concurrent
@@ -739,9 +805,7 @@ pub async fn create_recurring(user: &MaskedUser, input: CreateRecurringInput) ->
             .await?;
         if existence.row_count.unwrap_or(0) != unique_ids.len() as u64 {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed {
-                error: "One or more transactions no longer exist (deleted or never belonged to this user).".to_string(),
-            });
+            return Ok(RecurringResult::failed(TRANSACTIONS_GONE));
         }
 
         // Collision pre-check: is ANY transaction already in another active
@@ -764,10 +828,7 @@ pub async fn create_recurring(user: &MaskedUser, input: CreateRecurringInput) ->
             .await?;
         if collision.row_count.unwrap_or(0) > 0 {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed {
-                error: "One of these transactions is already in another recurring. Remove it from the existing recurring first."
-                    .to_string(),
-            });
+            return Ok(RecurringResult::failed(IN_ANOTHER_RECURRING));
         }
 
         let result = client
@@ -808,7 +869,7 @@ pub async fn create_recurring(user: &MaskedUser, input: CreateRecurringInput) ->
             .and_then(|id| id.as_str())
             .ok_or_else(|| anyhow::anyhow!("The recurring upsert returned no {RECURRING_ID}"))?
             .to_string();
-        label_confirmed_recurring(&client, &user.user_id, &created_id, None).await?;
+        label_confirmed_recurring(client, &user.user_id, &created_id, None).await?;
 
         client.query("COMMIT", &[]).await?;
         Ok(RecurringResult::Ok { recurring_id: created_id })
@@ -818,7 +879,7 @@ pub async fn create_recurring(user: &MaskedUser, input: CreateRecurringInput) ->
 
 /// Whether any of `transactions` runs against a recurring's direction: an
 /// income recurring can't hold a charge, nor an expense one a deposit. A
-/// negative amount is income.
+/// negative amount is income; a missing one counts as 0.
 fn wrong_direction(transactions: &[Obj], is_income: bool) -> bool {
     transactions.iter().any(|transaction| {
         let amount = transaction.get("amount").and_then(|amount| amount.as_f64()).unwrap_or(0.0);
@@ -842,14 +903,22 @@ fn wrong_direction(transactions: &[Obj], is_income: bool) -> bool {
 pub async fn add_to_recurring(user: &MaskedUser, recurring_id: &str, transaction_ids: &[String]) -> anyhow::Result<RecurringResult> {
     let unique_ids = unique_ids(transaction_ids);
     if unique_ids.is_empty() {
-        return Ok(RecurringResult::Failed { error: "No transactions to add.".to_string() });
+        return Ok(RecurringResult::failed("No transactions to add."));
     }
-    let ids = json!(unique_ids);
-
     let client = pool().connect().await?;
-    or_rollback(&client, async {
+    add_to_recurring_on(&client, user, recurring_id, &unique_ids).await
+}
+
+async fn add_to_recurring_on(
+    client: &dyn Executor,
+    user: &MaskedUser,
+    recurring_id: &str,
+    unique_ids: &[String],
+) -> anyhow::Result<RecurringResult> {
+    let ids = json!(unique_ids);
+    or_rollback(client, async {
         client.query("BEGIN", &[]).await?;
-        client.query("SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))", &[json!(user.user_id)]).await?;
+        client.query(LOCK_RECURRINGS, &[json!(user.user_id)]).await?;
 
         let rec = client
             .query(
@@ -864,13 +933,11 @@ pub async fn add_to_recurring(user: &MaskedUser, recurring_id: &str, transaction
         let row = if rec.row_count.unwrap_or(0) == 0 { None } else { rec.rows.first() };
         let Some(row) = row else {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed { error: "That recurring no longer exists.".to_string() });
+            return Ok(RecurringResult::failed("That recurring no longer exists."));
         };
         if str_of(row, STATUS) == "dismissed" {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed {
-                error: "That recurring was dismissed. Confirm it again before adding transactions.".to_string(),
-            });
+            return Ok(RecurringResult::failed("That recurring was dismissed. Confirm it again before adding transactions."));
         }
         let is_income = truthy_opt(row.get(IS_INCOME));
 
@@ -889,19 +956,15 @@ pub async fn add_to_recurring(user: &MaskedUser, recurring_id: &str, transaction
             .await?;
         if txns.row_count.unwrap_or(0) != unique_ids.len() as u64 {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed {
-                error: "One or more transactions no longer exist (deleted or never belonged to this user).".to_string(),
-            });
+            return Ok(RecurringResult::failed(TRANSACTIONS_GONE));
         }
         if wrong_direction(&txns.rows, is_income) {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed {
-                error: if is_income {
-                    "That recurring holds income — only deposits can join it.".to_string()
-                } else {
-                    "That recurring holds charges — only expenses can join it.".to_string()
-                },
-            });
+            return Ok(RecurringResult::failed(if is_income {
+                "That recurring holds income — only deposits can join it."
+            } else {
+                "That recurring holds charges — only expenses can join it."
+            }));
         }
 
         let collision = client
@@ -920,10 +983,7 @@ pub async fn add_to_recurring(user: &MaskedUser, recurring_id: &str, transaction
             .await?;
         if collision.row_count.unwrap_or(0) > 0 {
             client.query("ROLLBACK", &[]).await?;
-            return Ok(RecurringResult::Failed {
-                error: "One of these transactions is already in another recurring. Remove it from the existing recurring first."
-                    .to_string(),
-            });
+            return Ok(RecurringResult::failed(IN_ANOTHER_RECURRING));
         }
 
         client
@@ -939,7 +999,7 @@ pub async fn add_to_recurring(user: &MaskedUser, recurring_id: &str, transaction
                 &[json!(recurring_id), ids.clone(), json!(user.user_id)],
             )
             .await?;
-        label_confirmed_recurring(&client, &user.user_id, recurring_id, Some(&unique_ids)).await?;
+        label_confirmed_recurring(client, &user.user_id, recurring_id, Some(unique_ids)).await?;
 
         client.query("COMMIT", &[]).await?;
         Ok(RecurringResult::Ok { recurring_id: recurring_id.to_string() })
@@ -949,15 +1009,11 @@ pub async fn add_to_recurring(user: &MaskedUser, recurring_id: &str, transaction
 
 #[cfg(test)]
 mod tests {
+    use regex::Regex;
+
+    use super::super::transactions::testing::{obj, FakeExecutor};
     use super::*;
     use crate::js::json_stringify;
-
-    fn obj(value: Json) -> Obj {
-        match value {
-            Json::Object(map) => map,
-            other => panic!("not an object: {other}"),
-        }
-    }
 
     fn recurring_row(overrides: Json) -> Row {
         let mut row = obj(json!({
@@ -1145,11 +1201,428 @@ mod tests {
         assert!(!wrong_direction(&[], true));
     }
 
+
+    fn user() -> MaskedUser {
+        MaskedUser { user_id: "usr-1".into(), username: "tester".into() }
+    }
+
+    fn statements(executor: &FakeExecutor) -> Vec<String> {
+        executor.calls().into_iter().map(|(sql, _)| sql).collect()
+    }
+
+    fn matches(pattern: &str, text: &str) -> bool {
+        Regex::new(pattern).unwrap().is_match(text)
+    }
+
+    /// The calls whose statement matches `pattern`.
+    fn calls_matching(executor: &FakeExecutor, pattern: &str) -> Vec<(String, Vec<Json>)> {
+        executor.calls().into_iter().filter(|(sql, _)| matches(pattern, sql)).collect()
+    }
+
+    const SPLIT_INSERT: &str = r"^INSERT INTO split_transactions";
+    const LABEL_UPDATE: &str = r"^UPDATE transactions";
+    const SEED: &str = r"^SELECT label_budget_id AS budget_id";
+    const DEFAULT_UPDATE: &str = r"^UPDATE recurrings\s+SET label_budget_id";
+
+    fn strings(list: &[&str]) -> Vec<String> {
+        list.iter().map(|id| id.to_string()).collect()
+    }
+
+    fn found_row(overrides: Json) -> Json {
+        let mut row = obj(json!({
+            "label_budget_id": null,
+            "label_category_id": null,
+            "transaction_ids": ["tx-1", "tx-2"],
+            "splits": [],
+            "splits_since": null,
+        }));
+        row.extend(obj(overrides));
+        Json::Object(row)
+    }
+
+    // labelConfirmedRecurring
+
+    #[tokio::test]
+    async fn labeling_a_recurring_that_is_not_confirmed_does_nothing_more() {
+        let executor = FakeExecutor::new().rows(vec![]);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", Some(&strings(&["tx-9"]))).await.unwrap();
+        assert_eq!(executor.calls().len(), 1);
+        assert!(executor.sql(0).contains("WHERE user_id = $1 AND recurring_id = $2 AND status = 'confirmed'"));
+        assert_eq!(executor.values(0), vec![json!("usr-1"), json!("rec-1")]);
+    }
+
+    #[tokio::test]
+    async fn joining_charges_are_split_then_labeled_with_the_default() {
+        let executor = FakeExecutor::new()
+            .rows(vec![found_row(json!({
+                "label_budget_id": "b-1",
+                "label_category_id": null,
+                "splits": [
+                    { "amount": 0.1, "label": { "budget_id": "b-2", "category_id": null } },
+                    { "amount": 0.2, "label": { "budget_id": null, "category_id": "c-1" } },
+                ],
+                "splits_since": "2026-03-01",
+            }))])
+            .count(2)
+            .count(1);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", Some(&strings(&["tx-9", "tx-8"]))).await.unwrap();
+        let sqls = statements(&executor);
+        assert_eq!(sqls.len(), 3);
+        assert!(matches(SPLIT_INSERT, &sqls[1]));
+        assert_eq!(
+            executor.values(1),
+            vec![
+                json!("usr-1"),
+                json!(["tx-9", "tx-8"]),
+                json!([0.1, 0.2]),
+                json!(["b-2", null]),
+                json!([null, "c-1"]),
+                json!(0.3),
+                json!("2026-03-01"),
+            ]
+        );
+        assert!(matches(LABEL_UPDATE, &sqls[2]));
+        // A budget-only default marks the category empty on purpose (0), and
+        // the previous default is the default itself.
+        assert_eq!(
+            executor.values(2),
+            vec![json!("usr-1"), json!(["tx-9", "tx-8"]), json!("b-1"), Json::Null, json!(0), json!("b-1"), Json::Null]
+        );
+    }
+
+    #[tokio::test]
+    async fn joining_charges_without_a_default_keep_their_labels() {
+        let executor = FakeExecutor::new().rows(vec![found_row(json!({}))]);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", Some(&strings(&["tx-9"]))).await.unwrap();
+        // No splits to apply, and a cleared default stays cleared: no seed.
+        assert_eq!(executor.calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_empty_list_of_joining_charges_is_not_a_confirm() {
+        let executor = FakeExecutor::new().rows(vec![found_row(json!({
+            "splits": [{ "amount": 1, "label": { "budget_id": null, "category_id": null } }],
+            "splits_since": "2026-01-01",
+        }))]);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", Some(&[])).await.unwrap();
+        assert_eq!(executor.calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn splits_need_a_start_date() {
+        let executor = FakeExecutor::new().rows(vec![found_row(json!({
+            "label_category_id": "c-1",
+            "splits": [{ "amount": 1, "label": { "budget_id": null, "category_id": null } }],
+        }))]);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", Some(&strings(&["tx-9"]))).await.unwrap();
+        let sqls = statements(&executor);
+        assert_eq!(sqls.len(), 2);
+        assert!(matches(LABEL_UPDATE, &sqls[1]));
+        // A category default is a confirmed label.
+        assert_eq!(executor.values(1)[4], json!(1));
+    }
+
+    #[tokio::test]
+    async fn confirming_without_a_default_seeds_one_from_the_members() {
+        let executor = FakeExecutor::new()
+            .rows(vec![found_row(json!({
+                "splits": [{ "amount": 1, "label": { "budget_id": null, "category_id": null } }],
+                "splits_since": "2026-01-01",
+            }))])
+            .rows(vec![json!({ "budget_id": "b-1", "category_id": "c-1" })])
+            .count(1)
+            .count(2);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", None).await.unwrap();
+        let sqls = statements(&executor);
+        assert_eq!(sqls.len(), 4);
+        // Confirming splits none of the members.
+        assert!(calls_matching(&executor, SPLIT_INSERT).is_empty());
+        assert!(matches(SEED, &sqls[1]));
+        assert_eq!(executor.values(1), vec![json!("usr-1"), json!(["tx-1", "tx-2"])]);
+        assert!(matches(DEFAULT_UPDATE, &sqls[2]));
+        assert_eq!(executor.values(2), vec![json!("usr-1"), json!("rec-1"), json!("b-1"), json!("c-1")]);
+        assert!(matches(LABEL_UPDATE, &sqls[3]));
+        assert_eq!(
+            executor.values(3),
+            vec![json!("usr-1"), json!(["tx-1", "tx-2"]), json!("b-1"), json!("c-1"), json!(1), json!("b-1"), json!("c-1")]
+        );
+    }
+
+    #[tokio::test]
+    async fn nothing_to_seed_from_relabels_nothing() {
+        let executor = FakeExecutor::new().rows(vec![found_row(json!({}))]).rows(vec![]);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", None).await.unwrap();
+        assert_eq!(executor.calls().len(), 2);
+
+        // No members: not even a seed query.
+        let executor = FakeExecutor::new().rows(vec![found_row(json!({ "transaction_ids": [] }))]);
+        label_confirmed_recurring(&executor, "usr-1", "rec-1", None).await.unwrap();
+        assert_eq!(executor.calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn stored_splits_that_are_not_a_list_fail_only_when_they_would_be_applied() {
+        let joining = strings(&["tx-9"]);
+        for (splits, since, fails) in [
+            (json!({}), json!("2026-01-01"), true),
+            (json!("text"), json!("2026-01-01"), true),
+            (json!(5), json!("2026-01-01"), true),
+            (json!({}), Json::Null, false),
+            (json!(""), json!("2026-01-01"), false),
+            (Json::Null, json!("2026-01-01"), false),
+        ] {
+            let executor = FakeExecutor::new().rows(vec![found_row(json!({ "splits": splits, "splits_since": since }))]);
+            let result = label_confirmed_recurring(&executor, "usr-1", "rec-1", Some(&joining)).await;
+            assert_eq!(result.is_err(), fails, "{splits} since {since}");
+            assert_eq!(executor.calls().len(), 1);
+        }
+    }
+
+    // confirmRecurring
+
+    #[tokio::test]
+    async fn confirming_locks_flips_the_status_and_labels() {
+        let executor = FakeExecutor::new().count(0).count(1).rows(vec![json!({ "recurring_id": "rec-1" })]).rows(vec![]).count(0);
+        assert_eq!(confirm_recurring_on(&executor, &user(), "rec-1").await.unwrap(), RecurringConfirmResult::Ok);
+        let sqls = statements(&executor);
+        assert_eq!(sqls[0], "BEGIN");
+        assert_eq!(sqls[1], "SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))");
+        assert_eq!(executor.values(1), vec![json!("usr-1")]);
+        assert!(matches(r"^UPDATE recurrings\s+SET status = 'confirmed'", &sqls[2]));
+        assert!(sqls[2].contains("RETURNING recurring_id"));
+        assert_eq!(executor.values(2), vec![json!("usr-1"), json!("rec-1")]);
+        assert!(sqls[3].contains("AND status = 'confirmed'"));
+        assert_eq!(sqls[4], "COMMIT");
+        assert_eq!(sqls.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn confirming_a_missing_recurring_fails_and_rolls_back() {
+        let executor = FakeExecutor::new().count(0).count(1).count(0).count(0);
+        assert_eq!(confirm_recurring_on(&executor, &user(), "rec-1").await.unwrap(), RecurringConfirmResult::not_found());
+        assert_eq!(statements(&executor), ["BEGIN", "SELECT pg_advisory_xact_lock(hashtext($1 || ':recurrings'))", &executor.sql(2), "ROLLBACK"]);
+    }
+
+    #[tokio::test]
+    async fn a_failure_rolls_back_and_a_failing_rollback_is_ignored() {
+        let executor = FakeExecutor::new().count(0).count(1).failure("update failed").failure("rollback failed");
+        let error = confirm_recurring_on(&executor, &user(), "rec-1").await.unwrap_err();
+        assert_eq!(error.to_string(), "update failed");
+        assert_eq!(statements(&executor).last().unwrap(), "ROLLBACK");
+    }
+
+    // setRecurringLabel
+
+    fn label(value: Json) -> Obj {
+        obj(value)
+    }
+
+    #[tokio::test]
+    async fn a_suggested_recurring_keeps_the_label_without_relabeling() {
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .rows(vec![json!({ "label_budget_id": null, "label_category_id": null, "status": "suggested", "transaction_ids": ["tx-1"] })])
+            .count(1)
+            .count(0);
+        let result = set_recurring_label_on(&executor, &user(), "rec-1", &label(json!({ "budget_id": "b-1", "category_id": null })))
+            .await
+            .unwrap();
+        assert_eq!(result, RecurringConfirmResult::Ok);
+        let sqls = statements(&executor);
+        assert_eq!(sqls.len(), 5);
+        assert!(matches(DEFAULT_UPDATE, &sqls[3]));
+        assert_eq!(executor.values(3), vec![json!("usr-1"), json!("rec-1"), json!("b-1"), Json::Null]);
+        assert_eq!(sqls[4], "COMMIT");
+    }
+
+    #[tokio::test]
+    async fn a_confirmed_recurring_moves_the_followers_of_the_old_default() {
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .rows(vec![json!({ "label_budget_id": "b-1", "label_category_id": "c-1", "status": "confirmed", "transaction_ids": ["tx-1"] })])
+            .count(1)
+            .count(1)
+            .count(0);
+        set_recurring_label_on(&executor, &user(), "rec-1", &label(json!({ "budget_id": "b-2", "category_id": "c-3" }))).await.unwrap();
+        let sqls = statements(&executor);
+        assert!(matches(LABEL_UPDATE, &sqls[4]));
+        assert_eq!(
+            executor.values(4),
+            vec![json!("usr-1"), json!(["tx-1"]), json!("b-2"), json!("c-3"), json!(1), json!("b-1"), json!("c-1")]
+        );
+        assert_eq!(sqls[5], "COMMIT");
+    }
+
+    #[tokio::test]
+    async fn with_no_stored_default_the_followers_are_those_of_the_most_confirmed_label() {
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .rows(vec![json!({ "label_budget_id": null, "label_category_id": null, "status": "confirmed", "transaction_ids": ["tx-1"] })])
+            .count(1)
+            .rows(vec![json!({ "budget_id": null, "category_id": "c-9" })])
+            .count(1)
+            .count(0);
+        set_recurring_label_on(&executor, &user(), "rec-1", &label(json!({ "budget_id": "b-2", "category_id": null }))).await.unwrap();
+        let sqls = statements(&executor);
+        assert!(matches(SEED, &sqls[4]));
+        assert_eq!(executor.values(5), vec![json!("usr-1"), json!(["tx-1"]), json!("b-2"), Json::Null, json!(0), Json::Null, json!("c-9")]);
+    }
+
+    #[tokio::test]
+    async fn clearing_the_default_relabels_nothing_and_a_missing_key_is_null() {
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .rows(vec![json!({ "label_budget_id": "b-1", "label_category_id": null, "status": "confirmed", "transaction_ids": ["tx-1"] })])
+            .count(1)
+            .count(0);
+        set_recurring_label_on(&executor, &user(), "rec-1", &label(json!({}))).await.unwrap();
+        assert_eq!(executor.values(3), vec![json!("usr-1"), json!("rec-1"), Json::Null, Json::Null]);
+        assert_eq!(statements(&executor).len(), 5);
+    }
+
+    #[tokio::test]
+    async fn setting_the_label_of_a_missing_recurring_fails_and_rolls_back() {
+        let executor = FakeExecutor::new().count(0).count(1).rows(vec![]).count(0);
+        let result = set_recurring_label_on(&executor, &user(), "rec-1", &label(json!({ "budget_id": "b-1" }))).await.unwrap();
+        assert_eq!(result, RecurringConfirmResult::not_found());
+        assert_eq!(statements(&executor).last().unwrap(), "ROLLBACK");
+        assert_eq!(executor.calls().len(), 4);
+    }
+
+    // createRecurring
+
+    fn input(transaction_ids: &[&str]) -> CreateRecurringInput {
+        CreateRecurringInput {
+            transaction_ids: strings(transaction_ids),
+            merchant_key: "netflix".into(),
+            merchant_name: "Netflix".into(),
+            name_is_custom: false,
+            cadence: "monthly".into(),
+            is_income: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn creating_upserts_a_confirmed_recurring_and_labels_it() {
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .count(2)
+            .rows(vec![])
+            .rows(vec![json!({ "recurring_id": "rec-existing" })])
+            .rows(vec![])
+            .count(0);
+        let input = CreateRecurringInput { name_is_custom: true, is_income: true, ..input(&["tx-2", "tx-1"]) };
+        let result = create_recurring_on(&executor, &user(), "rec-new", &input, &strings(&["tx-2", "tx-1"])).await.unwrap();
+        assert_eq!(result, RecurringResult::Ok { recurring_id: "rec-existing".into() });
+        let sqls = statements(&executor);
+        assert_eq!(sqls.len(), 7);
+        assert_eq!(sqls[1], LOCK_RECURRINGS);
+        assert!(sqls[2].contains("FOR SHARE"));
+        assert_eq!(executor.values(2), vec![json!("usr-1"), json!(["tx-2", "tx-1"])]);
+        assert!(sqls[3].contains("AND transaction_ids && $2::text[]"));
+        assert!(sqls[4].contains("ON CONFLICT (user_id, merchant_key, is_income) DO UPDATE SET"));
+        assert_eq!(
+            executor.values(4),
+            vec![
+                json!("rec-new"),
+                json!("usr-1"),
+                json!("netflix"),
+                json!("Netflix"),
+                json!("monthly"),
+                json!(true),
+                json!(["tx-2", "tx-1"]),
+                json!(true),
+            ]
+        );
+        // The row it landed on is the one labeled.
+        assert_eq!(executor.values(5), vec![json!("usr-1"), json!("rec-existing")]);
+        assert_eq!(sqls[6], "COMMIT");
+    }
+
+    #[tokio::test]
+    async fn creating_refuses_missing_and_taken_transactions() {
+        let executor = FakeExecutor::new().count(0).count(1).count(1).count(0);
+        let result = create_recurring_on(&executor, &user(), "rec-new", &input(&["tx-1", "tx-2"]), &strings(&["tx-1", "tx-2"])).await.unwrap();
+        assert_eq!(result, RecurringResult::failed(TRANSACTIONS_GONE));
+        assert_eq!(statements(&executor).last().unwrap(), "ROLLBACK");
+
+        let executor = FakeExecutor::new().count(0).count(1).count(1).rows(vec![json!({ "recurring_id": "rec-other" })]).count(0);
+        let result = create_recurring_on(&executor, &user(), "rec-new", &input(&["tx-1"]), &strings(&["tx-1"])).await.unwrap();
+        assert_eq!(result, RecurringResult::failed(IN_ANOTHER_RECURRING));
+        assert_eq!(statements(&executor).last().unwrap(), "ROLLBACK");
+        assert!(calls_matching(&executor, r"^INSERT INTO recurrings").is_empty());
+    }
+
+    // addToRecurring
+
+    #[tokio::test]
+    async fn adding_refuses_a_missing_or_dismissed_recurring() {
+        let executor = FakeExecutor::new().count(0).count(1).rows(vec![]).count(0);
+        let result = add_to_recurring_on(&executor, &user(), "rec-1", &strings(&["tx-1"])).await.unwrap();
+        assert_eq!(result, RecurringResult::failed("That recurring no longer exists."));
+        assert_eq!(statements(&executor).last().unwrap(), "ROLLBACK");
+
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .rows(vec![json!({ "recurring_id": "rec-1", "is_income": false, "status": "dismissed" })])
+            .count(0);
+        let result = add_to_recurring_on(&executor, &user(), "rec-1", &strings(&["tx-1"])).await.unwrap();
+        assert_eq!(result, RecurringResult::failed("That recurring was dismissed. Confirm it again before adding transactions."));
+        assert_eq!(executor.calls().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn adding_refuses_a_transaction_of_the_other_direction() {
+        for (is_income, amount, message) in [
+            (true, 12.5, "That recurring holds income — only deposits can join it."),
+            (false, -12.5, "That recurring holds charges — only expenses can join it."),
+        ] {
+            let executor = FakeExecutor::new()
+                .count(0)
+                .count(1)
+                .rows(vec![json!({ "recurring_id": "rec-1", "is_income": is_income, "status": "confirmed" })])
+                .rows(vec![json!({ "transaction_id": "tx-1", "amount": amount })])
+                .count(0);
+            let result = add_to_recurring_on(&executor, &user(), "rec-1", &strings(&["tx-1"])).await.unwrap();
+            assert_eq!(result, RecurringResult::failed(message));
+            assert_eq!(statements(&executor).last().unwrap(), "ROLLBACK");
+            assert!(executor.sql(3).contains("AND pending = FALSE"));
+        }
+    }
+
+    #[tokio::test]
+    async fn adding_joins_the_members_and_labels_only_the_new_ones() {
+        let executor = FakeExecutor::new()
+            .count(0)
+            .count(1)
+            .rows(vec![json!({ "recurring_id": "rec-1", "is_income": false, "status": "suggested" })])
+            .rows(vec![json!({ "transaction_id": "tx-1", "amount": 5 }), json!({ "transaction_id": "tx-2", "amount": 0 })])
+            .rows(vec![])
+            .count(1)
+            .rows(vec![])
+            .count(0);
+        let result = add_to_recurring_on(&executor, &user(), "rec-1", &strings(&["tx-1", "tx-2"])).await.unwrap();
+        assert_eq!(result, RecurringResult::Ok { recurring_id: "rec-1".into() });
+        let sqls = statements(&executor);
+        assert_eq!(sqls.len(), 8);
+        assert!(sqls[4].contains("AND recurring_id <> $2"));
+        assert_eq!(executor.values(4), vec![json!("usr-1"), json!("rec-1"), json!(["tx-1", "tx-2"])]);
+        assert!(matches(r"^UPDATE recurrings\s+SET transaction_ids", &sqls[5]));
+        assert_eq!(executor.values(5), vec![json!("rec-1"), json!(["tx-1", "tx-2"]), json!("usr-1")]);
+        assert_eq!(sqls[7], "COMMIT");
+    }
+
     // A route handler and the detection job are boxed `Send` futures, so what they await has to be `Send` too.
     #[test]
     fn the_futures_can_be_awaited_from_a_route() {
         fn assert_send<T: Send>(_future: T) {}
-        let user = MaskedUser { user_id: "usr-1".into(), username: "tester".into() };
+        let user = user();
         let ids = ["tx-1".to_string()];
         assert_send(get_recurrings(&user, GetRecurringsOptions::default()));
         assert_send(label_confirmed_recurring(pool(), "usr-1", "rec-1", Some(&ids)));
@@ -1174,5 +1647,55 @@ mod tests {
             json_stringify(&RecurringConfirmResult::not_found().to_json()),
             r#"{"ok":false,"error":"Recurring not found."}"#
         );
+    }
+
+    #[tokio::test]
+    async fn get_recurrings_reads_the_sharing_group() {
+        let executor = FakeExecutor::new().rows(vec![]);
+        let options = GetRecurringsOptions {
+            include_deleted: true,
+            start_date: Some("2026-01-01".into()),
+            recurring_ids: Some(strings(&["rec-1", "rec-2"])),
+        };
+        assert!(get_recurrings_on(&executor, &user(), options).await.unwrap().is_empty());
+        assert_eq!(
+            executor.sql(0),
+            "SELECT * FROM recurrings WHERE user_id = ANY(sharing_user_ids($1)) AND recurring_id IN ($2, $3) AND updated >= $4 ORDER BY recurring_id"
+        );
+        assert_eq!(executor.values(0), vec![json!("usr-1"), json!("rec-1"), json!("rec-2"), json!("2026-01-01")]);
+        assert_eq!(executor.calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn get_recurrings_resolves_each_member_once_across_the_group() {
+        let recurring = |id: &str, members: Json| {
+            let row = obj(json!({
+                "recurring_id": id,
+                "user_id": "usr-2",
+                "merchant_key": "netflix",
+                "merchant_name": "Netflix",
+                "cadence": "monthly",
+                "is_income": false,
+                "status": "confirmed",
+                "transaction_ids": members,
+                "label_budget_id": null,
+                "label_category_id": null,
+                "splits": [],
+                "splits_since": null,
+                "created_at": null,
+                "updated": null,
+                "is_deleted": false,
+            }));
+            Json::Object(row)
+        };
+        let executor =
+            FakeExecutor::new().rows(vec![recurring("rec-1", json!(["tx-2", "tx-1"])), recurring("rec-2", json!(["tx-1", "tx-3"]))]).rows(vec![]);
+        let result = get_recurrings_on(&executor, &user(), GetRecurringsOptions::default()).await.unwrap();
+        assert!(result.is_empty());
+        assert_eq!(
+            executor.sql(1),
+            "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND transaction_id IN ($2, $3, $4) AND (is_deleted IS NULL OR is_deleted = FALSE)"
+        );
+        assert_eq!(executor.values(1), vec![json!("usr-1"), json!("tx-2"), json!("tx-1"), json!("tx-3")]);
     }
 }
