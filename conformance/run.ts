@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { compareTranscripts } from "./compare";
+import { ensureCerts } from "./harness/certs";
 import { REPO_ROOT, TRANSCRIPT_DIR, type Target } from "./harness/config";
 
 const args = process.argv.slice(2);
@@ -68,6 +69,10 @@ for (const target of targets) {
 
 // Test paths are given relative to the repository root or to conformance/.
 const testArgs = args.map((arg) => (arg.endsWith(".ts") ? arg.replace(/^conformance\//, "") : arg));
+
+// Made here, once, before the suites start side by side: each would otherwise
+// make its own set, and one could replace the other's under a running server.
+ensureCerts();
 
 console.log(`Running the conformance suite against ${targets.join(" and ")} (TZ=${tz})…`);
 const results = await Promise.all(

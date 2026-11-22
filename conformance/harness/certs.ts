@@ -88,15 +88,31 @@ export const ensureCerts = (): Certs => {
   };
   if (!fresh()) {
     // Built aside and renamed into place, so two suites starting together
-    // never read a half-written set.
+    // never read a half-written set. A set another suite put in place
+    // meanwhile is kept: its servers already trust that authority, and
+    // replacing it would leave them trusting one the proxy no longer presents.
     const building = fs.mkdtempSync(`${dir}-building-`);
     generate(building);
-    fs.rmSync(dir, { recursive: true, force: true });
-    try {
-      fs.renameSync(building, dir);
-    } catch {
-      // Another process won the rename; its set is as good as ours.
+    if (fresh()) {
       fs.rmSync(building, { recursive: true, force: true });
+    } else {
+      // Move a stale set aside rather than delete it in place: the rename is
+      // atomic, so the directory is never seen half-removed.
+      if (fs.existsSync(dir)) {
+        const stale = `${dir}-stale-${process.pid}-${Date.now()}`;
+        try {
+          fs.renameSync(dir, stale);
+          fs.rmSync(stale, { recursive: true, force: true });
+        } catch {
+          // Another process moved it first.
+        }
+      }
+      try {
+        fs.renameSync(building, dir);
+      } catch {
+        // Another process won the rename; its set is as good as ours.
+        fs.rmSync(building, { recursive: true, force: true });
+      }
     }
   }
   cached = certsOf(dir);
