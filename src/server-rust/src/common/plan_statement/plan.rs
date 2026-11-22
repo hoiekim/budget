@@ -565,21 +565,24 @@ pub(crate) struct PlanSource<'a> {
     pub(crate) existing_ids: &'a IndexSet<String>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum Status {
+/// A planned row's `status`, the TypeScript's `RowStatus`: written now
+/// (`"new"`), already in the account (`"imported"`), left out (`"skip"`), or
+/// waiting on the user (`"decide"`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RowStatus {
     New,
     Imported,
     Skip,
     Decide,
 }
 
-impl Status {
-    fn as_str(self) -> &'static str {
+impl RowStatus {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Status::New => "new",
-            Status::Imported => "imported",
-            Status::Skip => "skip",
-            Status::Decide => "decide",
+            RowStatus::New => "new",
+            RowStatus::Imported => "imported",
+            RowStatus::Skip => "skip",
+            RowStatus::Decide => "decide",
         }
     }
 }
@@ -589,7 +592,7 @@ fn round2(n: f64) -> f64 {
 }
 
 /// A `Map<string, …>`'s entry for a fund name as a row holds it: none unless the name is a string.
-fn by_fund<'a, V: Copy>(map: &IndexMap<&'a str, V>, investment: Option<&Json>) -> Option<V> {
+fn by_fund<V: Copy>(map: &IndexMap<&str, V>, investment: Option<&Json>) -> Option<V> {
     investment.and_then(Json::as_str).and_then(|name| map.get(name)).copied()
 }
 
@@ -600,21 +603,21 @@ pub(crate) fn plan_import(input: &PlanSource) -> anyhow::Result<Plan> {
 
     // Each planned row, with the status and kind it was given.
     let mut planned: Vec<Json> = Vec::with_capacity(rows.len());
-    let mut states: Vec<(Status, Option<ImportKind>)> = Vec::with_capacity(rows.len());
+    let mut states: Vec<(RowStatus, Option<ImportKind>)> = Vec::with_capacity(rows.len());
     let mut writes: Vec<bool> = Vec::with_capacity(rows.len());
     for (row, id) in rows.iter().zip(&ids) {
         let base = Literal::new().set("id", id.as_str()).spread(row);
         let classification = classify_row(row)?;
         let needs_decision = matches!(classification, Classification::Decide { .. });
         writes.push(matches!(classification, Classification::Write { .. }));
-        let (status, kind, row): (Status, Option<ImportKind>, Literal) = if input.existing_ids.contains(id) {
-            (Status::Imported, None, base.set("status", Status::Imported.as_str()).set("needsDecision", needs_decision))
+        let (status, kind, row): (RowStatus, Option<ImportKind>, Literal) = if input.existing_ids.contains(id) {
+            (RowStatus::Imported, None, base.set("status", RowStatus::Imported.as_str()).set("needsDecision", needs_decision))
         } else {
             match classification {
                 Classification::Write { kind } => {
-                    (Status::New, Some(kind), base.set("status", Status::New.as_str()).set("kind", kind.as_str()))
+                    (RowStatus::New, Some(kind), base.set("status", RowStatus::New.as_str()).set("kind", kind.as_str()))
                 }
-                Classification::Skip { reason } => (Status::Skip, None, base.set("status", Status::Skip.as_str()).set("reason", reason)),
+                Classification::Skip { reason } => (RowStatus::Skip, None, base.set("status", RowStatus::Skip.as_str()).set("reason", reason)),
                 Classification::Decide { reason } => {
                     let allowed = allowed_decisions(row);
                     let choices: Vec<Json> = allowed.iter().map(|decision| Json::from(decision.as_str())).collect();
@@ -622,12 +625,12 @@ pub(crate) fn plan_import(input: &PlanSource) -> anyhow::Result<Plan> {
                     let decision = input.decisions.get(id.as_str()).and_then(Json::as_str).and_then(Decision::parse);
                     match decision.filter(|decision| allowed.contains(decision)) {
                         Some(Decision::Skip) => {
-                            (Status::Skip, None, decided.set("status", Status::Skip.as_str()).set("reason", "Skipped by you"))
+                            (RowStatus::Skip, None, decided.set("status", RowStatus::Skip.as_str()).set("reason", "Skipped by you"))
                         }
                         Some(Decision::Kind(kind)) => {
-                            (Status::New, Some(kind), decided.set("status", Status::New.as_str()).set("kind", kind.as_str()))
+                            (RowStatus::New, Some(kind), decided.set("status", RowStatus::New.as_str()).set("kind", kind.as_str()))
                         }
-                        None => (Status::Decide, None, decided.set("status", Status::Decide.as_str()).set("reason", reason)),
+                        None => (RowStatus::Decide, None, decided.set("status", RowStatus::Decide.as_str()).set("reason", reason)),
                     }
                 }
             }
@@ -637,7 +640,7 @@ pub(crate) fn plan_import(input: &PlanSource) -> anyhow::Result<Plan> {
     }
 
     let mut blockers: Vec<String> = Vec::new();
-    let undecided = states.iter().filter(|(status, _)| *status == Status::Decide).count();
+    let undecided = states.iter().filter(|(status, _)| *status == RowStatus::Decide).count();
     if undecided > 0 {
         blockers.push(if undecided == 1 { "1 row needs a decision".to_string() } else { format!("{undecided} rows need a decision") });
     }
@@ -651,9 +654,9 @@ pub(crate) fn plan_import(input: &PlanSource) -> anyhow::Result<Plan> {
         let of_fund = |status: &dyn Fn(usize) -> bool| -> Vec<&Json> {
             rows.iter().enumerate().filter(|(i, _)| row_funds[*i] == *fund && status(*i)).map(|(_, row)| row).collect()
         };
-        let to_write = of_fund(&|i| states[i].0 == Status::New);
+        let to_write = of_fund(&|i| states[i].0 == RowStatus::New);
         // The rows written now, and the ones this statement already wrote.
-        let measured = of_fund(&|i| states[i].0 == Status::New || (states[i].0 == Status::Imported && writes[i]));
+        let measured = of_fund(&|i| states[i].0 == RowStatus::New || (states[i].0 == RowStatus::Imported && writes[i]));
         let mut summary = Literal::new()
             .opt("investment", investment.clone())
             .set("mapping", mapping.cloned().unwrap_or(Json::Null))
@@ -700,7 +703,7 @@ pub(crate) fn plan_import(input: &PlanSource) -> anyhow::Result<Plan> {
     let mut transactions: Vec<Planned> = Vec::new();
     if blockers.is_empty() {
         for (row, (status, kind)) in planned.iter().zip(&states) {
-            let Some(kind) = kind.filter(|_| *status == Status::New) else { continue };
+            let Some(kind) = kind.filter(|_| *status == RowStatus::New) else { continue };
             let (investment, date, id) = (row.get("investment"), row.get("date"), row.get("id"));
             // A row is only new once its fund is mapped and, if restated, has a close for each of its rows.
             let mapping = by_fund(&mappings, investment).ok_or_else(|| anyhow!("{} has no mapping", to_text(investment)))?;

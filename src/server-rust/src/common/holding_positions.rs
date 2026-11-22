@@ -568,7 +568,7 @@ mod tests {
         let positions = [entered("2026-01-02", 100.0), entered("2026-03-02", 50.0)];
         let movements = [tx("2026-02-10", "buy", 10.0, 500.0, 50.0), tx("2026-04-10", "sell", -5.0, -250.0, 50.0)];
         let derived = derive(&movements, &positions, "2026-04", false);
-        let april9 = derived.positions.iter().filter(|p| p["date"].as_str().unwrap() < "2026-04-10").next_back().unwrap();
+        let april9 = derived.positions.iter().rfind(|p| p["date"].as_str().unwrap() < "2026-04-10").unwrap();
         assert_eq!(before("2026-04-10", &positions, &movements)["quantity"], april9["position"]["quantity"]);
     }
 

@@ -168,16 +168,68 @@ pub fn number_to_string(value: f64) -> String {
     if value == 0.0 {
         return "0".to_string();
     }
-    let abs = value.abs();
-    if !(1e-6..1e21).contains(&abs) {
-        // Rust writes `1e21` and `1.5e-7`; JS writes `1e+21` and `1.5e-7`.
-        let formatted = format!("{:e}", value);
-        return match formatted.split_once('e') {
-            Some((mantissa, exponent)) if !exponent.starts_with('-') => format!("{mantissa}e+{exponent}"),
-            _ => formatted,
-        };
+    // `Number::toString`: the digits `s` and the exponent `n` with `value = 0.s × 10^n`.
+    let (digits, n) = shortest_digits(value.abs());
+    let k = digits.len() as i32;
+    let mut out = String::new();
+    if value < 0.0 {
+        out.push('-');
     }
-    format!("{}", value)
+    if k <= n && n <= 21 {
+        out.push_str(&digits);
+        out.extend(std::iter::repeat_n('0', (n - k) as usize));
+    } else if 0 < n && n <= 21 {
+        out.push_str(&digits[..n as usize]);
+        out.push('.');
+        out.push_str(&digits[n as usize..]);
+    } else if -6 < n && n <= 0 {
+        out.push_str("0.");
+        out.extend(std::iter::repeat_n('0', (-n) as usize));
+        out.push_str(&digits);
+    } else {
+        out.push_str(&digits[..1]);
+        if k > 1 {
+            out.push('.');
+            out.push_str(&digits[1..]);
+        }
+        out.push_str(&format!("e{}{}", if n > 0 { "+" } else { "-" }, (n - 1).abs()));
+    }
+    out
+}
+
+/// The fewest significant digits that read back as `value` (positive and
+/// finite), and the exponent `n` with `value = 0.digits × 10^n`. Of two
+/// candidates equally close to `value`, JavaScript takes the even one where
+/// Rust's shortest formatting rounds up (`900719925474099.25` is
+/// `900719925474099.2`, not `.3`).
+fn shortest_digits(value: f64) -> (String, i32) {
+    let formatted = format!("{value:e}");
+    let (mantissa, exponent) = formatted.split_once('e').unwrap_or((&formatted, "0"));
+    let mut digits: String = mantissa.chars().filter(|c| *c != '.').collect();
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let last = digits.as_bytes()[digits.len() - 1];
+    if digits.len() > 1 && (last - b'0') % 2 == 1 {
+        // The even neighbour, one unit lower in the last digit: a tie when it reads back as `value` too
+        // and `value` lies exactly halfway, its exact expansion being the neighbour's digits and a 5.
+        let mut lower = digits.clone();
+        lower.pop();
+        lower.push((last - 1) as char);
+        let reads_back = format!("{}.{}e{exponent}", &lower[..1], &lower[1..]).parse::<f64>().ok() == Some(value);
+        if reads_back {
+            // A double's exact decimal expansion has at most 767 significant digits.
+            let exact = format!("{value:.800e}");
+            let (exact_mantissa, exact_exponent) = exact.split_once('e').unwrap_or((&exact, "0"));
+            let exact_digits: String = exact_mantissa.chars().filter(|c| *c != '.').collect();
+            let halfway = exact_exponent.parse::<i32>().ok() == Some(exponent)
+                && exact_digits.starts_with(&lower)
+                && exact_digits[lower.len()..].starts_with('5')
+                && exact_digits[lower.len() + 1..].bytes().all(|b| b == b'0');
+            if halfway {
+                digits = lower;
+            }
+        }
+    }
+    (digits, exponent + 1)
 }
 
 /// `String(value)` for any JSON value.
@@ -197,12 +249,20 @@ pub fn to_js_string(value: &Json) -> String {
 }
 
 /// `Math.round`: halves round toward positive infinity, and a value in
-/// `[-0.5, -0]` rounds to negative zero.
+/// `[-0.5, -0]` rounds to negative zero. Not `floor(value + 0.5)`, whose sum
+/// itself rounds up just under a half (0.49999999999999994) and on odd
+/// integers past 2^52.
 pub fn math_round(value: f64) -> f64 {
     if value.is_sign_negative() && value >= -0.5 {
         return -0.0;
     }
-    (value + 0.5).floor()
+    let floor = value.floor();
+    // Exact: below 2^52 the fraction is a multiple of the value's own unit, and past it there is none.
+    if value - floor >= 0.5 {
+        floor + 1.0
+    } else {
+        floor
+    }
 }
 
 /// `Number.prototype.toFixed`: the nearest decimal, a tie going to the larger
@@ -239,8 +299,8 @@ pub fn to_fixed(value: f64, digits: usize) -> String {
     }
     let whole_len = digits_out.len() - digits;
     let mut out = String::new();
-    let is_zero = digits_out.iter().all(|d| *d == 0);
-    if negative && !is_zero {
+    // The sign stays on a negative number that rounds to zero: `(-0.001).toFixed(2)` is `-0.00`.
+    if negative {
         out.push('-');
     }
     for (i, digit) in digits_out.iter().enumerate() {
@@ -950,6 +1010,39 @@ mod tests {
         assert_eq!(number_to_string(1.5e-7), "1.5e-7");
         assert_eq!(number_to_string(-0.0), "0");
         assert_eq!(number_to_string(123456789012345680000.0), "123456789012345680000");
+        assert_eq!(number_to_string(0.000001), "0.000001");
+        assert_eq!(number_to_string(-1.2345e25), "-1.2345e+25");
+        assert_eq!(number_to_string(1e300), "1e+300");
+        assert_eq!(number_to_string(5e-324), "5e-324");
+        assert_eq!(number_to_string(-123.456), "-123.456");
+        assert_eq!(number_to_string(1e20), "100000000000000000000");
+    }
+
+    // The literals are the exact doubles whose shortest digits tie.
+    #[allow(clippy::excessive_precision)]
+    #[test]
+    fn number_to_string_takes_the_even_of_two_equally_close_digits() {
+        // As Bun prints them.
+        assert_eq!(number_to_string(900719925474099.25), "900719925474099.2");
+        assert_eq!(number_to_string(135130428281141.625), "135130428281141.62");
+        assert_eq!(number_to_string(-900719925474099.25), "-900719925474099.2");
+        assert_eq!(number_to_string(900719925474099.75), "900719925474099.8");
+    }
+
+    #[test]
+    fn math_round_rounds_halves_up_and_nothing_else() {
+        assert_eq!(math_round(2.5), 3.0);
+        assert_eq!(math_round(-2.5), -2.0);
+        assert_eq!(math_round(-2.50001), -3.0);
+        assert_eq!(math_round(0.49999999999999994), 0.0);
+        assert_eq!(math_round(4503599627370497.0), 4503599627370497.0);
+        assert_eq!(math_round(9007199254740991.0), 9007199254740991.0);
+        assert!(math_round(-0.5).is_sign_negative() && math_round(-0.5) == 0.0);
+        assert!(math_round(-0.49999999999999994).is_sign_negative());
+        assert_eq!(math_round(-0.5000000000000001), -1.0);
+        assert!(math_round(f64::NAN).is_nan());
+        assert_eq!(math_round(f64::NEG_INFINITY), f64::NEG_INFINITY);
+        assert_eq!(math_round(f64::INFINITY), f64::INFINITY);
     }
 
     #[test]
@@ -960,7 +1053,9 @@ mod tests {
         assert_eq!(to_fixed(-1.5, 0), "-2");
         assert_eq!(to_fixed(1234.5, 2), "1234.50");
         assert_eq!(to_fixed(0.0, 2), "0.00");
-        assert_eq!(to_fixed(-0.001, 2), "0.00");
+        assert_eq!(to_fixed(-0.0, 2), "0.00");
+        assert_eq!(to_fixed(-0.001, 2), "-0.00");
+        assert_eq!(to_fixed(-0.005, 2), "-0.01");
         assert_eq!(to_fixed(9.995, 2), "9.99");
         assert_eq!(to_fixed(99.5, 0), "100");
     }

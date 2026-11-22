@@ -358,34 +358,282 @@ impl Key {
     }
 }
 
-/// `array.sort(comparator)`: a stable merge sort, bottom up, the way
-/// JavaScriptCore runs it. Any stable sort gives the same order for a
-/// comparator that is consistent; this one also has an answer, and never
-/// panics, for one that is not (rows with a `null` where a date belongs
-/// compare equal to everything).
-pub(crate) fn sort_by<T: Clone>(items: &mut Vec<T>, comparator: impl Fn(&T, &T) -> f64) {
+/// `array.sort(comparator)`, as JavaScriptCore runs it (`arrayStableSort` in
+/// its `StableSort.h`): insertion sort under 8 elements, otherwise Powersort
+/// over natural runs (each short run extended to 64 by insertion), merged with
+/// galloping. Any stable sort gives the same order for a consistent
+/// comparator; this one also asks the same questions in the same order, so
+/// it gives the same order for one that is not (rows with a `null` where a
+/// date belongs compare equal to everything). A comparator's answer counts
+/// as "less" when it is below zero; NaN is not.
+pub(crate) fn sort_by<T: Clone>(items: &mut [T], comparator: impl Fn(&T, &T) -> f64) {
+    let less = |a: &T, b: &T| comparator(a, b) < 0.0;
     let len = items.len();
-    let mut src = std::mem::take(items);
-    let mut dst = src.clone();
-    let mut width = 1;
-    while width < len {
-        let mut start = 0;
-        while start < len {
-            let left_end = (start + width).min(len);
-            let right_end = (left_end + width).min(len);
-            let (mut left, mut right) = (start, left_end);
-            for slot in dst.iter_mut().take(right_end).skip(start) {
-                let take_right = right < right_end && (left >= left_end || comparator(&src[right], &src[left]) < 0.0);
-                let from = if take_right { &mut right } else { &mut left };
-                *slot = src[*from].clone();
-                *from += 1;
-            }
-            start += 2 * width;
-        }
-        std::mem::swap(&mut src, &mut dst);
-        width *= 2;
+    if len < SORT_RUN_CUTOFF {
+        insertion_sort(items, 0, len, 0, &less);
+        return;
     }
-    *items = src;
+    let mut work = items.to_vec();
+    let mut min_gallop = MIN_GALLOP;
+    let mut stack: Vec<(usize, usize, u32)> = Vec::new();
+    let (mut begin, mut end) = (0, sorted_run(items, 0, &less));
+    while end + 1 < len {
+        let next_begin = end + 1;
+        let next_end = sorted_run(items, next_begin, &less);
+        let power = merge_power(begin, next_begin, next_end, len);
+        while let Some(&(below_begin, below_end, below_power)) = stack.last() {
+            if below_power <= power {
+                break;
+            }
+            stack.pop();
+            merge_runs(&mut work, items, below_begin, below_end + 1, begin, end + 1, &less, &mut min_gallop);
+            items[below_begin..=end].clone_from_slice(&work[below_begin..=end]);
+            begin = below_begin;
+        }
+        stack.push((begin, end, power));
+        (begin, end) = (next_begin, next_end);
+    }
+    while let Some((below_begin, below_end, _)) = stack.pop() {
+        merge_runs(&mut work, items, below_begin, below_end + 1, begin, end + 1, &less, &mut min_gallop);
+        items[below_begin..=end].clone_from_slice(&work[below_begin..=end]);
+        begin = below_begin;
+    }
+}
+
+/// Below this many elements the sort is insertion alone; a natural run
+/// shorter than it is extended by insertion.
+const SORT_RUN_CUTOFF: usize = 8;
+/// How long insertion makes a short run.
+const SORT_FORCED_RUN: usize = 64;
+const MIN_GALLOP: usize = 7;
+
+/// Binary insertion of `items[from + sorted + 1..to]` into the sorted
+/// `items[from..=from + sorted]`.
+fn insertion_sort<T: Clone>(items: &mut [T], from: usize, to: usize, sorted: usize, less: &impl Fn(&T, &T) -> bool) {
+    for i in from + sorted + 1..to {
+        let value = items[i].clone();
+        let (mut left, mut right) = (0, i - from);
+        while left < right {
+            let middle = (left + right) / 2;
+            if less(&value, &items[from + middle]) {
+                right = middle;
+            } else {
+                left = middle + 1;
+            }
+        }
+        items[from + left..=i].rotate_right(1);
+    }
+}
+
+/// The last index of the ascending run at `begin`: a strictly descending one
+/// is reversed in place.
+fn natural_run<T>(items: &mut [T], begin: usize, less: &impl Fn(&T, &T) -> bool) -> usize {
+    let mut end = begin;
+    if end + 1 >= items.len() {
+        return end;
+    }
+    let descending = less(&items[end + 1], &items[end]);
+    end += 1;
+    while end + 1 < items.len() && less(&items[end + 1], &items[end]) == descending {
+        end += 1;
+    }
+    if descending {
+        items[begin..=end].reverse();
+    }
+    end
+}
+
+/// The last index of the sorted run at `begin`: its natural run, extended
+/// to [`SORT_FORCED_RUN`] by insertion when shorter than [`SORT_RUN_CUTOFF`],
+/// then by whatever already follows in order.
+fn sorted_run<T: Clone>(items: &mut [T], begin: usize, less: &impl Fn(&T, &T) -> bool) -> usize {
+    let mut end = natural_run(items, begin, less);
+    if end - begin < SORT_RUN_CUTOFF {
+        let size = SORT_FORCED_RUN.min(items.len() - begin);
+        insertion_sort(items, begin, begin + size, end - begin, less);
+        end = begin + size - 1;
+    }
+    while end + 1 < items.len() && !less(&items[end + 1], &items[end]) {
+        end += 1;
+    }
+    end
+}
+
+/// Powersort's node power of the boundary between the runs
+/// `[left, middle - 1]` and `[middle, right]` of `len` elements.
+fn merge_power(left: usize, middle: usize, right: usize, len: usize) -> u32 {
+    let n1 = (middle - left) as u128;
+    let n2 = (right - middle + 1) as u128;
+    let a = ((left as u128) * 2 + n1) << 62;
+    let b = ((middle as u128) * 2 + n2) << 62;
+    let len = len as u128;
+    (((a / len) ^ (b / len)) as u64).leading_zeros()
+}
+
+/// The first position in `items[base..base + len]` that `key` goes before,
+/// searched outward from `hint`: after every element less than it.
+fn gallop_left<T>(key: &T, items: &[T], base: usize, len: usize, hint: usize, less: &impl Fn(&T, &T) -> bool) -> usize {
+    let (mut last, mut offset) = (0, 1);
+    if less(&items[base + hint], key) {
+        let max = len - hint;
+        while offset < max && less(&items[base + hint + offset], key) {
+            last = offset;
+            offset = (offset * 2 + 1).min(max);
+        }
+        last += hint;
+        offset += hint;
+    } else {
+        let max = hint + 1;
+        while offset < max && !less(&items[base + hint - offset], key) {
+            last = offset;
+            offset = (offset * 2 + 1).min(max);
+        }
+        // One before `base` when the search reached its start, as the unsigned arithmetic of the original wraps.
+        (last, offset) = (hint.wrapping_sub(offset), hint - last);
+    }
+    last = last.wrapping_add(1);
+    while last < offset {
+        let middle = last + (offset - last) / 2;
+        if less(&items[base + middle], key) {
+            last = middle + 1;
+        } else {
+            offset = middle;
+        }
+    }
+    offset
+}
+
+/// The last position in `items[base..base + len]` that `key` goes at,
+/// searched outward from `hint`: after every element it is not less than.
+fn gallop_right<T>(key: &T, items: &[T], base: usize, len: usize, hint: usize, less: &impl Fn(&T, &T) -> bool) -> usize {
+    let (mut last, mut offset) = (0, 1);
+    if less(key, &items[base + hint]) {
+        let max = hint + 1;
+        while offset < max && less(key, &items[base + hint - offset]) {
+            last = offset;
+            offset = (offset * 2 + 1).min(max);
+        }
+        // One before `base` when the search reached its start, as the unsigned arithmetic of the original wraps.
+        (last, offset) = (hint.wrapping_sub(offset), hint - last);
+    } else {
+        let max = len - hint;
+        while offset < max && !less(key, &items[base + hint + offset]) {
+            last = offset;
+            offset = (offset * 2 + 1).min(max);
+        }
+        last += hint;
+        offset += hint;
+    }
+    last = last.wrapping_add(1);
+    while last < offset {
+        let middle = last + (offset - last) / 2;
+        if less(key, &items[base + middle]) {
+            offset = middle;
+        } else {
+            last = middle + 1;
+        }
+    }
+    offset
+}
+
+/// Merges the adjacent sorted runs `src[left..left_end]` and
+/// `src[right..right_end]` into the same places of `dst`, galloping once one
+/// side keeps winning. `min_gallop` carries over from merge to merge.
+#[allow(clippy::too_many_arguments)]
+fn merge_runs<T: Clone>(
+    dst: &mut [T],
+    src: &[T],
+    left: usize,
+    left_end: usize,
+    right: usize,
+    right_end: usize,
+    less: &impl Fn(&T, &T) -> bool,
+    min_gallop: &mut usize,
+) {
+    if left == left_end || right == right_end {
+        dst[left..right_end].clone_from_slice(&src[left..right_end]);
+        return;
+    }
+    // The left run's leading elements that the right run's first doesn't go before are already in place.
+    let skip_left = gallop_right(&src[right], src, left, left_end - left, 0, less);
+    dst[left..left + skip_left].clone_from_slice(&src[left..left + skip_left]);
+    let mut left = left + skip_left;
+    if left == left_end {
+        dst[right..right_end].clone_from_slice(&src[right..right_end]);
+        return;
+    }
+    // And so are the right run's trailing elements that the left run's last goes before.
+    let right_len = right_end - right;
+    let skip_right = right_len - gallop_left(&src[left_end - 1], src, right, right_len, right_len - 1, less);
+    dst[right_end - skip_right..right_end].clone_from_slice(&src[right_end - skip_right..right_end]);
+    let right_end = right_end - skip_right;
+    if right == right_end {
+        dst[left..left_end].clone_from_slice(&src[left..left_end]);
+        return;
+    }
+
+    let mut right = right;
+    let mut out = left;
+    'merge: loop {
+        // One element at a time until one side wins `min_gallop` times running.
+        let (mut left_wins, mut right_wins) = (0, 0);
+        while left_wins < *min_gallop && right_wins < *min_gallop {
+            if right >= right_end || left >= left_end {
+                break 'merge;
+            }
+            if less(&src[right], &src[left]) {
+                dst[out] = src[right].clone();
+                right += 1;
+                right_wins += 1;
+                left_wins = 0;
+            } else {
+                dst[out] = src[left].clone();
+                left += 1;
+                left_wins += 1;
+                right_wins = 0;
+            }
+            out += 1;
+        }
+
+        // Then by galloping, while that keeps paying.
+        *min_gallop += 1;
+        loop {
+            if *min_gallop > 1 {
+                *min_gallop -= 1;
+            }
+            if left >= left_end || right >= right_end {
+                break 'merge;
+            }
+            left_wins = gallop_right(&src[right], src, left, left_end - left, 0, less);
+            dst[out..out + left_wins].clone_from_slice(&src[left..left + left_wins]);
+            out += left_wins;
+            left += left_wins;
+            dst[out] = src[right].clone();
+            out += 1;
+            right += 1;
+            if left >= left_end || right >= right_end {
+                break 'merge;
+            }
+            right_wins = gallop_left(&src[left], src, right, right_end - right, 0, less);
+            dst[out..out + right_wins].clone_from_slice(&src[right..right + right_wins]);
+            out += right_wins;
+            right += right_wins;
+            dst[out] = src[left].clone();
+            out += 1;
+            left += 1;
+            if left >= left_end || right >= right_end {
+                break 'merge;
+            }
+            if left_wins < MIN_GALLOP && right_wins < MIN_GALLOP {
+                break;
+            }
+        }
+        *min_gallop += 1;
+    }
+    let rest_left = left_end - left;
+    dst[out..out + rest_left].clone_from_slice(&src[left..left_end]);
+    out += rest_left;
+    dst[out..out + right_end - right].clone_from_slice(&src[right..right_end]);
 }
 
 /// `array.sort()` with no comparator: by `String(element)` in code unit
@@ -633,6 +881,34 @@ mod tests {
         let mut same = vec![3, 1, 2];
         sort_by(&mut same, |_, _| f64::NAN);
         assert_eq!(same, vec![3, 1, 2]);
+    }
+
+    /// Indices in the order Bun's `sort` leaves rows keyed by `keys`, a
+    /// `null` key comparing equal to everything.
+    fn sort_with_null_keys(keys: &[Option<i32>]) -> Vec<usize> {
+        let mut rows: Vec<(usize, Option<i32>)> = keys.iter().copied().enumerate().collect();
+        sort_by(&mut rows, |a, b| match (a.1, b.1) {
+            (Some(a), Some(b)) => f64::from(a - b),
+            _ => 0.0,
+        });
+        rows.into_iter().map(|(i, _)| i).collect()
+    }
+
+    #[test]
+    fn an_inconsistent_comparator_leaves_the_order_javascriptcore_does() {
+        // Printed by Bun for the same rows.
+        let keys = [5, 3, -1, 1, 9, -1, 2, 8, 7, -1, 4, 6, 0, -1, 3, 3, 1, -1, 9, 2].map(|k| (k >= 0).then_some(k));
+        assert_eq!(sort_with_null_keys(&keys), [12, 3, 16, 19, 1, 14, 15, 10, 0, 2, 11, 8, 4, 5, 6, 7, 9, 13, 17, 18]);
+
+        // Long enough for runs to be merged, with galloping.
+        let keys: Vec<Option<i32>> = (0..100).map(|i| (i % 13 != 5).then_some((i * 37) % 101)).collect();
+        let expected = [
+            0, 71, 41, 11, 82, 52, 22, 93, 63, 33, 3, 74, 14, 85, 55, 25, 66, 36, 6, 77, 47, 17, 88, 58, 28, 99, 69, 39, 9, 80, 50,
+            20, 91, 61, 1, 72, 42, 12, 53, 23, 94, 64, 34, 4, 75, 45, 86, 56, 97, 67, 37, 7, 78, 89, 81, 92, 32, 2, 5, 15, 26, 48, 59,
+            29, 40, 10, 51, 21, 62, 73, 43, 13, 84, 54, 24, 95, 65, 46, 16, 27, 98, 68, 8, 18, 35, 38, 49, 19, 30, 31, 44, 57, 60, 70,
+            76, 79, 83, 87, 90, 96,
+        ];
+        assert_eq!(sort_with_null_keys(&keys), expected);
     }
 
     #[test]
