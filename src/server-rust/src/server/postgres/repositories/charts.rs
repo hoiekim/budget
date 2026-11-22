@@ -3,6 +3,7 @@
 use serde_json::json;
 
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{json_parse, truthy, Json, Obj};
 use crate::server::postgres::database::{Filters, SearchFilters};
 use crate::server::postgres::models::{chart, MaskedUser, UpdateArgs};
@@ -30,7 +31,7 @@ fn parse_configuration(configuration: &Json) -> anyhow::Result<Json> {
 
 /// The user's live charts, narrowed to one id and/or one type when given and not empty.
 pub async fn search_charts(user: &MaskedUser, chart_id: Option<&str>, chart_type: Option<&str>) -> anyhow::Result<Vec<Json>> {
-    let mut filters: Filters = filters! { "user_id" => user.user_id.clone() };
+    let mut filters: Filters = filters! { "user_id" => shared_with(user) };
     if let Some(chart_id) = chart_id.filter(|id| !id.is_empty()) {
         filters.extend(filters! { "chart_id" => chart_id });
     }
@@ -77,10 +78,10 @@ pub async fn update_chart(user: &MaskedUser, chart_id: &str, data: &Obj) -> anyh
         return Ok(false);
     }
 
-    let model = chart::TABLE.update(&json!(chart_id), &updates, UpdateArgs { user_id: Some(&user.user_id), ..Default::default() }).await?;
+    let model = chart::TABLE.update(&json!(chart_id), &updates, UpdateArgs { user_id: Some(shared_with(user)), ..Default::default() }).await?;
     Ok(model.is_some())
 }
 
 pub async fn delete_chart(user: &MaskedUser, chart_id: &str) -> anyhow::Result<bool> {
-    chart::TABLE.soft_delete(&json!(chart_id), Some(&user.user_id)).await
+    chart::TABLE.soft_delete(&json!(chart_id), Some(shared_with(user))).await
 }

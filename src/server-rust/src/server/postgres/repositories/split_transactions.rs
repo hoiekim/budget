@@ -4,6 +4,7 @@ use serde_json::json;
 
 use super::transactions::{date_range, id_context, id_of, utc_today, Deleted};
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{Json, Obj};
 use crate::server::logger;
 use crate::server::postgres::client::{pool, Executor};
@@ -30,7 +31,7 @@ pub type PartialSplitTransaction = Obj;
 async fn get_split_transactions_by_transaction(user: &MaskedUser, transaction_id: &str) -> anyhow::Result<Vec<Json>> {
     let models = split_transaction::TABLE
         .query(
-            filters! { "user_id" => user.user_id.as_str(), "transaction_id" => transaction_id },
+            filters! { "user_id" => shared_with(user), "transaction_id" => transaction_id },
             SearchFilters::default(),
             None,
         )
@@ -39,7 +40,7 @@ async fn get_split_transactions_by_transaction(user: &MaskedUser, transaction_id
 }
 
 fn search_filters(user: &MaskedUser, options: &SearchSplitTransactionsOptions) -> Filters {
-    let mut filters = filters! { "user_id" => user.user_id.as_str() };
+    let mut filters = filters! { "user_id" => shared_with(user) };
     if let Some(transaction_id) = options.transaction_id.as_deref().filter(|id| !id.is_empty()) {
         filters.extend(filters! { "transaction_id" => transaction_id });
     }
@@ -98,7 +99,7 @@ pub async fn update_split_transactions(user: &MaskedUser, transactions: &[Partia
             .update(
                 tx.get("split_transaction_id").unwrap_or(&Json::Null),
                 &row,
-                UpdateArgs { user_id: Some(&user.user_id), exclude_deleted: Some(true), ..Default::default() },
+                UpdateArgs { user_id: Some(shared_with(user)), exclude_deleted: Some(true), ..Default::default() },
             )
             .await;
         match updated {
@@ -126,7 +127,7 @@ pub async fn delete_split_transactions(
         return Ok(Deleted { deleted: 0 });
     }
     let ids: Vec<Json> = split_transaction_ids.iter().map(|id| json!(id)).collect();
-    let deleted = split_transaction::TABLE.bulk_soft_delete(&ids, &[("user_id", json!(user.user_id))], client).await?;
+    let deleted = split_transaction::TABLE.bulk_soft_delete(&ids, &[("user_id", shared_with(user))], client).await?;
     Ok(Deleted { deleted })
 }
 
@@ -297,7 +298,7 @@ mod tests {
         assert_eq!(
             executor.calls(),
             vec![(
-                "SELECT * FROM split_transactions WHERE user_id = $1 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC".to_string(),
+                "SELECT * FROM split_transactions WHERE user_id = ANY(sharing_user_ids($1)) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC".to_string(),
                 vec![json!("usr-1")],
             )]
         );
@@ -329,7 +330,7 @@ mod tests {
             ..Default::default()
         };
         search_split_transactions_on(&executor, &user("usr-1"), &options).await.unwrap();
-        assert!(executor.sql(0).starts_with("SELECT * FROM split_transactions WHERE user_id = $1 AND transaction_id = $2 AND account_id = $3 AND "));
+        assert!(executor.sql(0).starts_with("SELECT * FROM split_transactions WHERE user_id = ANY(sharing_user_ids($1)) AND transaction_id = $2 AND account_id = $3 AND "));
         assert_eq!(executor.values(0), vec![json!("usr-1"), json!("tx-9"), json!("acc-9")]);
 
         let executor = FakeExecutor::new();
@@ -491,7 +492,7 @@ mod tests {
         assert_eq!(
             executor.calls(),
             vec![(
-                "UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE split_transaction_id IN ($1, $2) AND user_id = $3 RETURNING split_transaction_id".to_string(),
+                "UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE split_transaction_id IN ($1, $2) AND user_id = ANY(sharing_user_ids($3)) RETURNING split_transaction_id".to_string(),
                 vec![json!("split-1"), json!("split-2"), json!("usr-1")],
             )]
         );

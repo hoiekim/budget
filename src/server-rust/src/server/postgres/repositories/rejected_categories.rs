@@ -11,7 +11,11 @@ use crate::server::postgres::models::{rejected_category, MaskedUser};
 /// Records a user's rejection of `category_id` for `transaction_id`. UPSERT
 /// so a re-reject of the same pair just refreshes the timestamp.
 ///
-/// The `WHERE user_id = $2` on the ON CONFLICT DO UPDATE branch is
+/// The row belongs to the transaction's owner, whoever in their sharing group
+/// rejected the category: the suggestion engine reads rejections per owner. A
+/// transaction outside the group inserts nothing.
+///
+/// The owner check on the ON CONFLICT DO UPDATE branch is
 /// defense-in-depth: transaction_id is globally unique today, but if a
 /// future schema change ever lets two users share a transaction_id, this
 /// guard prevents cross-user clobber.
@@ -30,10 +34,12 @@ async fn add_rejected_category_on(
     let sql = "
     INSERT INTO rejected_categories
       (transaction_id, user_id, category_id)
-    VALUES ($1, $2, $3)
+    SELECT t.transaction_id, t.user_id, $3
+    FROM transactions t
+    WHERE t.transaction_id = $1 AND t.user_id = ANY(sharing_user_ids($2))
     ON CONFLICT (transaction_id, category_id)
     DO UPDATE SET rejected_at = CURRENT_TIMESTAMP
-      WHERE rejected_categories.user_id = $2
+      WHERE rejected_categories.user_id = EXCLUDED.user_id
     RETURNING *
   ";
     let result = executor.query(sql, &[json!(transaction_id), json!(user.user_id), json!(category_id)]).await?;
@@ -59,7 +65,7 @@ async fn remove_rejected_category_on(
     // simple-key helpers) assert a simple key and would fail. Carve-out.
     let sql = "
     DELETE FROM rejected_categories
-    WHERE user_id = $1
+    WHERE user_id = ANY(sharing_user_ids($1))
       AND transaction_id = $2
       AND category_id = $3
   ";
@@ -205,10 +211,15 @@ mod tests {
         let result = add_rejected_category_on(&executor, &fake_user(), "tx-1", "cat-A").await.unwrap().unwrap();
         let sql = executor.sql(0);
         assert!(matches(r"INSERT INTO rejected_categories", &sql));
-        assert!(matches(r"\(\s*transaction_id,\s+user_id,\s+category_id\s*\)\s*VALUES\s*\(\$1,\s*\$2,\s*\$3\)", &sql));
+        // The row is written under the transaction's owner, for a transaction the
+        // user or someone sharing data with them owns.
+        assert!(matches(
+            r"\(\s*transaction_id,\s+user_id,\s+category_id\s*\)\s*SELECT\s+t\.transaction_id,\s+t\.user_id,\s+\$3\s+FROM transactions t\s+WHERE t\.transaction_id\s*=\s*\$1 AND t\.user_id = ANY\(sharing_user_ids\(\$2\)\)\s+ON CONFLICT",
+            &sql
+        ));
         assert!(matches(r"ON CONFLICT \(transaction_id,\s*category_id\)", &sql));
         assert!(matches(r"DO UPDATE SET\s+rejected_at\s*=\s*CURRENT_TIMESTAMP", &sql));
-        assert!(matches(r"rejected_categories\.user_id\s*=\s*\$2", &sql));
+        assert!(matches(r"WHERE rejected_categories\.user_id\s*=\s*EXCLUDED\.user_id\s+RETURNING \*", &sql));
         assert_eq!(executor.values(0), vec![json!("tx-1"), json!("u-1"), json!("cat-A")]);
         assert_eq!(json_stringify(&result), r#"{"transaction_id":"tx-1","category_id":"cat-A","rejected_at":"now"}"#);
     }
@@ -236,7 +247,7 @@ mod tests {
         let n = remove_rejected_category_on(&executor, &fake_user(), "tx-1", "cat-A").await.unwrap();
         let sql = executor.sql(0);
         assert!(matches(r"DELETE FROM rejected_categories", &sql));
-        assert!(matches(r"user_id\s*=\s*\$1", &sql));
+        assert!(matches(r"WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)", &sql));
         assert!(matches(r"transaction_id\s*=\s*\$2", &sql));
         assert!(matches(r"category_id\s*=\s*\$3", &sql));
         assert_eq!(executor.values(0), vec![json!("u-1"), json!("tx-1"), json!("cat-A")]);
@@ -374,8 +385,8 @@ mod tests {
         assert_eq!(
             statements(&executor),
             [
-                "\n    INSERT INTO rejected_categories\n      (transaction_id, user_id, category_id)\n    VALUES ($1, $2, $3)\n    ON CONFLICT (transaction_id, category_id)\n    DO UPDATE SET rejected_at = CURRENT_TIMESTAMP\n      WHERE rejected_categories.user_id = $2\n    RETURNING *\n  ",
-                "\n    DELETE FROM rejected_categories\n    WHERE user_id = $1\n      AND transaction_id = $2\n      AND category_id = $3\n  ",
+                "\n    INSERT INTO rejected_categories\n      (transaction_id, user_id, category_id)\n    SELECT t.transaction_id, t.user_id, $3\n    FROM transactions t\n    WHERE t.transaction_id = $1 AND t.user_id = ANY(sharing_user_ids($2))\n    ON CONFLICT (transaction_id, category_id)\n    DO UPDATE SET rejected_at = CURRENT_TIMESTAMP\n      WHERE rejected_categories.user_id = EXCLUDED.user_id\n    RETURNING *\n  ",
+                "\n    DELETE FROM rejected_categories\n    WHERE user_id = ANY(sharing_user_ids($1))\n      AND transaction_id = $2\n      AND category_id = $3\n  ",
                 "BEGIN",
                 "\n      INSERT INTO rejected_categories\n        (transaction_id, user_id, category_id, rejected_at)\n      SELECT $1, user_id, category_id, rejected_at\n      FROM rejected_categories\n      WHERE transaction_id = $2\n      ON CONFLICT (transaction_id, category_id) DO NOTHING\n      ",
                 "DELETE FROM rejected_categories WHERE transaction_id = $1",

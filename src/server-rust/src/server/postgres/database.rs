@@ -20,11 +20,51 @@ pub struct PreparedQuery {
 pub enum Filter {
     Value(Json),
     IsNotNull,
+    /// On an owner column: the rows of this user (by id) and of everyone
+    /// they share data with, `<column> = ANY(sharing_user_ids($N))`.
+    SharedWith(String),
 }
 
 impl<T: Into<Json>> From<T> for Filter {
     fn from(value: T) -> Self {
         Filter::Value(value.into())
+    }
+}
+
+/// The SQL function listing a user and everyone in their sharing group (see `models/sharing.rs`).
+pub const SHARING_USER_IDS: &str = "sharing_user_ids";
+
+/// The filter that matches the rows of `user` and of everyone they share data with:
+/// `table.query(filters! { "user_id" => shared_with(user) }, …)`.
+pub fn shared_with(user: &crate::server::postgres::models::MaskedUser) -> Filter {
+    Filter::SharedWith(user.user_id.clone())
+}
+
+/// The predicate a [`Filter::SharedWith`] becomes, for SQL written by hand.
+pub fn shared_with_sql(column: &str, placeholder: &str) -> String {
+    format!("{column} = ANY({SHARING_USER_IDS}({placeholder}))")
+}
+
+/// The advisory-lock key a user's sharing group serializes on: the same for
+/// every member, and the user's own id while they share with nobody.
+pub fn sharing_lock_key_sql(placeholder: &str) -> String {
+    format!("(SELECT min(member::text) FROM unnest({SHARING_USER_IDS}({placeholder})) member)")
+}
+
+/// The advisory-lock key of sharing membership as a whole. Joining or leaving
+/// a group holds it exclusively; work that reads a group and must not see it
+/// change midway holds it shared, and takes it before any lock keyed on the
+/// group (`sharing_lock_key_sql`), so the two never wait on each other in turn.
+pub const SHARING_MEMBERSHIP_LOCK_KEY: &str = "hashtext('sharing')";
+
+/// `<column> = $N` for a value, or the sharing-group predicate for
+/// [`Filter::SharedWith`], with the value to bind at `$N`. `None` for
+/// `IS NOT NULL`, which binds nothing.
+pub fn equality_condition(column: &str, filter: &Filter, index: usize) -> Option<(String, Json)> {
+    match filter {
+        Filter::SharedWith(user_id) => Some((shared_with_sql(column, &format!("${index}")), Json::String(user_id.clone()))),
+        Filter::Value(value) => Some((format!("{column} = ${index}"), value.clone())),
+        Filter::IsNotNull => None,
     }
 }
 
@@ -143,9 +183,11 @@ pub fn build_update(
         match &extra.value {
             Filter::IsNotNull => sql.push_str(&format!(" AND {} IS NOT NULL", extra.column)),
             Filter::Value(Json::Null) => sql.push_str(&format!(" AND {} IS NULL", extra.column)),
-            Filter::Value(value) => {
-                values.push(value.clone());
-                sql.push_str(&format!(" AND {} = ${}", extra.column, values.len()));
+            other => {
+                if let Some((condition, value)) = equality_condition(&extra.column, other, values.len() + 1) {
+                    values.push(value);
+                    sql.push_str(&format!(" AND {condition}"));
+                }
             }
         }
     }
@@ -218,12 +260,17 @@ pub fn build_upsert_many(
     Some(PreparedQuery { sql, values })
 }
 
-pub fn build_soft_delete(table: &str, primary_key: &str, primary_key_value: &Json, additional_where: Option<(&str, &Json)>) -> PreparedQuery {
+pub fn build_soft_delete(table: &str, primary_key: &str, primary_key_value: &Json, additional_where: Option<(&str, &Filter)>) -> PreparedQuery {
     let mut values = vec![primary_key_value.clone()];
     let mut sql = format!("UPDATE {table} SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE {primary_key} = $1");
-    if let Some((column, value)) = additional_where {
-        values.push(value.clone());
-        sql.push_str(&format!(" AND {column} = ${}", values.len()));
+    if let Some((column, filter)) = additional_where {
+        match equality_condition(column, filter, values.len() + 1) {
+            Some((condition, value)) => {
+                values.push(value);
+                sql.push_str(&format!(" AND {condition}"));
+            }
+            None => sql.push_str(&format!(" AND {column} IS NOT NULL")),
+        }
     }
     sql.push_str(&format!(" RETURNING {primary_key}"));
     PreparedQuery { sql, values }
@@ -239,7 +286,9 @@ pub struct DateRange {
 
 #[derive(Clone, Debug, Default)]
 pub struct SearchFilters {
-    pub user_id: Option<String>,
+    /// The owner filter: a user id (an empty one adds no condition, as a
+    /// falsy id does in the TypeScript) or [`shared_with`] a user.
+    pub user_id: Option<Filter>,
     pub primary_key: Option<(String, Json)>,
     pub filters: Filters,
     /// `column IN (…)`; an empty list is skipped.
@@ -260,10 +309,17 @@ pub fn build_select_with_filters(table: &str, columns: &str, options: &SearchFil
     let mut conditions: Vec<String> = Vec::new();
     let mut values: Vec<Json> = Vec::new();
 
-    // An empty user id is falsy in the TypeScript and adds no condition.
-    if let Some(user_id) = options.user_id.as_ref().filter(|id| !id.is_empty()) {
-        values.push(Json::String(user_id.clone()));
-        conditions.push(format!("user_id = ${}", values.len()));
+    // A falsy user id (`""`, `null`) adds no condition, as in the TypeScript.
+    match &options.user_id {
+        Some(Filter::Value(value)) if !crate::js::truthy(value) => {}
+        Some(filter) => match equality_condition("user_id", filter, values.len() + 1) {
+            Some((condition, value)) => {
+                values.push(value);
+                conditions.push(condition);
+            }
+            None => conditions.push("user_id IS NOT NULL".to_string()),
+        },
+        None => {}
     }
     if let Some((column, value)) = &options.primary_key {
         values.push(value.clone());
@@ -273,9 +329,11 @@ pub fn build_select_with_filters(table: &str, columns: &str, options: &SearchFil
         match filter {
             Filter::IsNotNull => conditions.push(format!("{key} IS NOT NULL")),
             Filter::Value(Json::Null) => conditions.push(format!("{key} IS NULL")),
-            Filter::Value(value) => {
-                values.push(value.clone());
-                conditions.push(format!("{key} = ${}", values.len()));
+            other => {
+                if let Some((condition, value)) = equality_condition(key, other, values.len() + 1) {
+                    values.push(value);
+                    conditions.push(condition);
+                }
             }
         }
     }
@@ -411,7 +469,7 @@ mod tests {
             "t",
             "*",
             &SearchFilters {
-                user_id: Some("u".into()),
+                user_id: Some(Filter::from("u")),
                 filters: crate::filters! { "a" => 1, "b" => Json::Null, "c" => Filter::IsNotNull },
                 in_filters: vec![("d".into(), vec![json!("x"), json!("y")])],
                 after: Some(("id".into(), json!("k"))),
@@ -424,5 +482,58 @@ mod tests {
             query.sql,
             "SELECT * FROM t WHERE user_id = $1 AND a = $2 AND b IS NULL AND c IS NOT NULL AND d IN ($3, $4) AND (is_deleted IS NULL OR is_deleted = FALSE) AND id > $5 ORDER BY id LIMIT $6"
         );
+    }
+}
+
+#[cfg(test)]
+mod sharing_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn shared_with_widens_the_owner_column() {
+        let query = build_select_with_filters(
+            "accounts",
+            "*",
+            &SearchFilters {
+                user_id: Some(Filter::SharedWith("u1".into())),
+                filters: crate::filters! { "item_id" => "i1", "user_id" => Filter::SharedWith("u2".into()) },
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            query.sql,
+            "SELECT * FROM accounts WHERE user_id = ANY(sharing_user_ids($1)) AND item_id = $2 AND user_id = ANY(sharing_user_ids($3)) AND (is_deleted IS NULL OR is_deleted = FALSE)"
+        );
+        assert_eq!(query.values, vec![json!("u1"), json!("i1"), json!("u2")]);
+    }
+
+    #[test]
+    fn a_falsy_owner_adds_nothing() {
+        for owner in [Filter::from(""), Filter::Value(Json::Null)] {
+            let query = build_select_with_filters("t", "*", &SearchFilters { user_id: Some(owner), ..Default::default() });
+            assert_eq!(query.sql, "SELECT * FROM t WHERE (is_deleted IS NULL OR is_deleted = FALSE)");
+        }
+    }
+
+    #[test]
+    fn update_and_soft_delete_take_a_sharing_group() {
+        let options = UpdateOptions {
+            additional_where: &[AdditionalWhere::new("user_id", Filter::SharedWith("u".into()))],
+            returning: &["chart_id"],
+            exclude_deleted: true,
+        };
+        let data = json!({ "name": "n" }).as_object().cloned().unwrap();
+        let query = build_update("charts", "chart_id", &json!("c"), &data, &options).unwrap();
+        assert_eq!(
+            query.sql,
+            "UPDATE charts SET updated = CURRENT_TIMESTAMP, name = $1 WHERE chart_id = $2 AND user_id = ANY(sharing_user_ids($3)) AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING chart_id"
+        );
+        let delete = build_soft_delete("charts", "chart_id", &json!("c"), Some(("user_id", &Filter::SharedWith("u".into()))));
+        assert_eq!(
+            delete.sql,
+            "UPDATE charts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE chart_id = $1 AND user_id = ANY(sharing_user_ids($2)) RETURNING chart_id"
+        );
+        assert_eq!(delete.values, vec![json!("c"), json!("u")]);
     }
 }

@@ -8,6 +8,7 @@ use serde_json::json;
 
 use super::securities::search_securities_by_id;
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{to_js_string, truthy_opt, Json, Obj};
 use crate::server::logger;
 use crate::server::postgres::client::Executor;
@@ -86,7 +87,7 @@ fn snapshot_reads(user: Option<&MaskedUser>, options: &SearchSnapshotsOptions) -
     // whose original date is outside the cursor's window.
     let date_range = date_range("updated", &options.start_date, &options.end_date);
     let exclude_deleted = Some(!options.include_deleted);
-    let user_id = user.map(|user| user.user_id.clone());
+    let user_id = user.map(shared_with);
     let has_account_ids = options.account_ids.as_ref().is_some_and(|ids| !ids.is_empty());
 
     let mut filters = Filters::new();
@@ -358,7 +359,7 @@ pub async fn get_holding_snapshots(user: &MaskedUser, options: HoldingSnapshotsO
         .query(
             filters,
             SearchFilters {
-                user_id: Some(user.user_id.clone()),
+                user_id: Some(shared_with(user)),
                 date_range: date_range("snapshot_date", &options.start_date, &options.end_date),
                 order_by: Some("snapshot_date".to_string()),
                 ..Default::default()
@@ -379,7 +380,7 @@ pub async fn get_holding_snapshot_by_id(user: &MaskedUser, snapshot_id: &str) ->
         .query_one(filters! {
             "snapshot_id" => snapshot_id,
             "snapshot_type" => SnapshotType::Holding.as_str(),
-            "user_id" => user.user_id.as_str(),
+            "user_id" => shared_with(user),
         })
         .await?;
     Ok(row.as_ref().map(to_holding_snapshot))
@@ -477,7 +478,7 @@ pub async fn get_holding_snapshots_for_securities(
         .query(
             filters! { "snapshot_type" => SnapshotType::Holding.as_str(), "holding_account_id" => account_id },
             SearchFilters {
-                user_id: Some(user.user_id.clone()),
+                user_id: Some(shared_with(user)),
                 in_filters: vec![("holding_security_id".to_string(), security_ids.iter().map(|id| json!(id)).collect())],
                 order_by: Some("snapshot_date, snapshot_id".to_string()),
                 ..Default::default()
@@ -498,7 +499,7 @@ pub async fn soft_delete_holding_snapshots(
         return Ok(());
     }
     let ids: Vec<Json> = snapshot_ids.iter().map(|snapshot_id| json!(snapshot_id)).collect();
-    snapshot::TABLE.bulk_soft_delete(&ids, &[("user_id", json!(user.user_id))], client).await?;
+    snapshot::TABLE.bulk_soft_delete(&ids, &[("user_id", shared_with(user))], client).await?;
     Ok(())
 }
 
@@ -616,7 +617,7 @@ pub async fn upsert_snapshots(snapshots: &[Obj]) -> Vec<UpsertResult> {
 }
 
 pub async fn delete_snapshot_by_id(user: &MaskedUser, snapshot_id: &str) -> anyhow::Result<bool> {
-    snapshot::TABLE.soft_delete(&json!(snapshot_id), Some(&user.user_id)).await
+    snapshot::TABLE.soft_delete(&json!(snapshot_id), Some(shared_with(user))).await
 }
 
 #[cfg(test)]
@@ -655,7 +656,7 @@ mod tests {
         let (sql, values) = batch_sql(reads.owned);
         assert_eq!(
             sql,
-            "SELECT * FROM snapshots WHERE user_id = $1 AND updated >= $2 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY snapshot_id LIMIT $3"
+            "SELECT * FROM snapshots WHERE user_id = ANY(sharing_user_ids($1)) AND updated >= $2 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY snapshot_id LIMIT $3"
         );
         assert_eq!(values, vec![json!("usr-1"), json!("2026-01-01"), json!(STREAM_BATCH_SIZE)]);
 
@@ -738,7 +739,7 @@ mod tests {
         assert!(batch_sql(live.securities.unwrap()).0.contains("(is_deleted IS NULL OR is_deleted = FALSE)"));
 
         let all = reads(SearchSnapshotsOptions { include_deleted: true, ..Default::default() });
-        assert_eq!(batch_sql(all.owned).0, "SELECT * FROM snapshots WHERE user_id = $1 ORDER BY snapshot_id LIMIT $2");
+        assert_eq!(batch_sql(all.owned).0, "SELECT * FROM snapshots WHERE user_id = ANY(sharing_user_ids($1)) ORDER BY snapshot_id LIMIT $2");
         assert_eq!(
             batch_sql(all.securities.unwrap()).0,
             "SELECT * FROM snapshots WHERE snapshot_type = $1 ORDER BY snapshot_id LIMIT $2"
@@ -759,7 +760,7 @@ mod tests {
         let (sql, values) = batch_sql(reads.holdings_by_account.unwrap());
         assert_eq!(
             sql,
-            "SELECT * FROM snapshots WHERE user_id = $1 AND snapshot_type = $2 AND holding_account_id = $3 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY snapshot_id LIMIT $4"
+            "SELECT * FROM snapshots WHERE user_id = ANY(sharing_user_ids($1)) AND snapshot_type = $2 AND holding_account_id = $3 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY snapshot_id LIMIT $4"
         );
         assert_eq!(values, vec![json!("usr-1"), json!("holding"), json!("acc-brokerage"), json!(STREAM_BATCH_SIZE)]);
     }
@@ -1062,12 +1063,12 @@ mod tests {
         let calls = client.calls();
         assert_eq!(
             calls[0].0,
-            "SELECT * FROM snapshots WHERE user_id = $1 AND snapshot_type = $2 AND holding_account_id = $3 AND holding_security_id IN ($4, $5) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY snapshot_date, snapshot_id"
+            "SELECT * FROM snapshots WHERE user_id = ANY(sharing_user_ids($1)) AND snapshot_type = $2 AND holding_account_id = $3 AND holding_security_id IN ($4, $5) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY snapshot_date, snapshot_id"
         );
         assert_eq!(calls[0].1, vec![json!("usr-1"), json!("holding"), json!("acc-1"), json!("sec-1"), json!("sec-2")]);
         assert_eq!(
             calls[1].0,
-            "UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE snapshot_id IN ($1) AND user_id = $2 RETURNING snapshot_id"
+            "UPDATE snapshots SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE snapshot_id IN ($1) AND user_id = ANY(sharing_user_ids($2)) RETURNING snapshot_id"
         );
         assert_eq!(calls[1].1, vec![json!("snap-1"), json!("usr-1")]);
     }

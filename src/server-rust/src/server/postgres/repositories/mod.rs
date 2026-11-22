@@ -14,6 +14,7 @@ pub mod recurrings;
 pub mod rejected_categories;
 pub mod securities;
 pub mod session;
+pub mod sharing;
 pub mod snapshots;
 pub mod split_transactions;
 pub mod transactions;

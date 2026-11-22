@@ -4,6 +4,7 @@ use serde_json::json;
 
 use super::transactions::soft_delete_transaction_pairs_by_accounts;
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{to_js_string, Json, Obj};
 use crate::server::logger;
 use crate::server::postgres::client::{with_transaction, Executor};
@@ -16,18 +17,18 @@ use crate::server::postgres::models::{
 pub type PartialAccount = Obj;
 
 pub async fn get_accounts(user: &MaskedUser) -> anyhow::Result<Vec<Json>> {
-    let models = account::TABLE.query(filters! { "user_id" => user.user_id.as_str() }, SearchFilters::default(), None).await?;
+    let models = account::TABLE.query(filters! { "user_id" => shared_with(user) }, SearchFilters::default(), None).await?;
     Ok(models.iter().map(account::to_json).collect())
 }
 
 pub async fn get_account(user: &MaskedUser, account_id: &str) -> anyhow::Result<Option<Json>> {
-    let model = account::TABLE.query_one(filters! { "user_id" => user.user_id.as_str(), "account_id" => account_id }).await?;
+    let model = account::TABLE.query_one(filters! { "user_id" => shared_with(user), "account_id" => account_id }).await?;
     Ok(model.map(|model| account::to_json(&model)))
 }
 
 pub async fn search_accounts_by_item_id(user: &MaskedUser, item_id: &str) -> anyhow::Result<Vec<Json>> {
     let models = account::TABLE
-        .query(filters! { "user_id" => user.user_id.as_str(), "item_id" => item_id }, SearchFilters::default(), None)
+        .query(filters! { "user_id" => shared_with(user), "item_id" => item_id }, SearchFilters::default(), None)
         .await?;
     Ok(models.iter().map(account::to_json).collect())
 }
@@ -42,7 +43,7 @@ pub struct SearchAccountsOptions {
 }
 
 pub async fn search_accounts(user: &MaskedUser, options: SearchAccountsOptions) -> anyhow::Result<Vec<Json>> {
-    let mut filters = filters! { "user_id" => user.user_id.as_str() };
+    let mut filters = filters! { "user_id" => shared_with(user) };
     if let Some(account_id) = options.account_id.filter(|account_id| !account_id.is_empty()) {
         filters.extend(filters! { "account_id" => account_id });
     }
@@ -65,7 +66,7 @@ pub async fn search_accounts_by_id(user: &MaskedUser, account_ids: &[String]) ->
         return Ok(Vec::new());
     }
     let ids: Vec<Json> = account_ids.iter().map(|account_id| json!(account_id)).collect();
-    let models = account::TABLE.query_by_ids(&ids, &[("user_id", json!(user.user_id))]).await?;
+    let models = account::TABLE.query_by_ids(&ids, &[("user_id", shared_with(user))]).await?;
     Ok(models.iter().map(account::to_json).collect())
 }
 
@@ -182,7 +183,7 @@ pub async fn update_accounts(user: &MaskedUser, accounts: &[PartialAccount]) -> 
             .update(
                 account.get("account_id").unwrap_or(&Json::Null),
                 &row,
-                UpdateArgs { user_id: Some(&user.user_id), exclude_deleted: Some(true), ..Default::default() },
+                UpdateArgs { user_id: Some(shared_with(user)), exclude_deleted: Some(true), ..Default::default() },
             )
             .await;
         match updated {
@@ -211,25 +212,23 @@ pub async fn delete_accounts(user: &MaskedUser, account_ids: &[String]) -> anyho
 
 /// The statements of `delete_accounts`, on the transaction's `client`.
 async fn soft_delete_accounts(user: &MaskedUser, account_ids: &[String], client: &dyn Executor) -> anyhow::Result<u64> {
-    let user_id = user.user_id.as_str();
-
     for account_id in account_ids {
         let account = json!(account_id);
-        transaction::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(user_id), Some(client)).await?;
-        investment_transaction::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(user_id), Some(client)).await?;
-        split_transaction::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(user_id), Some(client)).await?;
+        transaction::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(shared_with(user)), Some(client)).await?;
+        investment_transaction::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(shared_with(user)), Some(client)).await?;
+        split_transaction::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(shared_with(user)), Some(client)).await?;
         // Account-balance snapshots store the account in `account_id`; holding
         // snapshots store it in `holding_account_id` (their `account_id` is NULL).
         // Soft-delete both so deleting an account leaves no orphaned holding history.
-        snapshot::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(user_id), Some(client)).await?;
-        snapshot::TABLE.bulk_soft_delete_by_column("holding_account_id", &account, Some(user_id), Some(client)).await?;
-        holding::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(user_id), Some(client)).await?;
+        snapshot::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(shared_with(user)), Some(client)).await?;
+        snapshot::TABLE.bulk_soft_delete_by_column("holding_account_id", &account, Some(shared_with(user)), Some(client)).await?;
+        holding::TABLE.bulk_soft_delete_by_column("account_id", &account, Some(shared_with(user)), Some(client)).await?;
     }
 
     soft_delete_transaction_pairs_by_accounts(user, account_ids, Some(client)).await?;
 
     let ids: Vec<Json> = account_ids.iter().map(|account_id| json!(account_id)).collect();
-    account::TABLE.bulk_soft_delete(&ids, &[("user_id", json!(user_id))], Some(client)).await
+    account::TABLE.bulk_soft_delete(&ids, &[("user_id", shared_with(user))], Some(client)).await
 }
 
 #[cfg(test)]
@@ -418,7 +417,7 @@ mod tests {
         assert_eq!(pair_deletes.len(), 2);
         for (sql, values) in &pair_deletes {
             assert!(sql.contains("SELECT transaction_id FROM transactions WHERE account_id = ANY($1))"));
-            assert!(sql.contains("AND user_id = $2"));
+            assert!(sql.contains("AND user_id = ANY(sharing_user_ids($2))"));
             // The `updated` bump is what lets a delta sync deliver the tombstone.
             assert!(sql.contains("SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP"));
             assert_eq!(values, &vec![json!(["acc-a", "acc-b"]), json!("usr-1")]);
@@ -442,7 +441,7 @@ mod tests {
         let (sql, values) = calls.last().unwrap();
         assert_eq!(
             sql,
-            "UPDATE accounts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE account_id IN ($1, $2) AND user_id = $3 RETURNING account_id"
+            "UPDATE accounts SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE account_id IN ($1, $2) AND user_id = ANY(sharing_user_ids($3)) RETURNING account_id"
         );
         assert_eq!(values, &vec![json!("acc-a"), json!("acc-b"), json!("usr-1")]);
     }

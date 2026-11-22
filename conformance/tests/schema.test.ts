@@ -22,6 +22,7 @@ interface Schema {
   columns: Record<string, unknown>[];
   indexes: Record<string, unknown>[];
   constraints: Record<string, unknown>[];
+  functions: Record<string, unknown>[];
 }
 
 // Names sort bytewise (`COLLATE "C"`), so the order does not depend on the
@@ -49,6 +50,17 @@ const CONSTRAINTS = `
   WHERE ns.nspname = 'public'
   ORDER BY rel.relname::text COLLATE "C", con.conname::text COLLATE "C"`;
 
+// The app's own SQL functions (extension functions such as pg_trgm's are
+// left out), with their whole definition: the body, volatility and so on.
+const FUNCTIONS = `
+  SELECT p.proname::text AS name, pg_get_function_identity_arguments(p.oid) AS arguments,
+         pg_get_functiondef(p.oid) AS definition
+  FROM pg_proc p
+  JOIN pg_namespace ns ON ns.oid = p.pronamespace
+  WHERE ns.nspname = 'public'
+    AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
+  ORDER BY p.proname::text COLLATE "C", 2`;
+
 /** Rows as the plain values a JSON file holds. */
 const plain = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
@@ -57,6 +69,7 @@ const readSchema = async (stack: Stack): Promise<Schema> =>
     columns: await stack.db.query(COLUMNS),
     indexes: await stack.db.query(INDEXES),
     constraints: await stack.db.query(CONSTRAINTS),
+    functions: await stack.db.query(FUNCTIONS),
   });
 
 let stack: Stack;
@@ -99,6 +112,10 @@ describe("the schema a server start creates", () => {
 
   // The second start finds every table there and runs the column migration
   // over it: it must accept each column's type as it is and add nothing.
+  test("has the same SQL functions, defined the same way", () => {
+    expect(actual.functions).toEqual(expected.functions);
+  });
+
   test("is left as it is by a restart", async () => {
     await stack.restart();
     expect(await readSchema(stack)).toEqual(expected);

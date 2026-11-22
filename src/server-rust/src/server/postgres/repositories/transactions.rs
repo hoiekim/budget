@@ -8,6 +8,7 @@ use serde_json::json;
 
 use super::budgets::get_owned_label_ids;
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{number_to_string, to_js_string, truthy, Json, JsDate, Obj};
 use crate::server::logger;
 use crate::server::postgres::client::{pool, Executor};
@@ -100,7 +101,7 @@ fn ids_of(ids: &[String]) -> Vec<Json> {
 
 pub async fn get_transaction(user: &MaskedUser, transaction_id: &str) -> anyhow::Result<Option<Json>> {
     let model = transaction::TABLE
-        .query_one(filters! { "user_id" => user.user_id.as_str(), "transaction_id" => transaction_id })
+        .query_one(filters! { "user_id" => shared_with(user), "transaction_id" => transaction_id })
         .await?;
     Ok(model.map(|row| transaction::to_json(&row)))
 }
@@ -129,7 +130,7 @@ fn search_query_options(options: &SearchTransactionsOptions) -> SearchFilters {
 
 /// `{ user_id, account_id }`: what both reads of a search filter by.
 fn search_investment_transaction_filters(user: &MaskedUser, options: &SearchTransactionsOptions) -> Filters {
-    let mut filters = filters! { "user_id" => user.user_id.as_str() };
+    let mut filters = filters! { "user_id" => shared_with(user) };
     if let Some(account_id) = &options.account_id {
         filters.extend(filters! { "account_id" => account_id.as_str() });
     }
@@ -167,7 +168,7 @@ pub async fn search_transactions_by_id(user: &MaskedUser, transaction_ids: &[Str
     if transaction_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let models = transaction::TABLE.query_by_ids(&ids_of(transaction_ids), &[("user_id", json!(user.user_id))]).await?;
+    let models = transaction::TABLE.query_by_ids(&ids_of(transaction_ids), &[("user_id", shared_with(user))]).await?;
     Ok(models.iter().map(transaction::to_json).collect())
 }
 
@@ -241,7 +242,7 @@ pub async fn update_transactions(user: &MaskedUser, transactions: &[PartialTrans
             .update(
                 tx.get("transaction_id").unwrap_or(&Json::Null),
                 &row,
-                UpdateArgs { user_id: Some(&user.user_id), exclude_deleted: Some(true), ..Default::default() },
+                UpdateArgs { user_id: Some(shared_with(user)), exclude_deleted: Some(true), ..Default::default() },
             )
             .await;
         match updated {
@@ -345,7 +346,7 @@ pub async fn soft_delete_transaction_pairs_by_accounts(
                 "transaction_id",
                 "account_id",
                 &match_values,
-                Some(&user.user_id),
+                Some(shared_with(user)),
                 client,
             )
             .await?;
@@ -361,7 +362,7 @@ pub async fn delete_transactions(user: &MaskedUser, transaction_ids: &[String], 
     let any_of_ids = Json::Array(ids.clone());
 
     // Soft-delete splits attached to each transaction (existing cascade).
-    split_transaction::TABLE.bulk_soft_delete_by_column("transaction_id", &any_of_ids, Some(&user.user_id), client).await?;
+    split_transaction::TABLE.bulk_soft_delete_by_column("transaction_id", &any_of_ids, Some(shared_with(user)), client).await?;
 
     // Cascade to transaction_pairs: a pair that references any soft-deleted
     // transaction must itself be soft-deleted, otherwise the surviving
@@ -369,10 +370,10 @@ pub async fn delete_transactions(user: &MaskedUser, transaction_ids: &[String], 
     // as already-paired and refuses to suggest a new candidate. Plaid
     // pending+settled duplicates hit this path. Two UPDATEs per cascade
     // (one per join column) instead of 2N for N transactions.
-    transaction_pair::TABLE.bulk_soft_delete_by_column("transaction_id_a", &any_of_ids, Some(&user.user_id), client).await?;
-    transaction_pair::TABLE.bulk_soft_delete_by_column("transaction_id_b", &any_of_ids, Some(&user.user_id), client).await?;
+    transaction_pair::TABLE.bulk_soft_delete_by_column("transaction_id_a", &any_of_ids, Some(shared_with(user)), client).await?;
+    transaction_pair::TABLE.bulk_soft_delete_by_column("transaction_id_b", &any_of_ids, Some(shared_with(user)), client).await?;
 
-    let deleted = transaction::TABLE.bulk_soft_delete(&ids, &[("user_id", json!(user.user_id))], client).await?;
+    let deleted = transaction::TABLE.bulk_soft_delete(&ids, &[("user_id", shared_with(user))], client).await?;
     Ok(Deleted { deleted })
 }
 
@@ -453,8 +454,8 @@ async fn search_transactions_by_account_id_on(
     // Both reads are issued and run to their end, as under `Promise.all`,
     // whether or not the other fails.
     let (tx_models, inv_models) = futures::join!(
-        transaction::TABLE.query(filters! { "user_id" => user.user_id.as_str() }, query_options.clone(), Some(executor)),
-        investment_transaction::TABLE.query(filters! { "user_id" => user.user_id.as_str() }, query_options, Some(executor)),
+        transaction::TABLE.query(filters! { "user_id" => shared_with(user) }, query_options.clone(), Some(executor)),
+        investment_transaction::TABLE.query(filters! { "user_id" => shared_with(user) }, query_options, Some(executor)),
     );
 
     Ok(AccountTransactions {
@@ -617,8 +618,8 @@ mod tests {
     #[test]
     fn scopes_both_the_transactions_and_the_investment_transactions_read_to_the_user() {
         let [(tx_sql, tx_values), (inv_sql, inv_values)] = search_queries("usr-99", &SearchTransactionsOptions::default());
-        assert!(tx_sql.starts_with("SELECT * FROM transactions WHERE user_id = $1"));
-        assert!(inv_sql.starts_with("SELECT * FROM investment_transactions WHERE user_id = $1"));
+        assert!(tx_sql.starts_with("SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1))"));
+        assert!(inv_sql.starts_with("SELECT * FROM investment_transactions WHERE user_id = ANY(sharing_user_ids($1))"));
         assert_eq!(tx_values[0], json!("usr-99"));
         assert_eq!(inv_values[0], json!("usr-99"));
     }
@@ -659,12 +660,12 @@ mod tests {
         let [(tx_sql, tx_values), (inv_sql, inv_values)] = search_queries("usr-1", &options);
         assert_eq!(
             tx_sql,
-            "SELECT * FROM transactions WHERE user_id = $1 AND pending = $2 AND updated <= $3 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY transaction_id LIMIT $4"
+            "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND pending = $2 AND updated <= $3 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY transaction_id LIMIT $4"
         );
         assert_eq!(tx_values, vec![json!("usr-1"), json!(false), json!("2026-11-01"), json!(500)]);
         assert_eq!(
             inv_sql,
-            "SELECT * FROM investment_transactions WHERE user_id = $1 AND updated <= $2 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY investment_transaction_id LIMIT $3"
+            "SELECT * FROM investment_transactions WHERE user_id = ANY(sharing_user_ids($1)) AND updated <= $2 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY investment_transaction_id LIMIT $3"
         );
         assert_eq!(inv_values, vec![json!("usr-1"), json!("2026-11-01"), json!(500)]);
     }
@@ -707,11 +708,11 @@ mod tests {
         assert_eq!(executor.calls().len(), 2);
         assert_eq!(
             executor.sql(0),
-            "SELECT * FROM transactions WHERE user_id = $1 AND account_id IN ($2) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
+            "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND account_id IN ($2) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
         );
         assert_eq!(
             executor.sql(1),
-            "SELECT * FROM investment_transactions WHERE user_id = $1 AND account_id IN ($2) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
+            "SELECT * FROM investment_transactions WHERE user_id = ANY(sharing_user_ids($1)) AND account_id IN ($2) AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
         );
         assert_eq!(executor.values(0), vec![json!("usr-1"), json!("acc-1")]);
     }
@@ -761,7 +762,7 @@ mod tests {
         search_transactions_by_account_id_on(&executor, &user("usr-1"), &accounts, &range, &Default::default()).await.unwrap();
         assert_eq!(
             executor.sql(0),
-            "SELECT * FROM transactions WHERE user_id = $1 AND account_id IN ($2, $3) AND date >= $4 AND date <= $5 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
+            "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND account_id IN ($2, $3) AND date >= $4 AND date <= $5 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
         );
         assert_eq!(
             executor.values(1),
@@ -774,7 +775,7 @@ mod tests {
         search_transactions_by_account_id_on(&executor, &user("usr-1"), &accounts[..1], &range, &Default::default()).await.unwrap();
         assert_eq!(
             executor.sql(0),
-            "SELECT * FROM transactions WHERE user_id = $1 AND account_id IN ($2) AND date <= $3 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
+            "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND account_id IN ($2) AND date <= $3 AND (is_deleted IS NULL OR is_deleted = FALSE) ORDER BY date DESC"
         );
         assert_eq!(executor.values(0), vec![json!("usr-1"), json!("acc-1"), json!("Invalid Date")]);
     }
@@ -964,19 +965,19 @@ mod tests {
             executor.calls(),
             vec![
                 (
-                    "UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id = ANY($1) AND user_id = $2 RETURNING split_transaction_id".to_string(),
+                    "UPDATE split_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id = ANY($1) AND user_id = ANY(sharing_user_ids($2)) RETURNING split_transaction_id".to_string(),
                     any_of_ids.clone(),
                 ),
                 (
-                    "UPDATE transaction_pairs SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id_a = ANY($1) AND user_id = $2 RETURNING pair_id".to_string(),
+                    "UPDATE transaction_pairs SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id_a = ANY($1) AND user_id = ANY(sharing_user_ids($2)) RETURNING pair_id".to_string(),
                     any_of_ids.clone(),
                 ),
                 (
-                    "UPDATE transaction_pairs SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id_b = ANY($1) AND user_id = $2 RETURNING pair_id".to_string(),
+                    "UPDATE transaction_pairs SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id_b = ANY($1) AND user_id = ANY(sharing_user_ids($2)) RETURNING pair_id".to_string(),
                     any_of_ids,
                 ),
                 (
-                    "UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id IN ($1, $2) AND user_id = $3 RETURNING transaction_id".to_string(),
+                    "UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE transaction_id IN ($1, $2) AND user_id = ANY(sharing_user_ids($3)) RETURNING transaction_id".to_string(),
                     vec![json!("tx-1"), json!("tx-2"), json!("usr-1")],
                 ),
             ]
@@ -998,7 +999,7 @@ mod tests {
         let statement = |column: &str| {
             (
                 format!(
-                    "UPDATE transaction_pairs SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE {column} IN (SELECT transaction_id FROM transactions WHERE account_id = ANY($1)) AND user_id = $2 RETURNING pair_id"
+                    "UPDATE transaction_pairs SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE {column} IN (SELECT transaction_id FROM transactions WHERE account_id = ANY($1)) AND user_id = ANY(sharing_user_ids($2)) RETURNING pair_id"
                 ),
                 vec![json!(["acc-1", "acc-2"]), json!("usr-1")],
             )

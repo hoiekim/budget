@@ -3,6 +3,7 @@
 use serde_json::json;
 
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{to_js_string, Json, Obj};
 use crate::server::logger;
 use crate::server::postgres::client::Executor;
@@ -10,7 +11,7 @@ use crate::server::postgres::database::{error_result, success_result, SearchFilt
 use crate::server::postgres::models::{holding, MaskedUser};
 
 pub async fn get_holdings(user: &MaskedUser) -> anyhow::Result<Vec<Json>> {
-    let models = holding::TABLE.query(filters! { "user_id" => user.user_id.as_str() }, SearchFilters::default(), None).await?;
+    let models = holding::TABLE.query(filters! { "user_id" => shared_with(user) }, SearchFilters::default(), None).await?;
     Ok(models.iter().map(holding::to_json).collect())
 }
 
@@ -68,7 +69,7 @@ pub async fn delete_holdings(user: &MaskedUser, holding_ids: &[String]) -> anyho
     // BEFORE calling this: that terminator is the deletion signal historical
     // readers (charts, performance calculations) consume.
     let ids: Vec<Json> = holding_ids.iter().map(|holding_id| json!(holding_id)).collect();
-    holding::TABLE.bulk_soft_delete(&ids, &[("user_id", json!(user.user_id))], None).await
+    holding::TABLE.bulk_soft_delete(&ids, &[("user_id", shared_with(user))], None).await
 }
 
 pub async fn search_holdings_by_account_id(user: &MaskedUser, account_ids: &[String]) -> anyhow::Result<Vec<Json>> {
@@ -78,7 +79,7 @@ pub async fn search_holdings_by_account_id(user: &MaskedUser, account_ids: &[Str
     let ids: Vec<Json> = account_ids.iter().map(|account_id| json!(account_id)).collect();
     let models = holding::TABLE
         .query(
-            filters! { "user_id" => user.user_id.as_str() },
+            filters! { "user_id" => shared_with(user) },
             SearchFilters { in_filters: vec![("account_id".to_string(), ids)], ..Default::default() },
             None,
         )

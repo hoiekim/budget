@@ -6,6 +6,7 @@ use serde_json::json;
 
 use super::transactions::{date_range, id_context, id_of, next_unknown_index, utc_today, Deleted};
 use crate::filters;
+use crate::server::postgres::database::shared_with;
 use crate::js::{math_round, num, number_to_string, Json, Obj};
 use crate::server::logger;
 use crate::server::postgres::client::{pool, Executor};
@@ -30,7 +31,7 @@ pub struct SearchInvestmentTransactionsOptions {
 pub type PartialInvestmentTransaction = Obj;
 
 pub async fn get_investment_transactions(user: &MaskedUser, options: &SearchInvestmentTransactionsOptions) -> anyhow::Result<Vec<Json>> {
-    let mut filters = filters! { "user_id" => user.user_id.as_str() };
+    let mut filters = filters! { "user_id" => shared_with(user) };
     if let Some(account_id) = &options.account_id {
         filters.extend(filters! { "account_id" => account_id.as_str() });
     }
@@ -52,7 +53,7 @@ pub async fn get_investment_transactions(user: &MaskedUser, options: &SearchInve
 
 pub async fn get_investment_transaction(user: &MaskedUser, investment_transaction_id: &str) -> anyhow::Result<Option<Json>> {
     let model = investment_transaction::TABLE
-        .query_one(filters! { "user_id" => user.user_id.as_str(), "investment_transaction_id" => investment_transaction_id })
+        .query_one(filters! { "user_id" => shared_with(user), "investment_transaction_id" => investment_transaction_id })
         .await?;
     Ok(model.map(|row| investment_transaction::to_json(&row)))
 }
@@ -116,7 +117,7 @@ pub async fn update_investment_transactions(user: &MaskedUser, transactions: &[P
             .update(
                 tx.get("investment_transaction_id").unwrap_or(&Json::Null),
                 &row,
-                UpdateArgs { user_id: Some(&user.user_id), exclude_deleted: Some(true), ..Default::default() },
+                UpdateArgs { user_id: Some(shared_with(user)), exclude_deleted: Some(true), ..Default::default() },
             )
             .await;
         match updated {
@@ -245,7 +246,7 @@ pub async fn delete_investment_transactions(
         return Ok(Deleted { deleted: 0 });
     }
     let ids: Vec<Json> = transaction_ids.iter().map(|id| json!(id)).collect();
-    let deleted = investment_transaction::TABLE.bulk_soft_delete(&ids, &[("user_id", json!(user.user_id))], client).await?;
+    let deleted = investment_transaction::TABLE.bulk_soft_delete(&ids, &[("user_id", shared_with(user))], client).await?;
     Ok(Deleted { deleted })
 }
 
@@ -485,7 +486,7 @@ mod tests {
         assert_eq!(
             executor.calls(),
             vec![(
-                "UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE investment_transaction_id IN ($1) AND user_id = $2 RETURNING investment_transaction_id".to_string(),
+                "UPDATE investment_transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE investment_transaction_id IN ($1) AND user_id = ANY(sharing_user_ids($2)) RETURNING investment_transaction_id".to_string(),
                 vec![json!("itx-1"), json!("usr-1")],
             )]
         );

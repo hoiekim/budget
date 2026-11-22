@@ -23,7 +23,7 @@ pub async fn get_securities_for_user(user: &MaskedUser) -> anyhow::Result<Vec<Js
     SELECT DISTINCT s.*
     FROM securities s
     INNER JOIN holdings h ON h.security_id = s.security_id
-    WHERE h.user_id = $1
+    WHERE h.user_id = ANY(sharing_user_ids($1))
   ";
     let result = pool().query(sql, &[json!(user.user_id)]).await?;
     result.rows.into_iter().map(|row| Ok(security::to_json(&security::TABLE.validate(row)?))).collect()

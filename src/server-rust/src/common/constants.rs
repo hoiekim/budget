@@ -21,6 +21,8 @@ pub const CHARTS: &str = "charts";
 pub const API_KEYS: &str = "api_keys";
 pub const REJECTED_CATEGORIES: &str = "rejected_categories";
 pub const CPI_SNAPSHOTS: &str = "cpi_snapshots";
+pub const SHARING_MEMBERS: &str = "sharing_members";
+pub const SHARING_INVITATIONS: &str = "sharing_invitations";
 
 /// Id prefix of the holding snapshots the client derives from a holding's transactions.
 pub const DERIVED_HOLDING_SNAPSHOT_PREFIX: &str = "derived-holding-";
@@ -34,6 +36,10 @@ pub const RESTATED_FROM: &str = "restated_from";
 
 /// Key on the `raw` of a reinvestment the plan-statement import inferred for a restated holding.
 pub const REINVESTED_DISTRIBUTION: &str = "reinvested_distribution";
+
+/// The account anyone can sign in to on a public demo instance. It takes no
+/// part in data sharing: whatever it could read, every visitor could.
+pub const DEMO_USERNAME: &str = "demo";
 
 pub const BUDGET_NAME_REQUIRED_MESSAGE: &str = "Budget name cannot be empty.";
 pub const SECTION_NAME_REQUIRED_MESSAGE: &str = "Section name cannot be empty.";
