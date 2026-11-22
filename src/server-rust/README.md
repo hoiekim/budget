@@ -145,9 +145,10 @@ than of the TypeScript.
   JavaScriptCore turns the vertical tab into a space only in strings it keeps
   as 16-bit, which depends on where the string came from; Rust treats such
   text as 8-bit.
-- **Unicode tables.** Merchant-name keys fold case and classify letters with
-  Rust's Unicode tables, which can disagree with JavaScriptCore's for
-  characters added in recent Unicode versions.
+- **Unicode tables.** Merchant-name keys fold case and classify letters, and
+  the address of an invitation to share data is lower-cased and checked for
+  white space, with Rust's Unicode tables, which can disagree with
+  JavaScriptCore's for characters added in recent Unicode versions.
 - **Concurrent upstream calls.** Where the TypeScript runs calls with
   `Promise.all`, Rust sends them one at a time in Bun's usual order: the
   detail and price lookups of `POST /validate-ticker`, and the Plaid calls

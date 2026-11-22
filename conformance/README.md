@@ -113,6 +113,7 @@ servers and that test together.
 | The `PENDING_EXPIRATION` webhook marks an item bad whatever its provider | `plaid-webhook.test.ts` |
 | The `ITEM_UPDATED` webhook on a SimpleFin item asks Plaid's `/item/get` with the SimpleFin URL as access token, and answers 500 | `plaid-webhook.test.ts` |
 | A pending SimpleFin transaction is stored as posted | `sync-simple-fin.test.ts` |
+| An invitation to an address the demo account has is sent, though one to its username is refused; the demo account sees and can decline it, and only accepting is refused | `sharing-email.test.ts` |
 
 Two more are worked around rather than pinned:
 
