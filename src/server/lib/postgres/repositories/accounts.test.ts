@@ -339,7 +339,7 @@ describe("deleteAccounts", () => {
       expect(sql).toMatch(
         /SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)\)/i,
       );
-      expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);
+      expect(sql).toMatch(/\)\s+AND\s+user_id\s*=\s*ANY\(sharing_user_ids\(\$2\)\)\s+RETURNING\b/i);
       // The `updated` bump is what lets a delta sync deliver the tombstone;
       // without it the client keeps the stale pair until a cold load.
       expect(sql).toMatch(/SET\s+is_deleted\s*=\s*TRUE,\s*updated\s*=\s*CURRENT_TIMESTAMP/i);

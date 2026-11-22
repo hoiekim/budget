@@ -1,9 +1,11 @@
 import { ItemProvider } from "common";
 import {
   Route,
+  accountsTable,
   createManualTransaction,
   getAccount,
   getItem,
+  getRowOwner,
   requireQueryString,
   validationError,
 } from "server";
@@ -40,7 +42,10 @@ export const getNewTransactionRoute = new Route<NewTransactionGetResponse>(
       };
     }
 
-    const created = await createManualTransaction(user, {
+    const owner = await getRowOwner(user, accountsTable, account_id);
+    if (!owner) return { status: "failed", message: "Account not found." };
+
+    const created = await createManualTransaction(owner, {
       account_id,
       iso_currency_code: account.balances.iso_currency_code,
     });

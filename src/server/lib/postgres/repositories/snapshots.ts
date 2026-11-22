@@ -27,7 +27,7 @@ import {
   QueryExecutor,
   toJSONBatches,
 } from "../models";
-import { UpsertResult, successResult, errorResult } from "../database";
+import { UpsertResult, successResult, errorResult, sharedWith } from "../database";
 import { searchSecuritiesById } from "./securities";
 import { logger } from "../../logger";
 
@@ -98,7 +98,7 @@ export async function* searchSnapshots(
         [SECURITY_ID]: options.security_id,
       },
       {
-        user_id: user?.user_id,
+        user_id: user ? sharedWith(user) : undefined,
         inFilters: options.account_ids?.length ? { [ACCOUNT_ID]: options.account_ids } : undefined,
         dateRange,
         excludeDeleted,
@@ -134,7 +134,7 @@ export async function* searchSnapshots(
           [HOLDING_SECURITY_ID]: options.security_id,
         },
         {
-          user_id: user?.user_id,
+          user_id: user ? sharedWith(user) : undefined,
           inFilters: options.account_ids?.length
             ? { [HOLDING_ACCOUNT_ID]: options.account_ids }
             : undefined,
@@ -232,7 +232,7 @@ export const getHoldingSnapshots = async (
   if (options.security_id) filters.holding_security_id = options.security_id;
 
   const snapshots = await snapshotsTable.query(filters, {
-    user_id: user.user_id,
+    user_id: sharedWith(user),
     dateRange:
       options.startDate || options.endDate
         ? { column: SNAPSHOT_DATE, start: options.startDate, end: options.endDate }
@@ -258,7 +258,7 @@ export const getHoldingSnapshotById = async (
   const row = await snapshotsTable.queryOne({
     [SNAPSHOT_ID]: snapshot_id,
     [SNAPSHOT_TYPE]: "holding",
-    [USER_ID]: user.user_id,
+    [USER_ID]: sharedWith(user),
   });
   return row ? toHoldingSnapshot(row) : undefined;
 };
@@ -321,7 +321,7 @@ export const getHoldingSnapshotsForSecurities = async (
   const snapshots = await snapshotsTable.query(
     { [SNAPSHOT_TYPE]: "holding", [HOLDING_ACCOUNT_ID]: account_id },
     {
-      user_id: user.user_id,
+      user_id: sharedWith(user),
       inFilters: { [HOLDING_SECURITY_ID]: security_ids },
       orderBy: `${SNAPSHOT_DATE}, ${SNAPSHOT_ID}`,
     },
@@ -346,7 +346,7 @@ export const softDeleteHoldingSnapshots = async (
   client?: QueryExecutor,
 ): Promise<void> => {
   if (!snapshot_ids.length) return;
-  await snapshotsTable.bulkSoftDelete(snapshot_ids, { [USER_ID]: user.user_id }, client);
+  await snapshotsTable.bulkSoftDelete(snapshot_ids, { [USER_ID]: sharedWith(user) }, client);
 };
 
 
@@ -427,6 +427,6 @@ export const deleteSnapshotById = async (
   user: MaskedUser,
   snapshot_id: string,
 ): Promise<boolean> => {
-  return await snapshotsTable.softDelete(snapshot_id, user.user_id);
+  return await snapshotsTable.softDelete(snapshot_id, sharedWith(user));
 };
 

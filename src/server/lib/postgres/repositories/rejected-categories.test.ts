@@ -48,12 +48,14 @@ describe("addRejectedCategory [SQL-shape]", () => {
     const result = await addRejectedCategory(fakeUser(), "tx-1", "cat-A");
     const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/INSERT INTO rejected_categories/);
+    // The row is written under the transaction's owner, for a transaction the
+    // user or someone sharing data with them owns.
     expect(sql).toMatch(
-      /\(\s*transaction_id,\s+user_id,\s+category_id\s*\)\s*VALUES\s*\(\$1,\s*\$2,\s*\$3\)/,
+      /\(\s*transaction_id,\s+user_id,\s+category_id\s*\)\s*SELECT\s+t\.transaction_id,\s+t\.user_id,\s+\$3\s+FROM transactions t\s+WHERE t\.transaction_id\s*=\s*\$1 AND t\.user_id = ANY\(sharing_user_ids\(\$2\)\)\s+ON CONFLICT/,
     );
     expect(sql).toMatch(/ON CONFLICT \(transaction_id,\s*category_id\)/);
     expect(sql).toMatch(/DO UPDATE SET\s+rejected_at\s*=\s*CURRENT_TIMESTAMP/);
-    expect(sql).toMatch(/rejected_categories\.user_id\s*=\s*\$2/);
+    expect(sql).toMatch(/WHERE rejected_categories\.user_id\s*=\s*EXCLUDED\.user_id\s+RETURNING \*/);
     expect(values).toEqual(["tx-1", "u-1", "cat-A"]);
     expect(result?.transaction_id).toBe("tx-1");
     expect(result?.category_id).toBe("cat-A");
@@ -66,7 +68,7 @@ describe("removeRejectedCategory [SQL-shape]", () => {
     const n = await removeRejectedCategory(fakeUser(), "tx-1", "cat-A");
     const [sql, values] = mockUnsafe.mock.calls[0];
     expect(sql).toMatch(/DELETE FROM rejected_categories/);
-    expect(sql).toMatch(/user_id\s*=\s*\$1/);
+    expect(sql).toMatch(/WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)/);
     expect(sql).toMatch(/transaction_id\s*=\s*\$2/);
     expect(sql).toMatch(/category_id\s*=\s*\$3/);
     expect(values).toEqual(["u-1", "tx-1", "cat-A"]);

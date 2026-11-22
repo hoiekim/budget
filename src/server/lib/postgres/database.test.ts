@@ -2,6 +2,11 @@ import { describe, it, expect } from "bun:test";
 import {
   SOFT_DELETE_CONDITION,
   IS_NOT_NULL,
+  SHARING_USER_IDS,
+  SharedWith,
+  sharedWith,
+  sharedWithSql,
+  sharingLockKeySql,
   prepareParamValue,
   prepareQuery,
   buildInsert,
@@ -478,6 +483,184 @@ describe("buildSelectWithFilters", () => {
       "SELECT * FROM transactions WHERE user_id = $1 ORDER BY date DESC LIMIT $2 OFFSET $3",
     );
     expect(values).toEqual(["u1", 50, 100]);
+  });
+});
+
+// `sharedWith(user)` in an owner slot widens `<column> = $N` to the user's
+// sharing group. Every builder that takes an equality value has its own copy of
+// the branch, so each is pinned with a neighbour on both sides of the slot: the
+// placeholder has to keep its place in the numbering, and the bound value has
+// to be the plain id, never the sentinel object.
+describe("sharedWith filters", () => {
+  const alice = sharedWith({ user_id: "u1" });
+
+  it("sharedWith carries the user's id and nothing else", () => {
+    const filter = sharedWith({ user_id: "u1", username: "alice" } as { user_id: string });
+    expect(filter).toBeInstanceOf(SharedWith);
+    expect(filter.user_id).toBe("u1");
+    expect(Object.keys(filter)).toEqual(["user_id"]);
+  });
+
+  it("sharedWithSql matches the column against the sharing function of the placeholder", () => {
+    expect(SHARING_USER_IDS).toBe("sharing_user_ids");
+    expect(sharedWithSql("t.user_id", "$2")).toBe("t.user_id = ANY(sharing_user_ids($2))");
+  });
+
+  it("sharingLockKeySql is the smallest member id of the placeholder's group", () => {
+    expect(sharingLockKeySql("$1")).toBe(
+      "(SELECT min(member::text) FROM unnest(sharing_user_ids($1)) member)",
+    );
+  });
+
+  it("prepareQuery renders the group predicate in place and binds the plain id", () => {
+    const { sql, values } = prepareQuery({ account_id: "a1", user_id: alice, label: "x" });
+    expect(sql).toBe(
+      "WHERE account_id = $1 AND user_id = ANY(sharing_user_ids($2)) AND label = $3" +
+        ` AND ${SOFT_DELETE_CONDITION}`,
+    );
+    expect(values).toStrictEqual(["a1", "u1", "x"]);
+  });
+
+  it("prepareQuery keeps a plain owner id as an equality in the same slot", () => {
+    const { sql, values } = prepareQuery({ account_id: "a1", user_id: "u1", label: "x" });
+    expect(sql).toBe(
+      `WHERE account_id = $1 AND user_id = $2 AND label = $3 AND ${SOFT_DELETE_CONDITION}`,
+    );
+    expect(values).toStrictEqual(["a1", "u1", "x"]);
+  });
+
+  it("prepareQuery numbers the group predicate from startIndex", () => {
+    const { sql, values } = prepareQuery(
+      { "t.user_id": alice },
+      { startIndex: 4, excludeDeleted: false },
+    );
+    expect(sql).toBe("WHERE t.user_id = ANY(sharing_user_ids($4))");
+    expect(values).toStrictEqual(["u1"]);
+  });
+
+  it("buildSelectWithFilters renders a filters entry as the group predicate, numbered between its neighbours", () => {
+    const { sql, values } = buildSelectWithFilters("transactions", "*", {
+      primaryKey: { column: "id", value: "t1" },
+      filters: { account_id: "a1", user_id: alice, label: "x" },
+      inFilters: { category_id: ["c1"] },
+    });
+    expect(sql).toBe(
+      "SELECT * FROM transactions WHERE id = $1 AND account_id = $2" +
+        " AND user_id = ANY(sharing_user_ids($3)) AND label = $4 AND category_id IN ($5)" +
+        ` AND ${SOFT_DELETE_CONDITION}`,
+    );
+    expect(values).toStrictEqual(["t1", "a1", "u1", "x", "c1"]);
+  });
+
+  it("buildSelectWithFilters keeps a plain owner id in filters as an equality", () => {
+    const { sql, values } = buildSelectWithFilters("transactions", "*", {
+      filters: { account_id: "a1", user_id: "u1" },
+      excludeDeleted: false,
+    });
+    expect(sql).toBe("SELECT * FROM transactions WHERE account_id = $1 AND user_id = $2");
+    expect(values).toStrictEqual(["a1", "u1"]);
+  });
+
+  it("buildSelectWithFilters renders the user_id option as the group predicate at $1", () => {
+    const { sql, values } = buildSelectWithFilters("transactions", "*", {
+      user_id: alice,
+      filters: { account_id: "a1" },
+      limit: 5,
+    });
+    expect(sql).toBe(
+      "SELECT * FROM transactions WHERE user_id = ANY(sharing_user_ids($1)) AND account_id = $2" +
+        ` AND ${SOFT_DELETE_CONDITION} LIMIT $3`,
+    );
+    expect(values).toStrictEqual(["u1", "a1", 5]);
+  });
+
+  it("buildUpdate renders a sharedWith additionalWhere as the group predicate after the key", () => {
+    const q = buildUpdate(
+      "transactions",
+      "id",
+      "t1",
+      { amount: 5 },
+      { additionalWhere: { column: "user_id", value: alice } },
+    );
+    expect(q!.sql).toBe(
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2" +
+        ` AND user_id = ANY(sharing_user_ids($3)) AND ${SOFT_DELETE_CONDITION}`,
+    );
+    expect(q!.values).toStrictEqual([5, "t1", "u1"]);
+  });
+
+  it("buildUpdate numbers a sharedWith additionalWhere in sequence with the ones around it", () => {
+    const q = buildUpdate(
+      "transactions",
+      "id",
+      "t1",
+      { amount: 5 },
+      {
+        additionalWhere: [
+          { column: "account_id", value: "a1" },
+          { column: "user_id", value: alice },
+          { column: "label_category_id", value: null },
+          { column: "label_category_confidence", value: 1 },
+        ],
+        returning: ["id"],
+      },
+    );
+    expect(q!.sql).toBe(
+      "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE id = $2" +
+        " AND account_id = $3 AND user_id = ANY(sharing_user_ids($4))" +
+        " AND label_category_id IS NULL AND label_category_confidence = $5" +
+        ` AND ${SOFT_DELETE_CONDITION} RETURNING id`,
+    );
+    expect(q!.values).toStrictEqual([5, "t1", "a1", "u1", 1]);
+  });
+
+  it("buildSoftDelete renders a sharedWith additionalWhere as the group predicate at $2", () => {
+    const { sql, values } = buildSoftDelete("transactions", "id", "t1", {
+      column: "user_id",
+      value: alice,
+    });
+    expect(sql).toBe(
+      "UPDATE transactions SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP WHERE id = $1" +
+        " AND user_id = ANY(sharing_user_ids($2)) RETURNING id",
+    );
+    expect(values).toStrictEqual(["t1", "u1"]);
+  });
+});
+
+// The other half of the sentinel: it names a group, so it can filter rows but
+// can't be the owner written to one. Each builder that writes column values
+// refuses it rather than binding the object.
+describe("sharedWith as a value to store", () => {
+  const alice = sharedWith({ user_id: "u1" });
+  const REFUSAL = "sharedWith() scopes a query to a sharing group; it is not a value to store";
+
+  it("prepareParamValue refuses it", () => {
+    expect(() => prepareParamValue(alice as never)).toThrow(REFUSAL);
+  });
+
+  it("buildInsert refuses it as a column value", () => {
+    expect(() => buildInsert("charts", { name: "c", user_id: alice as never })).toThrow(REFUSAL);
+  });
+
+  it("buildUpdate refuses it as a SET value", () => {
+    expect(() => buildUpdate("charts", "chart_id", "c1", { name: "c", user_id: alice })).toThrow(
+      REFUSAL,
+    );
+  });
+
+  it("buildUpsert refuses it as a column value", () => {
+    expect(() => buildUpsert("charts", "chart_id", { chart_id: "c1", user_id: alice })).toThrow(
+      REFUSAL,
+    );
+  });
+
+  it("buildUpsertMany refuses it in any row", () => {
+    expect(() =>
+      buildUpsertMany("charts", "chart_id", [
+        { chart_id: "c1", user_id: "u1" },
+        { chart_id: "c2", user_id: alice },
+      ]),
+    ).toThrow(REFUSAL);
   });
 });
 

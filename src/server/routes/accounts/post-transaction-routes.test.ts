@@ -453,7 +453,7 @@ describe("post-split-transaction route", () => {
     expect(boundValue(upd!, "label_category_confidence")).toBe(0.7);
   });
 
-  test("update WHERE is scoped to caller's user_id (cross-user write guard)", async () => {
+  test("update WHERE is scoped to the caller and whoever shares data with them (cross-user write guard)", async () => {
     const result = await postSplitTransactionRoute.execute(
       makeReq(
         postSplitTransactionRoute,
@@ -468,7 +468,9 @@ describe("post-split-transaction route", () => {
     // drops the guard but still SETs user_id. Both the PK and the user_id scope
     // must key the WHERE clause.
     const upd = findUpdate("split_transactions");
-    const whereUserId = upd!.sql.match(/WHERE[\s\S]*?\buser_id\s*=\s*\$(\d+)/i);
+    const whereUserId = upd!.sql.match(
+      /WHERE[\s\S]*?\buser_id\s*=\s*ANY\(sharing_user_ids\(\$(\d+)\)\)/i,
+    );
     const wherePk = upd!.sql.match(/WHERE[\s\S]*?\bsplit_transaction_id\s*=\s*\$(\d+)/i);
     expect(whereUserId).not.toBeNull();
     expect(wherePk).not.toBeNull();

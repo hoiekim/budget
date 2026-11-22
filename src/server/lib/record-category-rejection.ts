@@ -1,6 +1,6 @@
 import type { JSONTransactionLabel } from "common";
 import type { MaskedUser } from "server";
-import { addRejectedCategory, removeRejectedCategory, pool } from "server";
+import { addRejectedCategory, removeRejectedCategory, pool, sharedWithSql } from "server";
 
 export interface PrevLabel {
   category_id: string | null;
@@ -88,7 +88,7 @@ export const getPrevLabel = async (
   }>(
     `SELECT label_category_id, label_budget_id, label_category_confidence
      FROM transactions
-     WHERE transaction_id = $1 AND user_id = $2
+     WHERE transaction_id = $1 AND ${sharedWithSql("user_id", "$2")}
        AND (is_deleted IS NULL OR is_deleted = FALSE)
      LIMIT 1`,
     [transaction_id, user.user_id],

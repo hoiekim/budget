@@ -142,6 +142,8 @@ const SERVER_KEYED: Record<string, string> = {
     "the user_id is read back from the users row linked to a verified security event's subject; no caller can name it",
   "lib/postgres/repositories/users.ts::writeUser::usersTable.upsert":
     "seeds the admin and demo users at boot; no route writes a user",
+  "lib/postgres/repositories/sharing.ts::acceptSharingInvitation::sharingMembersTable.upsertMany":
+    "both ids come from an invitation row read in the same transaction with the session user as its invitee; neither is supplied by the caller",
 };
 
 const exemptionKey = (call: WriteCall): string => `${call.site}::${call.receiver}.${call.verb}`;
@@ -175,8 +177,10 @@ interface WriteCall {
 }
 
 /**
- * The owner predicate has to be spelled like one: `user_id`, `userId`, or a
- * property access ending in either. Reading the argument is all a syntactic
+ * The owner predicate has to be spelled like one: `user_id`, `userId`, a
+ * property access ending in either, or `sharedWith(user)`, which widens the
+ * predicate to the caller's sharing group and to nobody outside it. Reading
+ * the argument is all a syntactic
  * scan can do, so it vouches only for spellings that say what the value is —
  * an omitted slot, `undefined`, `void 0` and a local whose type admits
  * `undefined` are all indistinguishable to it, and the last one reaches the
@@ -185,10 +189,19 @@ interface WriteCall {
  */
 const OWNER_NAMES = new Set(["user_id", "userId"]);
 
+const SHARED_OWNER_FILTER = "sharedWith";
+
 const isOwnerExpression = (node: ts.Expression | undefined): boolean => {
   if (!node) return false;
   if (ts.isIdentifier(node)) return OWNER_NAMES.has(node.text);
   if (ts.isPropertyAccessExpression(node)) return OWNER_NAMES.has(node.name.text);
+  if (ts.isCallExpression(node)) {
+    return (
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === SHARED_OWNER_FILTER &&
+      node.arguments.length === 1
+    );
+  }
   return false;
 };
 
@@ -474,6 +487,18 @@ describe("server writes carry the owner", () => {
         const scopedByParameter = async (userId: string) => {
           await chartsTable.update(id, row, undefined, userId);
         };
+        const scopedToSharingGroup = async () => {
+          await chartsTable.update(id, row, undefined, sharedWith(user));
+        };
+        const filterScopedToSharingGroup = async () => {
+          await chartsTable.bulkSoftDelete(ids, { [USER_ID]: sharedWith(user) });
+        };
+        const scopedByAnotherCall = async () => {
+          await chartsTable.update(id, row, undefined, everyone(user));
+        };
+        const scopedBySharingMethod = async () => {
+          await chartsTable.update(id, row, undefined, filters.sharedWith(user));
+        };
         const hashing = (plaintext: string) => createHash("sha256").update(plaintext).digest("hex");
         const softDeleteScoped = async () => { await chartsTable.softDelete(id, user.user_id); };
         const softDeleteBare = async () => { await chartsTable.softDelete(id); };
@@ -548,6 +573,10 @@ describe("server writes carry the owner", () => {
       'fixture.ts::throughElementAccess tables["chartsTable"].update owner=<omitted> scoped=false',
       "fixture.ts::scoped chartsTable.update owner=user.user_id scoped=true",
       "fixture.ts::scopedByParameter chartsTable.update owner=userId scoped=true",
+      "fixture.ts::scopedToSharingGroup chartsTable.update owner=sharedWith(user) scoped=true",
+      "fixture.ts::filterScopedToSharingGroup chartsTable.bulkSoftDelete owner={ [USER_ID]: sharedWith(user) } scoped=true",
+      "fixture.ts::scopedByAnotherCall chartsTable.update owner=everyone(user) scoped=false",
+      "fixture.ts::scopedBySharingMethod chartsTable.update owner=filters.sharedWith(user) scoped=false",
       'fixture.ts::hashing createHash("sha256").update owner=<omitted> scoped=false',
       "fixture.ts::softDeleteScoped chartsTable.softDelete owner=user.user_id scoped=true",
       "fixture.ts::softDeleteBare chartsTable.softDelete owner=<omitted> scoped=false",

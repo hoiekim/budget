@@ -5,6 +5,7 @@ export * from "./router";
 export * from "./sync";
 export * from "./transfers";
 export * from "./recurrings";
+export * from "./sharing";
 export * from "./sorter";
 export * from "./reorder";
 export * from "./useVooHistory";
