@@ -173,6 +173,8 @@ describe("transfer detection", () => {
     expect(loggedCounts(stack, "Transfer-detection job completed")).toEqual({ usersProcessed: await liveUsers(stack), pairsSuggested: 2 });
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: a pair matching a deleted one is counted but not stored; a stranger's pair for the same transactions makes the insert fail.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("respects live and rejected pairs, cleans pairs whose transaction is gone, and survives a refused insert", async () => {
     const stack = await start();
     const alice = await owner(stack, "alice", ["chk", "sav", "sav2"]);

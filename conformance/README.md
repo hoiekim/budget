@@ -91,3 +91,33 @@ Rules that keep the suite the same on both servers and on any machine:
 - Write the test against the Bun server first: it is the reference. Then run
   it against Rust, then run both through `conformance/run.ts` and bring the
   transcript diff to zero.
+
+## Pinned Bun behaviours
+
+The Bun server is the reference, so where it does something that looks like
+a bug, the suite pins what it does and the Rust server copies it. Each test
+that pins one says so in a comment above it. Fixing one means changing both
+servers and that test together.
+
+| Behaviour | Pinned in |
+|---|---|
+| `GET /recurrings` with a `start-date` the database cannot read answers 500 and alarms, instead of a validation message | `recurrings.test.ts` |
+| `POST /recurrings` with a `recurring_id`, and `DELETE /recurrings` with an `id`, that is not a UUID answer 500 and alarm | `recurrings.test.ts` |
+| Pairing a suggested pair again with `status: "confirmed"` leaves it suggested | `transfers.test.ts` |
+| A transaction can be paired with itself | `transfers.test.ts` |
+| Transfer detection counts a suggestion it does not store when a deleted pair holds the same transactions, and a stranger's pair for them makes its insert fail ("Failed to insert transfer pair") | `detect-transfers.test.ts` |
+| A plan-statement row whose id someone else's row holds is counted as written but not stored | `plan-statement.test.ts` |
+| A plan-statement answer naming deleted rows still sends all three change events, though nothing was written | `plan-statement-effects.test.ts` |
+| One failed price backfill after a plan-statement import stops the pricing of every later security | `plan-statement-effects.test.ts` |
+| A Plaid `ITEM_LOGIN_REQUIRED` during sync marks the item bad, yet records the sync as a success | `sync-plaid.test.ts` |
+| The `PENDING_EXPIRATION` webhook marks an item bad whatever its provider | `plaid-webhook.test.ts` |
+| The `ITEM_UPDATED` webhook on a SimpleFin item asks Plaid's `/item/get` with the SimpleFin URL as access token, and answers 500 | `plaid-webhook.test.ts` |
+| A pending SimpleFin transaction is stored as posted | `sync-simple-fin.test.ts` |
+
+Two more are worked around rather than pinned:
+
+- `DELETE /login` answers before the session row is deleted, so a request
+  sent right after can still find the session; tests that replay a
+  signed-out cookie wait for the row to go first.
+- Each SimpleFin sync gives every holding's security a new random id; tests
+  read the id back instead of naming it.

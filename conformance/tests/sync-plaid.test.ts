@@ -376,6 +376,8 @@ describe("the scheduled sync of a Plaid item", () => {
 });
 
 describe("Plaid's errors during the scheduled sync", () => {
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: an item that needs its user to log in again is marked bad, yet the sync is recorded as a success.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("an item that needs its user to log in again is marked bad, and the sync still counts as done", async () => {
     const { item_id, access_token } = await plaidItem(
       adminId,

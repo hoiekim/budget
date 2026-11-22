@@ -72,6 +72,8 @@ const logged = (message: string): Record<string, unknown> => {
 const alarmsTitled = (title: string) => stack.upstream.discord.alarms().filter((alarm) => alarm.title === `🚨 Budget Server Error: ${title}`);
 
 describe("the scheduled sync of a SimpleFin item", () => {
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: a pending SimpleFin transaction is stored as posted.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("fetches two years back the first time, and stores accounts, transactions, holdings, securities and institutions", async () => {
     const connection = stack.upstream.simplefin.addConnection({
       username: "sf-full-user",

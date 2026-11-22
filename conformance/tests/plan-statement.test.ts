@@ -548,6 +548,8 @@ describe("a planned row the account can take", () => {
     expect((await post(owner.client, importBody(owner.account_id, [share, cash, share]))).json).toEqual(success({ written: 0, alreadyImported: 2 }));
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: a row whose id someone else's row holds is counted as written but not stored.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("whose id a row of someone else's holds is counted as written, and that row is left as it is", async () => {
     const [owner, stranger] = [await person("taken"), await person("taken-stranger")];
     const security_id = await cashSecurity(stack);

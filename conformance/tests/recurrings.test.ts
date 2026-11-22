@@ -269,6 +269,8 @@ describe("GET /recurrings", () => {
     expect(oldDismissed).toMatch(UUID);
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: a start-date the database cannot read is a 500, not a validation message.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("fails as a server error on a start-date the database will not read, and alarms", async () => {
     const alice = await person("alice");
     await seedRecurring(stack, alice.id, { merchant_key: "any" });
@@ -313,6 +315,8 @@ describe("POST /recurrings: the body", () => {
     }
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: a recurring_id that is not a UUID is a 500, not a validation message.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("fails as a server error, and alarms, on a recurring_id that is not a UUID", async () => {
     const alice = await person("alice");
     const route = "POST /recurrings";
@@ -993,6 +997,8 @@ describe("DELETE /recurrings", () => {
     }
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: an id that is not a UUID is a 500, not a validation message.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("fails as a server error, and alarms, on an id that is not a UUID", async () => {
     const alice = await person("alice");
     const route = "DELETE /recurrings";

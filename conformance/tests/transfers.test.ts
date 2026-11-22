@@ -414,6 +414,8 @@ describe("POST /transfers/pair", () => {
     });
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: pairing a suggested pair again as 'confirmed' leaves it suggested.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("pairing again keeps a live pair as it is, and revives a rejected or deleted one with the new status", async () => {
     const alice = await person("alice");
     const [a, b, c, d, e, f] = await Promise.all(["a", "b", "c", "d", "e", "f"].map((s) => tx(alice, s)));
@@ -477,6 +479,8 @@ describe("POST /transfers/pair", () => {
     expect(await pairsOf(stranger.id)).toEqual([]);
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: a transaction can be paired with itself.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("pairs a transaction with itself, as the lookup finds it once", async () => {
     const alice = await person("alice");
     const a = await tx(alice, "a");

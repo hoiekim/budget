@@ -401,6 +401,8 @@ describe("ITEM", () => {
     await expectNothingHeard(outsider, quiet);
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: PENDING_EXPIRATION marks an item bad whatever its provider.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("PENDING_EXPIRATION marks any provider's item bad: it does not ask which provider the item is", async () => {
     await seedItem(stack, adminId, "simple_fin", { item_id: "hook-expiring-simplefin" });
     expect((await hook({ webhook_type: "ITEM", webhook_code: "PENDING_EXPIRATION", item_id: "hook-expiring-simplefin" })).json).toEqual(SUCCESS);
@@ -452,6 +454,8 @@ describe("ITEM", () => {
     expect(stack.upstream.plaid.calls("/item/get")).toHaveLength(before);
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: ITEM_UPDATED on a SimpleFin item asks Plaid with the SimpleFin URL as access token, and fails.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("reading the products of an item Plaid refuses is a server error", async () => {
     await seedItem(stack, adminId, "simple_fin", { item_id: "hook-products-simplefin" });
     const result = await hook({ webhook_type: "ITEM", webhook_code: "USER_ACCOUNT_REVOKED", item_id: "hook-products-simplefin" });

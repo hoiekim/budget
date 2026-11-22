@@ -218,6 +218,8 @@ describe("the change events", () => {
     }
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: an answer naming deleted rows still sends the change events, though nothing was written.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("follow an answer naming deleted rows too, and no refusal", async () => {
     const owner = await person("events-deleted");
     const security_id = await cashSecurity(stack);
@@ -377,6 +379,8 @@ describe("the monthly price backfill", () => {
     expect(urlsOf(stack.upstream.polygon.about(symbol))).toEqual(months.map((m) => aggsUrl(symbol, m.asked)));
   });
 
+  // Pins a Bun behaviour that looks like a bug, kept because Bun is the reference: one failed backfill stops the pricing of every later security.
+  // See "Pinned Bun behaviours" in conformance/README.md before changing it.
   test("that fails is logged with the account, after the import has answered, and goes no further", async () => {
     const owner = await person("fillfail");
     const [broken, after] = [ticker("PBROKEN"), ticker("PAFTER")];
