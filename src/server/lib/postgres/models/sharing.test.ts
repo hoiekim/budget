@@ -10,8 +10,10 @@ const { ModelValidationError } = await import("./base");
 const {
   sharingMembersTable,
   sharingInvitationsTable,
+  sharingEmailInvitationsTable,
   SharingMemberModel,
   SharingInvitationModel,
+  SharingEmailInvitationModel,
   CREATE_SHARING_USER_IDS_FUNCTION,
 } = await import("./sharing");
 
@@ -132,6 +134,117 @@ describe("sharingInvitationsTable", () => {
     expect(lastCall().sql).toBe(
       "INSERT INTO sharing_invitations (updated, inviter_user_id, invitee_user_id) VALUES (CURRENT_TIMESTAMP, $1, $2) RETURNING invitation_id",
     );
+  });
+});
+
+const emailInvitationRow = (overrides: Record<string, unknown> = {}) => ({
+  invitation_id: "inv-e1",
+  inviter_user_id: "u-1",
+  invitee_email: "friend@example.com",
+  expires_at: "2026-12-22T00:00:00.000Z",
+  updated: "2026-11-22T00:00:00.000Z",
+  ...overrides,
+});
+
+describe("sharingEmailInvitationsTable", () => {
+  test("is keyed on a generated id and holds one invitation per inviter and address, each with a lapse time", () => {
+    expect(sharingEmailInvitationsTable.name).toBe("sharing_email_invitations");
+    expect(sharingEmailInvitationsTable.primaryKey).toBe("invitation_id");
+    expect(sharingEmailInvitationsTable.constraints).toEqual([
+      "CONSTRAINT sharing_email_invitations_pair_unique UNIQUE (inviter_user_id, invitee_email)",
+    ]);
+    expect(
+      flat(
+        buildCreateTable(
+          "sharing_email_invitations",
+          sharingEmailInvitationsTable.schema,
+          sharingEmailInvitationsTable.constraints,
+        ),
+      ),
+    ).toBe(
+      "CREATE TABLE IF NOT EXISTS sharing_email_invitations (" +
+        " invitation_id UUID PRIMARY KEY DEFAULT gen_random_uuid()," +
+        " inviter_user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE," +
+        " invitee_email VARCHAR(255) NOT NULL," +
+        " expires_at TIMESTAMPTZ NOT NULL," +
+        " updated TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP," +
+        " CONSTRAINT sharing_email_invitations_pair_unique UNIQUE (inviter_user_id, invitee_email) )",
+    );
+  });
+
+  test("indexes the address; the unique constraint already serves lookups by inviter", () => {
+    expect(sharingEmailInvitationsTable.indexes).toEqual([{ column: "invitee_email" }]);
+  });
+
+  test("has no is_deleted column, and reads carry no soft-delete predicate", async () => {
+    expect(sharingEmailInvitationsTable.supportsSoftDelete).toBe(false);
+    expect(Object.keys(sharingEmailInvitationsTable.schema)).toEqual([
+      "invitation_id",
+      "inviter_user_id",
+      "invitee_email",
+      "expires_at",
+      "updated",
+    ]);
+
+    mockUnsafe.mockResolvedValueOnce({ rows: [emailInvitationRow()], rowCount: 1 });
+    const invitations = await sharingEmailInvitationsTable.query({ inviter_user_id: "u-1" });
+    expect(invitations.map((i) => i.toJSON())).toEqual([
+      {
+        invitation_id: "inv-e1",
+        inviter_user_id: "u-1",
+        invitee_email: "friend@example.com",
+        expires_at: "2026-12-22T00:00:00.000Z",
+      },
+    ]);
+    expect(lastCall().sql).toBe("SELECT * FROM sharing_email_invitations WHERE inviter_user_id = $1");
+  });
+
+  test("an upsert finds the existing invitation by inviter and address, and rewrites only what it is told to", async () => {
+    mockUnsafe.mockResolvedValueOnce({ rows: [emailInvitationRow()], rowCount: 1 });
+    await sharingEmailInvitationsTable.upsert(
+      {
+        inviter_user_id: "u-1",
+        invitee_email: "friend@example.com",
+        expires_at: "2026-12-22T00:00:00.000Z",
+      },
+      ["expires_at"],
+      undefined,
+      { conflictColumns: ["inviter_user_id", "invitee_email"] },
+    );
+    expect(lastCall().sql).toBe(
+      "INSERT INTO sharing_email_invitations (updated, inviter_user_id, invitee_email, expires_at)" +
+        " VALUES (CURRENT_TIMESTAMP, $1, $2, $3)" +
+        " ON CONFLICT (inviter_user_id, invitee_email)" +
+        " DO UPDATE SET expires_at = EXCLUDED.expires_at, updated = CURRENT_TIMESTAMP RETURNING *",
+    );
+    expect(lastCall().values).toEqual(["u-1", "friend@example.com", "2026-12-22T00:00:00.000Z"]);
+  });
+});
+
+describe("SharingEmailInvitationModel", () => {
+  test("toJSON keeps the id, the inviter, the address and the lapse time, and drops the timestamp", () => {
+    const invitation = new SharingEmailInvitationModel(emailInvitationRow());
+    expect(invitation.toJSON()).toEqual({
+      invitation_id: "inv-e1",
+      inviter_user_id: "u-1",
+      invitee_email: "friend@example.com",
+      expires_at: "2026-12-22T00:00:00.000Z",
+    });
+    expect(invitation.updated).toBe("2026-11-22T00:00:00.000Z");
+  });
+
+  test("refuses a row with a malformed column, naming each one", () => {
+    let thrown: unknown;
+    try {
+      new SharingEmailInvitationModel(emailInvitationRow({ invitee_email: null, expires_at: 3 }));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ModelValidationError);
+    expect((thrown as InstanceType<typeof ModelValidationError>).errors).toEqual([
+      "invitee_email: null (object)",
+      "expires_at: 3 (number)",
+    ]);
   });
 });
 

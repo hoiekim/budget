@@ -64,7 +64,7 @@ Core models are defined in `src/common/models/`:
 - **Chart** — visualization configuration
 - **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
 - **CpiSnapshot** — one month of the BLS Consumer Price Index (global, not user-scoped; table `cpi_snapshots`)
-- **Sharing** — who shares data with whom (`sharing_members`) and the invitations still open (`sharing_invitations`); server-side only, see below
+- **Sharing** — who shares data with whom (`sharing_members`) and the invitations still open, to a user (`sharing_invitations`) or to an email address (`sharing_email_invitations`); server-side only, see below
 
 ### Data Sharing
 

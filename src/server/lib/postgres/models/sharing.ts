@@ -1,9 +1,16 @@
 import { isString, isNullableString } from "common";
-import { SHARING_INVITATIONS, SHARING_MEMBERS, USERS } from "common/constants";
+import {
+  SHARING_EMAIL_INVITATIONS,
+  SHARING_INVITATIONS,
+  SHARING_MEMBERS,
+  USERS,
+} from "common/constants";
 import { SHARING_USER_IDS } from "../database";
 import {
+  EXPIRES_AT,
   GROUP_ID,
   INVITATION_ID,
+  INVITEE_EMAIL,
   INVITEE_USER_ID,
   INVITER_USER_ID,
   UPDATED,
@@ -118,6 +125,75 @@ export const sharingInvitationsTable = createTable({
   ],
   indexes: [{ column: INVITEE_USER_ID }],
   ModelClass: SharingInvitationModel,
+  supportsSoftDelete: false,
+});
+
+export interface JSONSharingEmailInvitationRow {
+  invitation_id: string;
+  inviter_user_id: string;
+  invitee_email: string;
+  expires_at: string;
+}
+
+/**
+ * An offer to share data sent to an email address rather than to a user, so
+ * it reaches whoever signs in with that address, now or later. The address
+ * is stored in lower case. The offer lapses at `expires_at`, so an address
+ * that changes hands long after it was sent doesn't carry it to the next
+ * holder. Answering it deletes the row.
+ */
+const sharingEmailInvitationSchema = {
+  [INVITATION_ID]: "UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+  [INVITER_USER_ID]: `UUID NOT NULL REFERENCES ${USERS}(${USER_ID}) ON DELETE CASCADE`,
+  [INVITEE_EMAIL]: "VARCHAR(255) NOT NULL",
+  [EXPIRES_AT]: "TIMESTAMPTZ NOT NULL",
+  [UPDATED]: "TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP",
+};
+
+type SharingEmailInvitationSchema = typeof sharingEmailInvitationSchema;
+type SharingEmailInvitationRow = { [k in keyof SharingEmailInvitationSchema]: RowValueType };
+
+export class SharingEmailInvitationModel
+  extends Model<JSONSharingEmailInvitationRow, SharingEmailInvitationSchema>
+  implements SharingEmailInvitationRow
+{
+  declare invitation_id: string;
+  declare inviter_user_id: string;
+  declare invitee_email: string;
+  declare expires_at: string;
+  declare updated: string | null;
+
+  static typeChecker = {
+    invitation_id: isString,
+    inviter_user_id: isString,
+    invitee_email: isString,
+    expires_at: isString,
+    updated: isNullableString,
+  };
+
+  constructor(data: unknown) {
+    super(data, SharingEmailInvitationModel.typeChecker);
+  }
+
+  toJSON(): JSONSharingEmailInvitationRow {
+    return {
+      invitation_id: this.invitation_id,
+      inviter_user_id: this.inviter_user_id,
+      invitee_email: this.invitee_email,
+      expires_at: this.expires_at,
+    };
+  }
+}
+
+export const sharingEmailInvitationsTable = createTable({
+  name: SHARING_EMAIL_INVITATIONS,
+  primaryKey: INVITATION_ID,
+  schema: sharingEmailInvitationSchema,
+  constraints: [
+    `CONSTRAINT sharing_email_invitations_pair_unique UNIQUE (${INVITER_USER_ID}, ${INVITEE_EMAIL})`,
+  ],
+  indexes: [{ column: INVITEE_EMAIL }],
+  ModelClass: SharingEmailInvitationModel,
   supportsSoftDelete: false,
 });
 

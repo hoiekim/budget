@@ -146,5 +146,6 @@ export const GROUP_ID = "group_id";
 export const INVITATION_ID = "invitation_id";
 export const INVITER_USER_ID = "inviter_user_id";
 export const INVITEE_USER_ID = "invitee_user_id";
+export const INVITEE_EMAIL = "invitee_email";
 
 export const NULL = "NULL";

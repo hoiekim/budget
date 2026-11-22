@@ -24,6 +24,7 @@ See the [live demo](https://budget.hoie.kim) (username: `demo`, password: `budge
 Two or more users can share their data: every account, transaction, budget and chart of each shows up for all of them as if it were one user's, and each can edit all of it.
 
 - On the Configuration page, enter the other user's username under **Share Data** and send the invitation. It appears on their Configuration page, where they accept or decline it.
+- You can enter an email address instead, for someone who may not have signed in to budget yet. The invitation appears for whoever signs in with that address (with single sign-on, the address the identity provider gives budget) within 30 days. After that it shows as expired on your page, where **Send Again** opens it for another 30 days. You can have up to 20 invitations to email addresses at once, expired ones included; withdraw one to send another. An account with no email address never receives one, and sending to an address answers the same whether anyone has it yet.
 - Once they accept, both of you see and edit everything. Only the Configuration page tells whose a connection is: each one under **Connections** carries its owner's username.
 - Transfers between two people's accounts are suggested like transfers between one person's.
 - Inviting someone while you already share brings them into the same group, so everyone in it shares with everyone. A user is in one group at a time.

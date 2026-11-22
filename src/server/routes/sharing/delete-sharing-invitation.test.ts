@@ -18,11 +18,14 @@ const OUTSIDER = { user_id: "d4000000-0000-4000-8000-000000000005", username: "o
 const INVITATION_ID = "d4000000-0000-4000-8000-0000000000aa";
 
 const INVITATION_DELETE = /^\s*DELETE FROM sharing_invitations\b/i;
+const EMAIL_INVITATION_DELETE = /^\s*DELETE FROM sharing_email_invitations\b/i;
 const GROUP_LOOKUP = /SELECT unnest\(sharing_user_ids\(\$1\)\)/i;
 
 const db = {
   /** The row the DELETE removes and returns, or null when no invitation matches. */
   deleted: null as { inviter_user_id: string; invitee_user_id: string } | null,
+  /** The same for an invitation sent to an address, naming the user who has it, if anyone. */
+  emailDeleted: null as { inviter_user_id: string; invitee_user_id: string | null } | null,
   groups: {} as Record<string, string[]>,
   failGroupLookups: false,
 };
@@ -30,6 +33,9 @@ const db = {
 const queryRouter = async (sql: string, values: unknown[] = []) => {
   if (INVITATION_DELETE.test(sql)) {
     return db.deleted ? { rows: [db.deleted], rowCount: 1 } : { rows: [], rowCount: 0 };
+  }
+  if (EMAIL_INVITATION_DELETE.test(sql)) {
+    return db.emailDeleted ? { rows: [db.emailDeleted], rowCount: 1 } : { rows: [], rowCount: 0 };
   }
   if (GROUP_LOOKUP.test(sql)) {
     if (db.failGroupLookups) throw new Error("connection lost");
@@ -67,6 +73,7 @@ beforeEach(() => {
   resetSqlMocks();
   mockUnsafe.mockImplementation(queryRouter);
   db.deleted = { inviter_user_id: INVITER.user_id, invitee_user_id: INVITEE.user_id };
+  db.emailDeleted = null;
   db.groups = {
     [INVITER.user_id]: [INVITER.user_id, INVITER_PEER.user_id],
     [INVITEE.user_id]: [INVITEE.user_id, INVITEE_PEER.user_id],
@@ -230,6 +237,48 @@ describe("DELETE /sharing/invitation", () => {
     expect(inbox.inviteePeer).toEqual([]);
   });
 
+
+  test("an invitation sent to an address is deleted when no invitation to a user matches, with the same scope", async () => {
+    db.deleted = null;
+    db.emailDeleted = { inviter_user_id: INVITER.user_id, invitee_user_id: INVITEE.user_id };
+
+    const result = await deleteSharingInvitationRoute.execute(makeReq({ id: INVITATION_ID }), fakeRes());
+
+    expect(result).toEqual({ status: "success" });
+    const deletes = statements(EMAIL_INVITATION_DELETE);
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0].sql).toMatch(/e\.invitation_id = \$2 AND \(e\.inviter_user_id = ANY\(sharing_user_ids\(\$1\)\) OR /);
+    expect(deletes[0].values).toEqual([INVITEE.user_id, INVITATION_ID]);
+    await settle();
+  });
+
+  test("an invitation sent to an address someone has tells the inviter's group and that user's", async () => {
+    db.deleted = null;
+    db.emailDeleted = { inviter_user_id: INVITER.user_id, invitee_user_id: INVITEE.user_id };
+
+    await deleteSharingInvitationRoute.execute(makeReq({ id: INVITATION_ID }, { user: INVITER }), fakeRes());
+    await settle();
+
+    const event = { event: "sharing_invitations-updated", payload: {} };
+    expect(inbox).toEqual({
+      inviter: [event],
+      inviterPeer: [event],
+      invitee: [event],
+      inviteePeer: [event],
+      outsider: [],
+    });
+  });
+
+  test("an invitation sent to an address nobody has tells the inviter's group alone", async () => {
+    db.deleted = null;
+    db.emailDeleted = { inviter_user_id: INVITER.user_id, invitee_user_id: null };
+
+    await deleteSharingInvitationRoute.execute(makeReq({ id: INVITATION_ID }, { user: INVITER }), fakeRes());
+    await settle();
+
+    const event = { event: "sharing_invitations-updated", payload: {} };
+    expect(inbox).toEqual({ inviter: [event], inviterPeer: [event], invitee: [], inviteePeer: [], outsider: [] });
+  });
   test("answers 'no longer open' and emits nothing when no invitation was deleted", async () => {
     db.deleted = null;
 
@@ -240,6 +289,7 @@ describe("DELETE /sharing/invitation", () => {
 
     expect(result).toEqual({ status: "failed", message: "That invitation is no longer open." });
     expect(statements(INVITATION_DELETE)).toHaveLength(1);
+    expect(statements(EMAIL_INVITATION_DELETE)).toHaveLength(1);
     await expectNothingEmitted();
     expect(statements(GROUP_LOOKUP)).toEqual([]);
   });

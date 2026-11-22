@@ -144,6 +144,8 @@ const SERVER_KEYED: Record<string, string> = {
     "seeds the admin and demo users at boot; no route writes a user",
   "lib/postgres/repositories/sharing.ts::acceptSharingInvitation::sharingMembersTable.upsertMany":
     "both ids come from an invitation row read in the same transaction with the session user as its invitee; neither is supplied by the caller",
+  "lib/postgres/repositories/sharing.ts::inviteByEmail::sharingEmailInvitationsTable.upsert":
+    "the conflicting row is found by (inviter_user_id, invitee_email) with the session user as inviter, so the only row it can rewrite is one the caller sent; no primary key is supplied, and only expires_at is rewritten",
 };
 
 const exemptionKey = (call: WriteCall): string => `${call.site}::${call.receiver}.${call.verb}`;

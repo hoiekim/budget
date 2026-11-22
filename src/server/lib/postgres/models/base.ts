@@ -291,10 +291,15 @@ export abstract class Table<
     return result.rows.length > 0 ? result.rows[0] : null;
   }
 
+  /**
+   * `conflictColumns` finds the existing row by another unique key than the
+   * primary key: the columns of a UNIQUE constraint the table declares.
+   */
   async upsert(
     data: QueryData,
     updateColumns?: string[],
     client?: QueryExecutor,
+    options: { conflictColumns?: string[] } = {},
   ): Promise<Record<string, unknown> | null> {
     this._assertSimplePrimaryKey("upsert");
     // `buildUpsert` drops undefined values from the INSERT column list, so a
@@ -310,6 +315,7 @@ export abstract class Table<
         ? updateColumns.filter((c) => writable.includes(c))
         : writable,
       returning: ["*"],
+      conflictColumns: options.conflictColumns,
     });
     const executor = client ?? pool;
     const result = await executor.query(sql, values);

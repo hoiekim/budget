@@ -114,6 +114,11 @@ export interface UpdateOptions {
 export interface UpsertOptions {
   updateColumns?: string[];
   returning?: string[];
+  /**
+   * The unique key a conflicting row is found by, when it is not the primary
+   * key. It names a row as the primary key does, so it is never rewritten.
+   */
+  conflictColumns?: string[];
 }
 
 export function buildCreateTable(
@@ -301,7 +306,7 @@ export function buildUpsert(
   data: QueryData,
   options: UpsertOptions = {},
 ): PreparedQuery {
-  const { updateColumns = [], returning = [primaryKey] } = options;
+  const { updateColumns = [], returning = [primaryKey], conflictColumns = [primaryKey] } = options;
 
   const columns: string[] = ["updated"];
   const placeholders: string[] = ["CURRENT_TIMESTAMP"];
@@ -318,14 +323,15 @@ export function buildUpsert(
 
   let sql = `INSERT INTO ${tableName} (${columns.join(", ")}) VALUES (${placeholders.join(", ")})`;
 
+  const conflictTarget = conflictColumns.join(", ");
   if (updateColumns.length > 0) {
     const updateClauses = updateColumns
-      .filter((col) => col !== primaryKey)
+      .filter((col) => col !== primaryKey && !conflictColumns.includes(col))
       .map((col) => `${col} = EXCLUDED.${col}`);
     updateClauses.push("updated = CURRENT_TIMESTAMP");
-    sql += ` ON CONFLICT (${primaryKey}) DO UPDATE SET ${updateClauses.join(", ")}`;
+    sql += ` ON CONFLICT (${conflictTarget}) DO UPDATE SET ${updateClauses.join(", ")}`;
   } else {
-    sql += ` ON CONFLICT (${primaryKey}) DO NOTHING`;
+    sql += ` ON CONFLICT (${conflictTarget}) DO NOTHING`;
   }
 
   if (returning.length > 0) {

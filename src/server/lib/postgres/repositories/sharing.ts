@@ -1,5 +1,6 @@
 import {
   DEMO_USERNAME,
+  SHARING_EMAIL_INVITATIONS,
   SHARING_INVITATIONS,
   SHARING_MEMBERS,
   TRANSACTIONS,
@@ -11,11 +12,16 @@ import { SHARING_MEMBERSHIP_LOCK_KEY, SHARING_USER_IDS, sharedWithSql } from "..
 import {
   MaskedUser,
   QueryExecutor,
+  SharingEmailInvitationModel,
+  sharingEmailInvitationsTable,
   sharingInvitationsTable,
   sharingMembersTable,
   usersTable,
+  EMAIL,
+  EXPIRES_AT,
   GROUP_ID,
   INVITATION_ID,
+  INVITEE_EMAIL,
   INVITEE_USER_ID,
   INVITER_USER_ID,
   IS_DELETED,
@@ -27,16 +33,31 @@ import {
   USER_ID,
 } from "../models";
 
+/** How long an invitation sent to an email address stays open: 30 days. */
+export const EMAIL_INVITATION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Whom an invitation went to: a user, or an email address nobody may have signed in with yet. */
+export type SharingInvitee = MaskedUser | { email: string };
+
 export interface SharingInvitation {
   invitation_id: string;
   inviter: MaskedUser;
-  invitee: MaskedUser;
+  /**
+   * The user it was sent to. One sent to an email address names the address
+   * to the inviter's group, and names the user it reached to that user.
+   */
+  invitee: SharingInvitee;
+  /** When an invitation sent to an email address lapses. One sent to a user never does. */
+  expires_at?: string;
 }
 
 export interface Sharing {
   /** Everyone in the user's sharing group, the user included. Empty while they share with nobody. */
   members: MaskedUser[];
-  /** Unanswered invitations sent to the user, or sent by the user or anyone in their group. */
+  /**
+   * Unanswered invitations sent to the user or to their email address, or
+   * sent by the user or anyone in their group.
+   */
   invitations: SharingInvitation[];
 }
 
@@ -46,6 +67,8 @@ export type SharingResult<T = object> = ({ ok: true } & T) | { ok: false; error:
 interface Affected {
   affected_user_ids: string[];
 }
+
+const DEMO_REFUSAL = { ok: false, error: "The demo account can't share data." } as const;
 
 type InvitationRow = {
   invitation_id: string;
@@ -72,6 +95,42 @@ const SELECT_INVITATIONS = `
 /** An invitation the user may answer or withdraw: sent to them, or sent from their group. */
 const INVITATION_CONCERNS_USER = `(i.${INVITEE_USER_ID} = $1 OR ${sharedWithSql(`i.${INVITER_USER_ID}`, "$1")})`;
 
+/** An email invitation sent by the user `$1` names, or by anyone in their group. */
+const EMAIL_INVITATION_FROM_GROUP = sharedWithSql(`e.${INVITER_USER_ID}`, "$1");
+
+/** An email invitation sent to the address of the user `param` names, and not lapsed. */
+const emailInvitationOpenTo = (param: string): string =>
+  `(e.${INVITEE_EMAIL} = (SELECT lower(u.${EMAIL}) FROM ${USERS} u WHERE u.${USER_ID} = ${param})` +
+  ` AND e.${EXPIRES_AT} > CURRENT_TIMESTAMP)`;
+
+/**
+ * An email invitation the user may withdraw, sent from their group, lapsed or
+ * not; or one they may answer, open and sent to their address.
+ */
+const EMAIL_INVITATION_CONCERNS_USER = `(${EMAIL_INVITATION_FROM_GROUP} OR ${emailInvitationOpenTo("$1")})`;
+
+type EmailInvitationRow = {
+  invitation_id: string;
+  invitee_email: string;
+  expires_at: string;
+  inviter_user_id: string;
+  inviter_username: string;
+  /** Sent from the reader's group. Otherwise it was sent to the reader's address. */
+  sent: boolean;
+};
+
+/** Only the inviter's group learns the address; the user it reached sees it addressed to them. */
+const toEmailInvitation =
+  (reader: MaskedUser) =>
+  (row: EmailInvitationRow): SharingInvitation => ({
+    invitation_id: row.invitation_id,
+    inviter: { user_id: row.inviter_user_id, username: row.inviter_username },
+    invitee: row.sent
+      ? { email: row.invitee_email }
+      : { user_id: reader.user_id, username: reader.username },
+    expires_at: row.expires_at,
+  });
+
 /** Sharing changes are rare, and one lock for all of them keeps every membership check race-free. */
 const lockSharing = (client: QueryExecutor): Promise<unknown> =>
   client.query(`SELECT pg_advisory_xact_lock(${SHARING_MEMBERSHIP_LOCK_KEY})`);
@@ -89,7 +148,7 @@ export const getSharingUserIds = async (
 };
 
 export const getSharing = async (user: MaskedUser): Promise<Sharing> => {
-  const [members, invitations] = await Promise.all([
+  const [members, invitations, emailInvitations] = await Promise.all([
     pool.query<MaskedUser>(
       `SELECT u.${USER_ID}, u.${USERNAME}
        FROM ${SHARING_MEMBERS} m
@@ -106,10 +165,23 @@ export const getSharing = async (user: MaskedUser): Promise<Sharing> => {
        ORDER BY invitee.${USERNAME}, i.${INVITATION_ID}`,
       [user.user_id],
     ),
+    pool.query<EmailInvitationRow>(
+      `SELECT e.${INVITATION_ID}, e.${INVITEE_EMAIL}, e.${EXPIRES_AT},
+              inviter.${USER_ID} AS inviter_user_id, inviter.${USERNAME} AS inviter_username,
+              ${EMAIL_INVITATION_FROM_GROUP} AS sent
+       FROM ${SHARING_EMAIL_INVITATIONS} e
+       JOIN ${USERS} inviter ON inviter.${USER_ID} = e.${INVITER_USER_ID}
+       WHERE ${EMAIL_INVITATION_CONCERNS_USER}
+       ORDER BY e.${INVITEE_EMAIL}, e.${INVITATION_ID}`,
+      [user.user_id],
+    ),
   ]);
   return {
     members: members.rows.map(({ user_id, username }) => ({ user_id, username })),
-    invitations: invitations.rows.map(toInvitation),
+    invitations: [
+      ...invitations.rows.map(toInvitation),
+      ...emailInvitations.rows.map(toEmailInvitation(user)),
+    ],
   };
 };
 
@@ -145,10 +217,8 @@ export const getRowOwner = async (
 export const inviteToShare = async (
   user: MaskedUser,
   username: string,
-): Promise<SharingResult<{ invitation: SharingInvitation }>> => {
-  if (user.username === DEMO_USERNAME || username === DEMO_USERNAME) {
-    return { ok: false, error: "The demo account can't share data." };
-  }
+): Promise<SharingResult<{ invitation: SharingInvitation & { invitee: MaskedUser } }>> => {
+  if (user.username === DEMO_USERNAME || username === DEMO_USERNAME) return DEMO_REFUSAL;
   const invitee = await usersTable.queryOne({ [USERNAME]: username });
   if (!invitee) return { ok: false, error: "No user has that username." };
   if (invitee.user_id === user.user_id) return { ok: false, error: "You can't invite yourself." };
@@ -187,9 +257,84 @@ export const inviteToShare = async (
 };
 
 /**
- * Declines an invitation sent to the user, or withdraws one the user or
- * anyone in their group sent. Answers the two people it was between, or
- * `undefined` when the user has no such invitation.
+ * The most invitations to email addresses one user keeps, open and lapsed
+ * together. Nothing deletes a lapsed one but its group, and every member
+ * reads them all on every sync, so the number has to stop somewhere.
+ */
+export const EMAIL_INVITATIONS_PER_USER = 20;
+
+/**
+ * Invites whoever signs in with `email` to share data: the user who has that
+ * address now, or one who signs up with it before the invitation lapses. It
+ * answers alike whether anyone has the address yet, in what it says and in
+ * the statements it runs, so it can't be used to learn who has an account.
+ * Inviting an address again keeps the invitation and restarts its time.
+ * `invitee_user_id` names the user who has the address, for the event that
+ * tells them; it never goes back to the inviter.
+ */
+export const inviteByEmail = async (
+  user: MaskedUser,
+  email: string,
+): Promise<SharingResult<{ invitation: SharingInvitation; invitee_user_id?: string }>> => {
+  if (user.username === DEMO_USERNAME) return DEMO_REFUSAL;
+  const invitee_email = email.trim().toLowerCase();
+
+  const [[holder], groupIds] = await Promise.all([
+    usersTable.query({}, { equalsIgnoringCase: { column: EMAIL, value: invitee_email }, limit: 1 }),
+    getSharingUserIds(user.user_id),
+  ]);
+  if (holder?.user_id === user.user_id) return { ok: false, error: "You can't invite yourself." };
+  if (holder && groupIds.includes(holder.user_id)) {
+    return { ok: false, error: `You already share data with ${holder.username}.` };
+  }
+
+  return withTransaction(async (client) => {
+    // One user's sends wait for each other, so two at once can't both pass the cap.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':email-invitations'))`, [
+      user.user_id,
+    ]);
+    const sent = await sharingEmailInvitationsTable.query(
+      { [INVITER_USER_ID]: user.user_id },
+      {},
+      client,
+    );
+    const others = sent.filter((invitation) => invitation.invitee_email !== invitee_email);
+    if (others.length >= EMAIL_INVITATIONS_PER_USER) {
+      return {
+        ok: false,
+        error:
+          `You have ${EMAIL_INVITATIONS_PER_USER} invitations sent to email addresses.` +
+          " Withdraw one before sending another.",
+      };
+    }
+
+    const expires_at = new Date(Date.now() + EMAIL_INVITATION_LIFETIME_MS).toISOString();
+    const row = await sharingEmailInvitationsTable.upsert(
+      { [INVITER_USER_ID]: user.user_id, [INVITEE_EMAIL]: invitee_email, [EXPIRES_AT]: expires_at },
+      [EXPIRES_AT],
+      client,
+      { conflictColumns: [INVITER_USER_ID, INVITEE_EMAIL] },
+    );
+    // A conflict updates the row, so the statement always answers one.
+    const invitation = new SharingEmailInvitationModel(row);
+    return {
+      ok: true,
+      invitation: {
+        invitation_id: invitation.invitation_id,
+        inviter: { user_id: user.user_id, username: user.username },
+        invitee: { email: invitation.invitee_email },
+        expires_at: invitation.expires_at,
+      },
+      invitee_user_id: holder?.user_id,
+    };
+  });
+};
+
+/**
+ * Declines an invitation sent to the user or to their address, or withdraws
+ * one the user or anyone in their group sent. Answers who it was between, or
+ * `undefined` when the user has no such invitation. An email invitation is
+ * between its inviter and whoever has the address, when anyone does.
  */
 export const deleteSharingInvitation = async (
   user: MaskedUser,
@@ -202,27 +347,42 @@ export const deleteSharingInvitation = async (
     [user.user_id, invitation_id],
   );
   const row = result.rows[0];
-  return row && { affected_user_ids: [row.inviter_user_id, row.invitee_user_id] };
+  if (row) return { affected_user_ids: [row.inviter_user_id, row.invitee_user_id] };
+
+  const emailResult = await pool.query<{ inviter_user_id: string; invitee_user_id: string | null }>(
+    `DELETE FROM ${SHARING_EMAIL_INVITATIONS} e
+     WHERE e.${INVITATION_ID} = $2 AND ${EMAIL_INVITATION_CONCERNS_USER}
+     RETURNING e.${INVITER_USER_ID},
+       (SELECT u.${USER_ID} FROM ${USERS} u WHERE lower(u.${EMAIL}) = e.${INVITEE_EMAIL}) AS invitee_user_id`,
+    [user.user_id, invitation_id],
+  );
+  const emailRow = emailResult.rows[0];
+  if (!emailRow) return undefined;
+  const { inviter_user_id, invitee_user_id } = emailRow;
+  return { affected_user_ids: invitee_user_id ? [inviter_user_id, invitee_user_id] : [inviter_user_id] };
 };
 
 /**
- * Accepts an invitation sent to the user: they join the inviter's sharing
- * group, which is created when the inviter shared with nobody yet. From then
- * on every member reads and writes every other member's data.
+ * Accepts an invitation sent to the user or to their address: they join the
+ * inviter's sharing group, which is created when the inviter shared with
+ * nobody yet. From then on every member reads and writes every other
+ * member's data.
  */
 export const acceptSharingInvitation = async (
   user: MaskedUser,
   invitation_id: string,
 ): Promise<SharingResult<Affected>> => {
-  if (user.username === DEMO_USERNAME) {
-    return { ok: false, error: "The demo account can't share data." };
-  }
+  if (user.username === DEMO_USERNAME) return DEMO_REFUSAL;
   return withTransaction(async (client) => {
     await lockSharing(client);
 
+    // An address that has since become the inviter's own can't join them to themself.
     const invitation = await client.query<{ inviter_user_id: string }>(
       `SELECT ${INVITER_USER_ID} FROM ${SHARING_INVITATIONS}
-       WHERE ${INVITATION_ID} = $1 AND ${INVITEE_USER_ID} = $2`,
+       WHERE ${INVITATION_ID} = $1 AND ${INVITEE_USER_ID} = $2
+       UNION ALL
+       SELECT e.${INVITER_USER_ID} FROM ${SHARING_EMAIL_INVITATIONS} e
+       WHERE e.${INVITATION_ID} = $1 AND e.${INVITER_USER_ID} <> $2 AND ${emailInvitationOpenTo("$2")}`,
       [invitation_id, user.user_id],
     );
     if (invitation.rows.length === 0) {
@@ -250,12 +410,23 @@ export const acceptSharingInvitation = async (
       client,
     );
 
-    // The accepted invitation, and any other between two people who now share.
+    // The accepted invitation, and any other between two people who now
+    // share, whether it named the user or their address.
     await client.query(
       `DELETE FROM ${SHARING_INVITATIONS} i
        USING ${SHARING_MEMBERS} inviter, ${SHARING_MEMBERS} invitee
        WHERE inviter.${USER_ID} = i.${INVITER_USER_ID}
          AND invitee.${USER_ID} = i.${INVITEE_USER_ID}
+         AND inviter.${GROUP_ID} = $1
+         AND invitee.${GROUP_ID} = $1`,
+      [group_id],
+    );
+    await client.query(
+      `DELETE FROM ${SHARING_EMAIL_INVITATIONS} e
+       USING ${SHARING_MEMBERS} inviter, ${SHARING_MEMBERS} invitee, ${USERS} u
+       WHERE inviter.${USER_ID} = e.${INVITER_USER_ID}
+         AND u.${USER_ID} = invitee.${USER_ID}
+         AND lower(u.${EMAIL}) = e.${INVITEE_EMAIL}
          AND inviter.${GROUP_ID} = $1
          AND invitee.${GROUP_ID} = $1`,
       [group_id],

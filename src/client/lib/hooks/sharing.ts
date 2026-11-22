@@ -9,8 +9,11 @@ import { call, useSync } from "client";
  * event reaches everyone else the change concerns.
  */
 export interface SharingActions {
-  /** Invite the user `username` names to share data. */
-  invite: (username: string) => Promise<string | undefined>;
+  /**
+   * Invite someone to share data: the user a username names, or, for text
+   * with an `@` in it, whoever signs in with that email address.
+   */
+  invite: (usernameOrEmail: string) => Promise<string | undefined>;
   /** Accept an invitation: both sides see and edit each other's data from then on. */
   accept: (invitation_id: string) => Promise<string | undefined>;
   /** Decline an invitation received, or withdraw one sent. */
@@ -25,10 +28,11 @@ export const useSharing = (): SharingActions => {
   const { sync, syncDomain } = useSync();
 
   const invite = useCallback(
-    async (username: string) => {
-      const r = await call.post<SharingInvitationPostResponse>("/api/sharing/invitation", {
-        username,
-      });
+    async (usernameOrEmail: string) => {
+      const body = usernameOrEmail.includes("@")
+        ? { email: usernameOrEmail }
+        : { username: usernameOrEmail };
+      const r = await call.post<SharingInvitationPostResponse>("/api/sharing/invitation", body);
       if (r.status !== "success") return r.message ?? FALLBACK_MESSAGE;
       syncDomain(TableName.SharingInvitations);
       return undefined;

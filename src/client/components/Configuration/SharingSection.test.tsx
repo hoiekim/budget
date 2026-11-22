@@ -247,7 +247,7 @@ describe("SharingSection", () => {
       { path: "/api/sharing/invitation", response: { status: "success", body: { invitation } } },
       { path: "/api/sharing", response: { status: "success", body: afterwards } },
     ]);
-    const input = screen.getByLabelText("Username to share data with") as HTMLInputElement;
+    const input = screen.getByLabelText("Username or email address to share data with") as HTMLInputElement;
     const send = screen.getByRole("button", { name: nb("Send Invitation") }) as HTMLButtonElement;
     expect(send.disabled).toBe(true);
 
@@ -269,7 +269,7 @@ describe("SharingSection", () => {
         response: { status: "failed", message: "No user has that username." },
       },
     ]);
-    const input = screen.getByLabelText("Username to share data with") as HTMLInputElement;
+    const input = screen.getByLabelText("Username or email address to share data with") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "nobody" } });
     fireEvent.click(screen.getByRole("button", { name: nb("Send Invitation") }));
     await settle();
@@ -279,9 +279,107 @@ describe("SharingSection", () => {
     expect(rendered.requests()).toEqual(["POST /api/sharing/invitation"]);
   });
 
+  it("sends text with an @ in it as an email address, and shows the invitation by its address", async () => {
+    const invitation = {
+      invitation_id: "inv-5",
+      inviter: ME,
+      invitee: { email: "friend@example.com" },
+      expires_at: "2099-12-22T12:00:00.000Z",
+    };
+    const afterwards: Sharing = { members: [], invitations: [invitation] };
+    const rendered = renderSection(NOBODY, [
+      { path: "/api/sharing/invitation", response: { status: "success", body: { invitation } } },
+      { path: "/api/sharing", response: { status: "success", body: afterwards } },
+    ]);
+    const input = screen.getByLabelText("Username or email address to share data with") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: " Friend@Example.com " } });
+    fireEvent.click(screen.getByRole("button", { name: nb("Send Invitation") }));
+    await settle();
+
+    expect(rendered.bodies).toEqual([{ email: "Friend@Example.com" }]);
+    expect(input.value).toBe("");
+    expect(rendered.sharing()).toEqual(afterwards);
+  });
+
+  it("shows an open invitation to an address by the address and when it lapses", () => {
+    const invitation = {
+      invitation_id: "inv-5",
+      inviter: ME,
+      invitee: { email: "friend@example.com" },
+      expires_at: "2099-12-22T12:00:00.000Z",
+    };
+    renderSection({ members: [], invitations: [invitation] });
+
+    expect(screen.getByText("Sent Invitation")).toBeTruthy();
+    expect(screen.getByText("friend@example.com")).toBeTruthy();
+    expect(screen.getByText("Expires")).toBeTruthy();
+    expect(screen.getByText("Dec 22, 2099")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: nb("Send Again") })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Withdraw" })).toBeTruthy();
+  });
+
+  it("an invitation that reached the user through their address is one to accept or decline", () => {
+    const invitation = {
+      invitation_id: "inv-6",
+      inviter: ANN,
+      invitee: ME,
+      expires_at: "2099-12-22T12:00:00.000Z",
+    };
+    renderSection({ members: [], invitations: [invitation] });
+
+    expect(screen.getByText("Invitation To Share")).toBeTruthy();
+    expect(screen.getByText("ann")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Decline" })).toBeTruthy();
+    expect(screen.queryByText("Sent Invitation")).toBeNull();
+  });
+
+  it("says an invitation to an address has lapsed, and sends it again on request", async () => {
+    const invitation = {
+      invitation_id: "inv-7",
+      inviter: ME,
+      invitee: { email: "friend@example.com" },
+      expires_at: "2020-01-15T12:00:00.000Z",
+    };
+    const rendered = renderSection({ members: [], invitations: [invitation] }, [
+      { path: "/api/sharing/invitation", response: { status: "success", body: { invitation } } },
+      { path: "/api/sharing", response: { status: "success", body: NOBODY } },
+    ]);
+    expect(screen.getByText("Expired")).toBeTruthy();
+    expect(screen.getByText("Jan 15, 2020")).toBeTruthy();
+    expect(screen.queryByText("Expires")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: nb("Send Again") }));
+    await settle();
+
+    expect(rendered.requests()[0]).toBe("POST /api/sharing/invitation");
+    expect(rendered.bodies).toEqual([{ email: "friend@example.com" }]);
+  });
+
+  it("offers to send again only an invitation the user sent, not one another member did", () => {
+    const invitation = {
+      invitation_id: "inv-9",
+      inviter: ANN,
+      invitee: { email: "friend@example.com" },
+      expires_at: "2020-01-15T12:00:00.000Z",
+    };
+    renderSection({ members: [ANN, ME], invitations: [invitation] });
+
+    expect(screen.getByText("Expired")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: nb("Send Again") })).toBeNull();
+    expect(screen.getByRole("button", { name: "Withdraw" })).toBeTruthy();
+  });
+
+  it("an invitation to a user has no lapse time to show", () => {
+    renderSection({ members: [], invitations: [{ invitation_id: "inv-8", inviter: ME, invitee: CAT }] });
+    expect(screen.queryByText("Expires")).toBeNull();
+    expect(screen.queryByText("Expired")).toBeNull();
+  });
+
   it("does not offer to send a blank username", () => {
     renderSection(NOBODY);
-    fireEvent.change(screen.getByLabelText("Username to share data with"), {
+    fireEvent.change(screen.getByLabelText("Username or email address to share data with"), {
       target: { value: "   " },
     });
     const send = screen.getByRole("button", { name: nb("Send Invitation") }) as HTMLButtonElement;
