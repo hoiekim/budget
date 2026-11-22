@@ -80,6 +80,13 @@ export const plaidQueue = new Queue({ maxInflight: PLAID_MAX_INFLIGHT });
  */
 export const PLAID_FOREGROUND_WAIT_MS = 5_000;
 
+/**
+ * Message for a foreground call shed by {@link PLAID_FOREGROUND_WAIT_MS}.
+ * Shedding is expected under load, so routes answer it with a 503 and a warn
+ * log, never an alarm.
+ */
+export const PLAID_BUSY_MESSAGE = "The bank connection service is busy. Please try again shortly.";
+
 /** Test seam: the Plaid client factory. Production callers pass nothing. */
 export interface PlaidClientDeps {
   getClient?: typeof getClient;

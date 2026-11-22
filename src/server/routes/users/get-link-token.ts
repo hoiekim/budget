@@ -1,11 +1,13 @@
+import { QueueWaitTimeoutError } from "common";
 import { plaid, Route, optionalQueryString, validationError, getItem } from "server";
+import { logger } from "server/lib/logger";
 
 export type LinkTokenGetResponse = string;
 
 export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
   "GET",
   "/link-token",
-  async (req) => {
+  async (req, res) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -40,7 +42,17 @@ export const getLinkTokenRoute = new Route<LinkTokenGetResponse>(
       };
     }
 
-    const response = await plaid.getLinkToken(user, accessToken, { maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS });
+    let response;
+    try {
+      response = await plaid.getLinkToken(user, accessToken, {
+        maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS,
+      });
+    } catch (error) {
+      if (!(error instanceof QueueWaitTimeoutError)) throw error;
+      logger.warn("Plaid link token request shed by the shared gate", { userId: user.user_id });
+      res.status(503);
+      return { status: "failed", message: plaid.PLAID_BUSY_MESSAGE };
+    }
     if (!response) throw new Error("Server failed to get link token.");
 
     return {

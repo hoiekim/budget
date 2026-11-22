@@ -1,7 +1,8 @@
-import { ItemProvider } from "common";
+import { ItemProvider, QueueWaitTimeoutError } from "common";
 import { Route, deleteItem, plaid, searchItems, requireQueryString, validationError } from "server";
+import { logger } from "server/lib/logger";
 
-export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
+export const deleteItemRoute = new Route("DELETE", "/item", async (req, res) => {
   const { user } = req.session;
   if (!user) {
     return {
@@ -26,7 +27,18 @@ export const deleteItemRoute = new Route("DELETE", "/item", async (req) => {
     // Without Plaid credentials the remote revocation can't run — still
     // delete locally; there's nothing reachable to clean up.
     if (plaid.isPlaidConfigured) {
-      await plaid.deleteItem(user, item, { maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS });
+      try {
+        await plaid.deleteItem(user, item, { maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS });
+      } catch (error) {
+        if (!(error instanceof QueueWaitTimeoutError)) throw error;
+        // The remote revocation never ran, so the local row stays for a retry.
+        logger.warn("Plaid item removal shed by the shared gate", {
+          userId: user.user_id,
+          itemId: item.item_id,
+        });
+        res.status(503);
+        return { status: "failed", message: plaid.PLAID_BUSY_MESSAGE };
+      }
     }
   }
 
