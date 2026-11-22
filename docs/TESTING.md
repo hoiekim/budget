@@ -25,6 +25,22 @@ runs once before any test file and:
    `restoreLeaves()` can re-mock leaf deps back to a known baseline
    between test files.
 
+## Conformance Suite
+
+`bun run test` covers units with mocks. What the API does over HTTP is covered
+by `conformance/`: one suite that starts a real server against a real
+PostgreSQL database, with every outside service faked, and runs unchanged
+against the Bun backend and the Rust backend (`src/server-rust`).
+
+```bash
+bun run test:conformance        # both backends, then a diff of their answers
+bun run test:conformance:bun    # one backend
+bun run test:conformance:rust
+```
+
+It needs a local PostgreSQL and is not part of `bun run test`. See
+`conformance/README.md` for how it works and how to write its tests.
+
 ## Writing Tests
 
 ```typescript

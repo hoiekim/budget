@@ -266,7 +266,9 @@ impl Ctx {
 }
 
 pub type HandlerResult = anyhow::Result<Reply>;
-pub type Handler = for<'a> fn(&'a mut Ctx) -> BoxFuture<'a, HandlerResult>;
+/// A route's handler. Boxed so a route can be built from a closure that
+/// captures its settings, as the entity-route factories do.
+pub type Handler = Box<dyn for<'a> Fn(&'a mut Ctx) -> BoxFuture<'a, HandlerResult> + Send + Sync>;
 
 pub struct Route {
     pub method: &'static str,
@@ -321,6 +323,11 @@ macro_rules! route {
         ) -> ::futures::future::BoxFuture<'a, $crate::server::route::HandlerResult> {
             ::std::boxed::Box::pin($handler(ctx))
         }
-        $crate::server::route::Route { method: $method, path: $path, handler: boxed, required_scope: $scope }
+        $crate::server::route::Route {
+            method: $method,
+            path: $path,
+            handler: ::std::boxed::Box::new(boxed),
+            required_scope: $scope,
+        }
     }};
 }

@@ -10,6 +10,7 @@ pub mod client_error;
 pub mod events;
 pub mod health;
 pub mod recurrings;
+pub mod sharing;
 pub mod transfers;
 pub mod users;
 pub mod webhooks;
@@ -28,6 +29,7 @@ pub fn all() -> Vec<Route> {
     routes.extend(events::routes());
     routes.extend(health::routes());
     routes.extend(recurrings::routes());
+    routes.extend(sharing::routes());
     routes.extend(transfers::routes());
     routes.extend(users::routes());
     routes.extend(webhooks::routes());

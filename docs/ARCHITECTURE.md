@@ -3,7 +3,7 @@
 ## Tech Stack
 
 - **Frontend**: React (TypeScript), built with Vite
-- **Backend**: Bun HTTP server (TypeScript)
+- **Backend**: Bun HTTP server (TypeScript); the same API is also served by a Rust server kept side by side with it (`src/server-rust`)
 - **Database**: PostgreSQL
 - **Containerization**: Docker
 - **External APIs**: Plaid, SimpleFin, Polygon, BLS
@@ -38,12 +38,15 @@ budget/
 │   │       ├── events/       # Event feed
 │   │       ├── health.ts     # Health check endpoint
 │   │       ├── recurrings/   # Recurring transaction management
+│   │       ├── sharing/      # Invitations and membership of a data-sharing group
 │   │       ├── transfers/    # Transfer pair management
 │   │       ├── users/        # User management
 │   │       └── webhooks/     # Webhook handlers
+│   ├── server-rust/          # The backend in Rust, module for module the same as server/
 │   └── common/               # Shared code (client + server)
 │       ├── models/           # Data models and types
 │       └── utils/            # Shared utilities
+├── conformance/              # One HTTP test suite run against both backends
 ├── docs/                     # Documentation
 ├── build/                    # Compiled output
 └── scripts/                  # Development and maintenance scripts
@@ -61,6 +64,13 @@ Core models are defined in `src/common/models/`:
 - **Chart** — visualization configuration
 - **TransferPair** — pairs two transactions across accounts as a single transfer (suggested or confirmed)
 - **CpiSnapshot** — one month of the BLS Consumer Price Index (global, not user-scoped; table `cpi_snapshots`)
+- **Sharing** — who shares data with whom (`sharing_members`) and the invitations still open (`sharing_invitations`); server-side only, see below
+
+### Data Sharing
+
+Users who share data see one merged dataset: every route reads and writes the rows of the whole sharing group, while each row keeps the `user_id` of its owner. The owner shows in one place, the Configuration page, where each connection (`Item.user_id`) carries its owner's username. [SECURITY.md](SECURITY.md#data-sharing) has the access rules; [DATABASE.md](DATABASE.md#owner-scope) how a query states its scope.
+
+On the client, `Data.sharing` (`GET /api/sharing`: the group's members and the open invitations) is fetched in Stage 1 of every sync and kept in memory. `useSharing` holds the actions; `SharingSection` on the Configuration page is their only caller. The cache in IndexedDB and its delta cursor are valid for the group they were filled under, recorded beside the cursor in `localStorage`; what a tab holds in memory is valid for the members in its own `Data.sharing`. When a sync finds the group differs from either, it drops the cursor and restarts cold, so every open tab starts over and not only the first to notice. A `sharing_members-updated` event triggers that sync; a `sharing_invitations-updated` event refetches `Data.sharing` alone, unless the answer names other members, which it leaves to a whole sync.
 
 ### Projection Chart: Auto Goal Configuration
 

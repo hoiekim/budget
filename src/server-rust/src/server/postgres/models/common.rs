@@ -138,4 +138,9 @@ pub const EXPIRES_AT: &str = "expires_at";
 
 pub const PLAN_FUND_MAPPINGS: &str = "plan_fund_mappings";
 
+pub const GROUP_ID: &str = "group_id";
+pub const INVITATION_ID: &str = "invitation_id";
+pub const INVITER_USER_ID: &str = "inviter_user_id";
+pub const INVITEE_USER_ID: &str = "invitee_user_id";
+
 pub const NULL: &str = "NULL";

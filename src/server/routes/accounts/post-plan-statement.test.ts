@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
 import { createFakeSql, restoreEnv, restoreLeaves } from "test-helpers";
 
 type Row = Record<string, unknown>;
@@ -399,6 +399,78 @@ describe("POST /plan-statement/import", () => {
 
   test("requires a signed-in user", async () => {
     expect(await importStatement(importBody(), null)).toMatchObject({ status: "failed" });
+  });
+});
+
+describe("POST /plan-statement/import into an account someone else in the sharing group owns", () => {
+  const OWNER_LOOKUP = /FROM accounts r\s+JOIN users\b/i;
+  const scripted = mockUnsafe.getMockImplementation()!;
+
+  afterEach(() => {
+    mockUnsafe.mockImplementation(scripted);
+  });
+
+  /** The value each row of an INSERT binds to `column`, read off the statement's own column list. */
+  const boundTo = (insert: { sql: string; values: unknown[] }, column: string): unknown[] => {
+    const [head, tail] = insert.sql.split(/\)\s*VALUES\s*/i);
+    const columns = head.slice(head.indexOf("(") + 1).split(",").map((c) => c.trim());
+    const tuples = tail.split(/\s+ON CONFLICT\b/i)[0].match(/\(([^)]*)\)/g)!;
+    return tuples.map((tuple) => {
+      const placeholder = tuple.slice(1, -1).split(",")[columns.indexOf(column)].trim();
+      return insert.values[Number(placeholder.slice(1)) - 1];
+    });
+  };
+
+  const everyCall = () =>
+    [...mockUnsafe.mock.calls, ...mockReservedUnsafe.mock.calls].map(([sql, values]) => ({
+      sql: String(sql),
+      values: (values ?? []) as unknown[],
+    }));
+
+  // The account fixture belongs to usr-1; the request comes from usr-member.
+  test("every row the import stores carries the account owner's user_id", async () => {
+    db.snapshotIds = ["holding-acct-1-sec-index-20260102"];
+
+    const res = await importStatement(importBody({ replace: ["sec-index"] }), "usr-member");
+    expect(res).toMatchObject({ status: "success", body: { written: 2, alreadyImported: 0 } });
+
+    const calls = clientCalls();
+    const rows = calls.find((c) => c.sql.includes("INSERT INTO investment_transactions"))!;
+    expect(boundTo(rows, "investment_transaction_id")).toEqual([ROW_ID, `${ROW_ID}-cash`]);
+    expect(boundTo(rows, "user_id")).toEqual(["usr-1", "usr-1"]);
+    const holding = calls.find((c) => c.sql.includes("INSERT INTO holdings"))!;
+    expect(boundTo(holding, "user_id")).toEqual(["usr-1"]);
+    const mapping = calls.find((c) => /^UPDATE accounts SET/.test(c.sql))!;
+    expect(mapping.values).toContain("usr-1");
+    const retire = calls.find((c) => /^UPDATE snapshots SET is_deleted = TRUE/.test(c.sql))!;
+    expect(retire.values).toContain("usr-1");
+
+    // The requester's id reaches the owner lookup and no other statement.
+    const asRequester = everyCall().filter((c) => c.values.flat().includes("usr-member"));
+    expect(asRequester).toHaveLength(1);
+    expect(asRequester[0].sql).toMatch(OWNER_LOOKUP);
+  });
+
+  test("the owner lookup is keyed on the live account and scoped to the requester's sharing group", async () => {
+    await importStatement(importBody(), "usr-member");
+
+    const lookup = everyCall().find((c) => OWNER_LOOKUP.test(c.sql))!;
+    expect(lookup.sql).toMatch(/r\.account_id = \$1 AND r\.user_id = ANY\(sharing_user_ids\(\$2\)\)/);
+    expect(lookup.sql).toMatch(/r\.is_deleted IS NULL OR r\.is_deleted = FALSE/);
+    expect(lookup.values).toEqual(["acct-1", "usr-member"]);
+  });
+
+  test("an account outside the requester's sharing group answers 'Account not found.' and writes nothing", async () => {
+    // The account row itself still resolves, so only the owner lookup can refuse.
+    mockUnsafe.mockImplementation(async (sql: string, values?: unknown[]) =>
+      OWNER_LOOKUP.test(sql) ? { rows: [], rowCount: 0 } : scripted(sql, values),
+    );
+
+    const res = await importStatement(importBody(), "usr-member");
+
+    expect(res).toEqual({ status: "failed", message: "Account not found." });
+    expect(writes()).toEqual([]);
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 });
 

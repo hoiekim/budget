@@ -211,3 +211,67 @@ describe("get-new-account route", () => {
     expect(result?.message).toMatch(/failed to create/i);
   });
 });
+
+describe("mint on an item someone else in the sharing group owns", () => {
+  const OWNER_LOOKUP = /\bFROM\s+items\s+r\s+JOIN\s+users\b/i;
+  let ownerRow: MaybeRow = null;
+
+  beforeEach(() => {
+    ownerRow = null;
+    // The owner lookup joins `users`; every other statement keeps the table router.
+    mockUnsafe.mockImplementation(async (sql: string, values?: unknown[]) => {
+      if (OWNER_LOOKUP.test(sql)) {
+        return ownerRow ? { rows: [ownerRow], rowCount: 1 } : { rows: [], rowCount: 0 };
+      }
+      return queryRouter(sql, values);
+    });
+  });
+
+  /** The value a single-row INSERT binds to `column`, read off its own column list. */
+  const boundTo = (insert: { sql: string; values: unknown[] }, column: string): unknown => {
+    const [, columnList, valueList] = /\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i.exec(insert.sql)!;
+    const columns = columnList.split(",").map((c) => c.trim());
+    const placeholders = valueList.split(",").map((p) => p.trim());
+    return insert.values[Number(placeholders[columns.indexOf(column)].slice(1)) - 1];
+  };
+
+  const ownerLookup = () => mockUnsafe.mock.calls.find((call) => OWNER_LOOKUP.test(call[0] as string));
+
+  test("the account is inserted under the item owner's user_id", async () => {
+    itemRow = { ...manualItem(), user_id: "u-owner" };
+    ownerRow = { user_id: "u-owner", username: "owner" };
+
+    const result = await getNewAccountRoute.execute(makeReq({ item_id: "item-manual" }, "u-member"), fakeRes());
+
+    expect(result?.status).toBe("success");
+    const insert = findInsert();
+    expect(insert).not.toBeNull();
+    expect(boundTo(insert!, "user_id")).toBe("u-owner");
+    expect(insert!.values).not.toContain("u-member");
+    expect(boundTo(insert!, "item_id")).toBe("item-manual");
+  });
+
+  test("the owner lookup is keyed on the item and scoped to the caller's sharing group", async () => {
+    itemRow = { ...manualItem(), user_id: "u-owner" };
+    ownerRow = { user_id: "u-owner", username: "owner" };
+
+    await getNewAccountRoute.execute(makeReq({ item_id: "item-manual" }, "u-member"), fakeRes());
+
+    const lookup = ownerLookup();
+    expect(lookup).toBeDefined();
+    expect(lookup![0] as string).toMatch(/r\.item_id = \$1 AND r\.user_id = ANY\(sharing_user_ids\(\$2\)\)/);
+    expect(lookup![1]).toEqual(["item-manual", "u-member"]);
+  });
+
+  test("no owner in reach answers 'Item not found.' and inserts nothing", async () => {
+    // The manual item resolves, so only the owner lookup can refuse.
+    itemRow = { ...manualItem(), user_id: "u-owner" };
+    ownerRow = null;
+
+    const result = await getNewAccountRoute.execute(makeReq({ item_id: "item-manual" }, "u-member"), fakeRes());
+
+    expect(result).toEqual({ status: "failed", message: "Item not found." });
+    expect(ownerLookup()).toBeDefined();
+    expect(findInsert()).toBeNull();
+  });
+});

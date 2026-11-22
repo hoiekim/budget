@@ -6,7 +6,8 @@ import {
   optionalDateField,
   validateFields,
   validationError,
-  getAccount,
+  accountsTable,
+  getRowOwner,
   DECIMAL_15_2_MAX,
 } from "server";
 import type { FieldSpec } from "server";
@@ -71,7 +72,8 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
     const fieldsResult = validateFields(body, SNAPSHOT_BODY_SPEC);
     if (!fieldsResult.success) return validationError(fieldsResult.error!);
 
-    if (!(await getAccount(user, account.account_id))) {
+    const owner = await getRowOwner(user, accountsTable, account.account_id);
+    if (!owner) {
       return { status: "failed", message: "Account not found or access denied." };
     }
 
@@ -87,8 +89,7 @@ export const postSnapshotRoute = new Route<SnapshotPostResponse>(
       date: date.toISOString(),
     };
 
-    const { user_id } = user;
-    const newSnapshot = { user: { user_id }, snapshot, account };
+    const newSnapshot = { user: { user_id: owner.user_id }, snapshot, account };
 
     try {
       const response = await upsertSnapshots([newSnapshot]);

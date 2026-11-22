@@ -142,4 +142,9 @@ export const EXPIRES_AT = "expires_at";
 
 export const PLAN_FUND_MAPPINGS = "plan_fund_mappings";
 
+export const GROUP_ID = "group_id";
+export const INVITATION_ID = "invitation_id";
+export const INVITER_USER_ID = "inviter_user_id";
+export const INVITEE_USER_ID = "invitee_user_id";
+
 export const NULL = "NULL";

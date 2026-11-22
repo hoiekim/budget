@@ -5,6 +5,7 @@ import {
   transactionsTable,
   splitTransactionsTable,
   AdditionalWhere,
+  sharedWithSql,
 } from "server";
 
 // Compare-and-swap guard for both the transactions and split-transactions
@@ -558,10 +559,12 @@ const getFeatureSignal = async (
            AND ${SCORE_EXPR("t")} > $12
        ) AS rejected
      FROM winning w
-     -- Scoped to the user: a label can name another user's category, and joining it unscoped
-     -- would read that user's section.
-     JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1
-     JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1
+     -- Scoped to the user and whoever shares data with them: a label can name anyone's
+     -- category, and joining it unscoped would read a stranger's section.
+     JOIN categories ON categories.category_id = w.label_category_id
+       AND ${sharedWithSql("categories.user_id", "$1")}
+     JOIN sections ON sections.section_id = categories.section_id
+       AND ${sharedWithSql("sections.user_id", "$1")}
      LIMIT 1`,
     params,
   );

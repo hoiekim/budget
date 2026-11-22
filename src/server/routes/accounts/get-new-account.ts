@@ -3,6 +3,8 @@ import {
   Route,
   createManualAccount,
   getItem,
+  getRowOwner,
+  itemsTable,
   requireQueryString,
   validationError,
 } from "server";
@@ -39,7 +41,10 @@ export const getNewAccountRoute = new Route<NewAccountGetResponse>(
       };
     }
 
-    const created = await createManualAccount(user, { item_id });
+    const owner = await getRowOwner(user, itemsTable, item_id);
+    if (!owner) return { status: "failed", message: "Item not found." };
+
+    const created = await createManualAccount(owner, { item_id });
     if (!created) return { status: "failed", message: "Failed to create account." };
 
     return {

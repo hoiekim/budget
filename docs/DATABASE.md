@@ -35,6 +35,24 @@ const result = await pool.query("SELECT * FROM users WHERE user_id = $1", [userI
 
 Use direct SQL for: complex joins or aggregations, performance-critical bulk operations, one-off migrations.
 
+### Owner scope
+
+A data table's rows belong to a user (`user_id`) and are readable and writable by that user and by whoever shares data with them (see SECURITY.md, "Data Sharing"). Say so with `sharedWith(user)` wherever a Table method takes the owner, and with `sharedWithSql` in SQL written by hand:
+
+```typescript
+import { sharedWith, sharedWithSql } from "server";
+
+await accountsTable.query({ user_id: sharedWith(user) });
+await chartsTable.update(chart_id, updates, undefined, sharedWith(user));
+await transactionsTable.bulkSoftDelete(ids, { user_id: sharedWith(user) });
+
+await pool.query(`SELECT … FROM holdings h WHERE ${sharedWithSql("h.user_id", "$1")}`, [user.user_id]);
+```
+
+Both render `user_id = ANY(sharing_user_ids($n))`. The bound value is still the user's own id, and `sharing_user_ids` (a SQL function created at every start, beside the tables) widens it to their sharing group inside the statement. A bare `user.user_id` in an owner slot means "this user's own rows only": right for `api_keys`, and for the sync, auto-suggest and recurring-detection jobs, which work one owner at a time. Transfer detection works one sharing group at a time and binds the group's ids as `ANY($n::uuid[])`, read once under the membership lock so they hold for the whole run.
+
+A new row's `user_id` is a value, not a scope: write the owner of the row's parent there (`getRowOwner`), never whoever in the group made the request.
+
 ## Schema Changes
 
 Tables are created from the schema objects in `src/server/lib/postgres/models/` at every start (`initialize.ts`). A column added to a schema is added to the existing table by `runMigrations` (`migration.ts`), which never drops or changes a column (a type mismatch stops the start instead), so the previous release keeps working against the new schema while both run. Indexes are created after the migrations, so an index may cover a column added in the same release.

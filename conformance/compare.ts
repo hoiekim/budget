@@ -74,6 +74,28 @@ const differences = (left: unknown, right: unknown, at: string, out: string[]): 
   }
 };
 
+/**
+ * Pairs two sequences by their longest common subsequence, so a request one
+ * server never got (a test that stopped early on it) shows as missing instead
+ * of shifting every pairing after it.
+ */
+const align = (left: string[], right: string[]): { bun?: number; rust?: number }[] => {
+  const lcs: number[][] = Array.from({ length: left.length + 1 }, () => new Array(right.length + 1).fill(0));
+  for (let i = left.length - 1; i >= 0; i--) {
+    for (let j = right.length - 1; j >= 0; j--) {
+      lcs[i][j] = left[i] === right[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const steps: { bun?: number; rust?: number }[] = [];
+  let [i, j] = [0, 0];
+  while (i < left.length || j < right.length) {
+    if (i < left.length && j < right.length && left[i] === right[j]) steps.push({ bun: i++, rust: j++ });
+    else if (j < right.length && (i === left.length || lcs[i][j + 1] >= lcs[i + 1][j])) steps.push({ rust: j++ });
+    else steps.push({ bun: i++ });
+  }
+  return steps;
+};
+
 const read = (target: string, file: string): TranscriptRecord[] =>
   JSON.parse(fs.readFileSync(path.join(TRANSCRIPT_DIR, target, file), "utf8"));
 
@@ -112,12 +134,20 @@ export const compareTranscripts = (filter: string[] = []): { compared: number; p
     const [bun, rust] = [read("bun", file), read("rust", file)];
 
     const [bunHttp, rustHttp] = [httpOf(bun), httpOf(rust)];
-    if (bunHttp.length !== rustHttp.length) {
-      problems.push(`${name}: bun answered ${bunHttp.length} requests, rust ${rustHttp.length}`);
-    }
-    for (let i = 0; i < Math.min(bunHttp.length, rustHttp.length); i++) {
-      const [a, b] = [bunHttp[i], rustHttp[i]];
-      const pick = (r: HttpRecord) => canonical({ request: `${r.method} ${r.path}`, status: r.status, headers: r.headers, body: r.body });
+    const signature = (r: HttpRecord) => `${r.stack} ${r.method} ${maskString(r.path)}`;
+    for (const step of align(bunHttp.map(signature), rustHttp.map(signature))) {
+      if (step.bun === undefined) {
+        const r = rustHttp[step.rust!];
+        problems.push(`${name}: only rust answered request #${r.seq} ${r.method} ${maskString(r.path)}`);
+        continue;
+      }
+      if (step.rust === undefined) {
+        const r = bunHttp[step.bun];
+        problems.push(`${name}: only bun answered request #${r.seq} ${r.method} ${maskString(r.path)}`);
+        continue;
+      }
+      const [a, b] = [bunHttp[step.bun], rustHttp[step.rust]];
+      const pick = (r: HttpRecord) => canonical({ status: r.status, headers: r.headers, body: r.body });
       const out: string[] = [];
       differences(pick(a), pick(b), "", out);
       if (out.length > 0) problems.push(`${name}: request #${a.seq} ${a.method} ${maskString(a.path)}\n${out.join("\n")}`);

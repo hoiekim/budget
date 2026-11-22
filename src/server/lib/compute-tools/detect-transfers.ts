@@ -2,6 +2,8 @@ import { TRANSFER_DATE_WINDOW_DAYS } from "common";
 import { pool, logger, usersTable } from "server";
 import type { SqlClient } from "../postgres/client";
 import { canonicalizePairIds, QueryExecutor } from "../postgres/models";
+import { getSharingUserIds } from "../postgres/repositories/sharing";
+import { lockTransferPairs } from "../postgres/repositories/transfers";
 
 const BASE_CONFIDENCE = 0.7;
 const PLAID_TRANSFER_BOOST = 0.2;
@@ -14,6 +16,10 @@ const PER_USER_CANDIDATE_LIMIT = 500;
 export interface DetectionCandidate {
   transaction_id_a: string;
   transaction_id_b: string;
+  /** Who owns `transaction_id_a`: one of the people the run covers. */
+  user_id_a: string;
+  /** Who owns `transaction_id_b`. */
+  user_id_b: string;
   date_delta: number;
   is_plaid_transfer: boolean;
 }
@@ -33,8 +39,14 @@ const fetchUsers = async (): Promise<string[]> => {
   return users.map((u) => u.user_id);
 };
 
+/**
+ * Candidate pairs among the transactions of `userIds` — a user and everyone
+ * sharing data with them — so a transfer between two people's accounts is a
+ * candidate like one between a single person's.
+ */
 const fetchCandidates = async (
-  userId: string,
+  userIds: string[],
+  limit: number,
   executor: QueryExecutor = pool,
 ): Promise<DetectionCandidate[]> => {
   // Hidden-account exclusion: `account.hide=TRUE` marks an account as
@@ -50,6 +62,8 @@ const fetchCandidates = async (
     `SELECT
        t1.transaction_id AS transaction_id_a,
        t2.transaction_id AS transaction_id_b,
+       t1.user_id AS user_id_a,
+       t2.user_id AS user_id_b,
        ABS(t1.date - t2.date) AS date_delta,
        (
          (t1.raw->'personal_finance_category'->>'primary') LIKE 'TRANSFER%'
@@ -57,8 +71,8 @@ const fetchCandidates = async (
        ) AS is_plaid_transfer
      FROM transactions t1
      JOIN transactions t2
-       ON t1.user_id = t2.user_id
-      AND t1.user_id = $1
+       ON t1.user_id = ANY($1::uuid[])
+      AND t2.user_id = ANY($1::uuid[])
       -- Matched as plain comparisons on t2's columns so the planner can hash-join on
       -- amount; an expression over both sides forces a compare of every pair of rows.
       AND t2.amount = -t1.amount
@@ -66,7 +80,7 @@ const fetchCandidates = async (
       AND t1.account_id <> t2.account_id
       AND t2.date BETWEEN t1.date - $2::int AND t1.date + $2::int
       AND t1.transaction_id < t2.transaction_id
-     -- Scoped to the user: a transaction's account_id can name another user's account.
+     -- Scoped to each side's owner: a transaction's account_id can name another user's account.
      JOIN accounts a1 ON a1.account_id = t1.account_id AND a1.user_id = t1.user_id
      JOIN accounts a2 ON a2.account_id = t2.account_id AND a2.user_id = t2.user_id
      WHERE (t1.is_deleted IS NULL OR t1.is_deleted = FALSE)
@@ -79,7 +93,7 @@ const fetchCandidates = async (
        -- eligible for OTHER counterparts.
        AND NOT EXISTS (
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = t1.user_id
+         WHERE tp.user_id = ANY($1::uuid[])
            AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
            AND tp.status <> 'rejected'
            AND (
@@ -91,7 +105,7 @@ const fetchCandidates = async (
        -- if (t1, t2) was rejected before, do not re-suggest it.
        AND NOT EXISTS (
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = t1.user_id
+         WHERE tp.user_id = ANY($1::uuid[])
            AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
            AND tp.status = 'rejected'
            AND (
@@ -101,25 +115,36 @@ const fetchCandidates = async (
        )
      ORDER BY ABS(t1.date - t2.date) ASC, t1.transaction_id ASC
      LIMIT $3`,
-    [userId, DATE_WINDOW_DAYS, PER_USER_CANDIDATE_LIMIT],
+    [userIds, DATE_WINDOW_DAYS, limit],
   );
 
   return result.rows.map((row) => ({
     transaction_id_a: row.transaction_id_a as string,
     transaction_id_b: row.transaction_id_b as string,
+    user_id_a: row.user_id_a as string,
+    user_id_b: row.user_id_b as string,
     date_delta: Number(row.date_delta),
     is_plaid_transfer: row.is_plaid_transfer === true,
   }));
 };
 
+/**
+ * Suggests `candidate` as a pair. The pair belongs to the owner of its first
+ * transaction in canonical order, as a pair made by hand does, so that when
+ * sharing ends it stays with whoever holds that transaction. The candidate's
+ * own order comes from the database's collation, which need not agree.
+ */
 const createPair = async (
-  userId: string,
-  transactionIdA: string,
-  transactionIdB: string,
+  userIds: string[],
+  candidate: DetectionCandidate,
   executor: QueryExecutor = pool,
 ): Promise<void> => {
   const pair_id = crypto.randomUUID();
-  const canonical = canonicalizePairIds(transactionIdA, transactionIdB);
+  const canonical = canonicalizePairIds(candidate.transaction_id_a, candidate.transaction_id_b);
+  const ownerId =
+    canonical.transaction_id_a === candidate.transaction_id_a
+      ? candidate.user_id_a
+      : candidate.user_id_b;
   // INSERT...SELECT WHERE NOT EXISTS instead of ON CONFLICT to avoid
   // requiring a UNIQUE (transaction_id_a, transaction_id_b) constraint
   // that isn't enforced by the auto-migration. Also stronger: this rejects
@@ -133,7 +158,7 @@ const createPair = async (
      SELECT $1, $2, $3, $4, 'suggested'
      WHERE NOT EXISTS (
        SELECT 1 FROM transaction_pairs tp
-       WHERE tp.user_id = $2
+       WHERE tp.user_id = ANY($5::uuid[])
          AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
          AND tp.status <> 'rejected'
          AND (
@@ -153,18 +178,13 @@ const createPair = async (
          -- is_deleted predicate — the UNIQUE constraint doesn't care
          -- about is_deleted, so neither does this guard.
          SELECT 1 FROM transaction_pairs tp
-         WHERE tp.user_id = $2
+         WHERE tp.user_id = ANY($5::uuid[])
            AND (
              (tp.transaction_id_a = $3 AND tp.transaction_id_b = $4)
              OR (tp.transaction_id_a = $4 AND tp.transaction_id_b = $3)
            )
        )`,
-    [
-      pair_id,
-      userId,
-      canonical.transaction_id_a,
-      canonical.transaction_id_b,
-    ],
+    [pair_id, ownerId, canonical.transaction_id_a, canonical.transaction_id_b, userIds],
   );
 };
 
@@ -172,7 +192,8 @@ const createPair = async (
  * Background job that scans unpaired transactions and suggests transfer pairs.
  *
  * Match criteria (enforced by the SQL):
- *   - same user, different accounts
+ *   - one user's transactions, or those of everyone in a sharing group;
+ *     different accounts
  *   - equal absolute amount with opposite signs (debit/credit)
  *   - |date_a - date_b| <= DATE_WINDOW_DAYS (currently 7)
  *   - neither transaction already participates in a non-deleted pair
@@ -184,6 +205,9 @@ const createPair = async (
  *   - +0.1 if same calendar day (date_delta < 1)
  *
  * Candidates with confidence >= 0.7 are inserted with status `suggested`.
+ *
+ * Runs once per sharing group, anchored on its first member in the user
+ * list, and once for each user who shares with nobody.
  *
  * Concurrency: within one run, the first accepted pair for a transaction
  * removes that transaction from further pairing in this run, preventing one
@@ -203,23 +227,25 @@ export const runTransferDetection = async (): Promise<void> => {
 
   try {
     const userIds = await fetchUsers();
+    // Everyone a finished run covered: the rest of a group needs no run of its own.
+    const covered = new Set<string>();
     for (const userId of userIds) {
-      // Per-user transaction with advisory lock: serializes against
-      // `pairTransactions` / `confirmTransferPair` (same lock key) AND against
-      // any other concurrent `runTransferDetection` invocation for this user
-      // (e.g. scheduled cron + manual sync trigger firing back-to-back).
-      // Without this, both engine runs see "A is free" via separate NOT EXISTS
-      // reads under READ COMMITTED and both INSERT pairs involving A — a
-      // transaction in two simultaneous active pairs, violating the
-      // one-active-pair-per-transaction invariant.
+      if (covered.has(userId)) continue;
+      // One transaction per group, under the lock every transfer-pair write in
+      // the group takes: it serializes against `pairTransactions` /
+      // `confirmTransferPair` AND against any other concurrent
+      // `runTransferDetection` invocation (e.g. scheduled cron + manual sync
+      // trigger firing back-to-back). Without this, both engine runs see "A is
+      // free" via separate NOT EXISTS reads under READ COMMITTED and both
+      // INSERT pairs involving A — a transaction in two simultaneous active
+      // pairs, violating the one-active-pair-per-transaction invariant.
       let client: SqlClient | undefined;
       try {
         client = await pool.connect();
         await client.query("BEGIN");
-        await client.query(
-          `SELECT pg_advisory_xact_lock(hashtext($1 || ':transfers'))`,
-          [userId],
-        );
+        await lockTransferPairs(client, userId);
+        const memberIds = await getSharingUserIds(userId, client);
+        memberIds.forEach((id) => covered.add(id));
 
         // Pre-step: cascade soft-delete any existing pair whose own
         // `is_deleted` is FALSE but at least one of its referenced
@@ -232,14 +258,14 @@ export const runTransferDetection = async (): Promise<void> => {
         const stalePairCleanup = await client.query(
           `UPDATE transaction_pairs tp
            SET is_deleted = TRUE, updated = CURRENT_TIMESTAMP
-           WHERE tp.user_id = $1
+           WHERE tp.user_id = ANY($1::uuid[])
              AND (tp.is_deleted IS NULL OR tp.is_deleted = FALSE)
              AND EXISTS (
                SELECT 1 FROM transactions t
                WHERE t.transaction_id IN (tp.transaction_id_a, tp.transaction_id_b)
                  AND t.is_deleted = TRUE
              )`,
-          [userId],
+          [memberIds],
         );
         if ((stalePairCleanup.rowCount ?? 0) > 0) {
           logger.info("Cleaned stale transfer pairs", {
@@ -248,14 +274,17 @@ export const runTransferDetection = async (): Promise<void> => {
           });
         }
 
-        const candidates = await fetchCandidates(userId, client);
-        if (candidates.length === PER_USER_CANDIDATE_LIMIT) {
+        // Each member keeps the budget they had alone.
+        const limit = PER_USER_CANDIDATE_LIMIT * memberIds.length;
+        const candidates = await fetchCandidates(memberIds, limit, client);
+        if (candidates.length === limit) {
           // The LIMIT just truncated the candidate set; the highest-
           // `date_delta` rows fell off the end. Surface so the cap can
           // be tuned if heavy-transfer users hit it routinely.
           logger.warn("Transfer-detection candidate cap reached", {
             userId,
-            limit: PER_USER_CANDIDATE_LIMIT,
+            members: memberIds.length,
+            limit,
           });
         }
         const usedTxnIds = new Set<string>();
@@ -279,17 +308,12 @@ export const runTransferDetection = async (): Promise<void> => {
           // from a concurrent insert that snuck through, transient DB
           // error, etc.), we want to ROLLBACK TO that savepoint and
           // continue with the rest of the candidates — not abort the
-          // whole per-user transaction and lose any pairs created
+          // whole per-group transaction and lose any pairs created
           // earlier in the loop. Matches the pre-transaction semantics
           // where each `createPair` failure logged + continued.
           await client.query("SAVEPOINT pair_attempt");
           try {
-            await createPair(
-              userId,
-              candidate.transaction_id_a,
-              candidate.transaction_id_b,
-              client,
-            );
+            await createPair(memberIds, candidate, client);
             await client.query("RELEASE SAVEPOINT pair_attempt");
             usedTxnIds.add(candidate.transaction_id_a);
             usedTxnIds.add(candidate.transaction_id_b);
@@ -311,10 +335,11 @@ export const runTransferDetection = async (): Promise<void> => {
         await client.query("COMMIT");
 
         totalSuggested += userSuggested;
-        totalUsers++;
+        totalUsers += memberIds.length;
         if (userSuggested > 0) {
           logger.info("Suggested transfer pairs for user", {
             userId,
+            members: memberIds.length,
             suggested: userSuggested,
             candidatesConsidered: candidates.length,
           });

@@ -36,13 +36,18 @@ const db = {
   insertReturns: [] as Row[],
   /** Each existing parent's owner, by id. */
   parents: new Map<string, string>(),
+  /** Owners who share data with whoever asks. */
+  sharingOwners: new Set<string>(),
 };
 
 const parentRows = (sql: string, parent: Parent, values: unknown[]): Row[] =>
   [...db.parents]
     .filter(
       ([id, owner]) =>
-        values.includes(id) && (!/\buser_id\s*=/i.test(sql) || values.includes(owner)),
+        values.includes(id) &&
+        (!/\buser_id\s*=/i.test(sql) ||
+          values.includes(owner) ||
+          (/\buser_id = ANY\(sharing_user_ids\(/i.test(sql) && db.sharingOwners.has(owner))),
     )
     .map(([id, owner]) => ({
       [parent.idField]: id,
@@ -81,6 +86,7 @@ afterAll(() => {
 beforeEach(() => {
   mockUnsafe.mockClear();
   db.insertReturns = [];
+  db.sharingOwners = new Set();
 });
 
 /** Every field disagrees with the literal create defaults, so a route that
@@ -335,6 +341,21 @@ for (const entity of ENTITIES) {
         );
         expect(result).toEqual({ status: "failed", message: entity.failureMessage });
         expect(inserts()).toHaveLength(0);
+      });
+
+      test(`a ${parent.noun} of someone sharing data with the user takes the new ${entity.noun}, stored under that owner`, async () => {
+        db.parents = new Map([[parent.parentId, OTHER_USER]]);
+        db.sharingOwners = new Set([OTHER_USER]);
+        db.insertReturns = [entity.insertedRow()];
+        const result = await entity.route.execute(
+          makeReq({ user_id: USER_ID, username: "u" }),
+          fakeRes(),
+        );
+        expect(result?.status).toBe("success");
+        expect(inserts()).toHaveLength(1);
+        const [[, values]] = inserts();
+        expect(values).toContain(OTHER_USER);
+        expect(values).not.toContain(USER_ID);
       });
 
       test(`a ${parent.noun} that doesn't exist gets the same answer, so the two can't be told apart`, async () => {
