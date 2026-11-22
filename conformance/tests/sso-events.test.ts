@@ -63,8 +63,8 @@ const isSignedIn = async (client: ApiClient): Promise<boolean> =>
 const sessionsOf = (user_id: string) => stack.db.rows("sessions", { user_user_id: user_id });
 
 /** An open event stream of `client`, past its opening blocks. */
-const tab = async (client: ApiClient): Promise<EventStream> => {
-  const stream = await openEventStream(client);
+const tab = async (client: ApiClient, options: { noCompare?: boolean } = {}): Promise<EventStream> => {
+  const stream = await openEventStream(client, options);
   streams.push(stream);
   expect(stream.status).toBe(200);
   await stream.next((block) => block.event === "connected");
@@ -403,6 +403,28 @@ describe("the end of a person's access", () => {
     expectAccepted(await deliver({ "user.disabled": { sub: person.sub.toUpperCase() } }));
     expect(await everything()).toEqual(before);
   });
+});
+
+describe("a session that ends with no event delivered here to say so", () => {
+  test("has its open event stream closed within a minute, by the stream's own re-read of its session", async () => {
+    const who = { sub: "usr_watched", username: "watched" };
+    const ended = await signedIn(who, "ses_watched_ended");
+    const kept = await signedIn(who, "ses_watched_kept");
+    // Not compared across servers: how many keepalive comments fit in before the close is a matter of milliseconds.
+    const [endedTab, keptTab] = [await tab(ended.client, { noCompare: true }), await tab(kept.client, { noCompare: true })];
+    const opened = Date.now();
+    // Deleted behind the server's back, as another copy of the app would on an event delivered to it.
+    await stack.db.query("DELETE FROM sessions WHERE session_id = $1", [ended.client.cookies.get("session_id")]);
+
+    await endedTab.waitForEnd({ timeoutMs: 75_000 });
+    expect(endedTab.endedByServer).toBe(true);
+    const waited = Date.now() - opened;
+    expect(waited).toBeGreaterThanOrEqual(55_000);
+    expect(waited).toBeLessThan(70_000);
+    // The same person's other session was re-read too, and found in place.
+    expect(keptTab.ended).toBe(false);
+    expect(await isSignedIn(kept.client)).toBe(true);
+  }, 90_000);
 });
 
 describe("the route", () => {
