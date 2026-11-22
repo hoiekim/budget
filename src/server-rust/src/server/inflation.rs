@@ -5,11 +5,8 @@ use std::cmp::Ordering;
 use serde_json::json;
 
 use crate::js::{num, number_to_string, to_number, Json, Obj};
+use crate::server::bls::CPI_SERIES_ID;
 use crate::server::postgres::repositories::cpi_snapshots::get_cpi_snapshots;
-
-/// CPI-U, U.S. city average, all items, not seasonally adjusted (1982-84 = 100):
-/// `CPI_SERIES_ID` of `src/server/lib/bls.ts`.
-const CPI_SERIES_ID: &str = "CUUR0000SA0";
 
 /// How far back the average reaches, and so how much history the scheduled
 /// backfill keeps.
