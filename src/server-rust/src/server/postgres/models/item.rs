@@ -58,6 +58,7 @@ pub fn columns() -> Vec<&'static str> {
 pub fn to_json(row: &Row) -> Json {
     Literal::new()
         .opt("item_id", row.get("item_id"))
+        .opt("user_id", row.get("user_id"))
         .opt("access_token", row.get("access_token"))
         .opt("institution_id", row.get("institution_id"))
         .opt("available_products", row.get("available_products"))
@@ -128,6 +129,7 @@ mod tests {
             &to_json(&row),
             json!({
                 "item_id": "item-1",
+                "user_id": "0b6d4a2e-6f0c-4a52-9c1f-5d1f6f1f3a10",
                 "access_token": "access-production-123",
                 "institution_id": "ins_3",
                 "available_products": ["transactions", "investments"],
@@ -163,7 +165,14 @@ mod tests {
         let row = TABLE.validate(row).unwrap();
         assert_json(
             &to_json(&row),
-            json!({ "item_id": "manual-1", "access_token": null, "institution_id": null, "available_products": null, "provider": null }),
+            json!({
+                "item_id": "manual-1",
+                "user_id": "0b6d4a2e-6f0c-4a52-9c1f-5d1f6f1f3a10",
+                "access_token": null,
+                "institution_id": null,
+                "available_products": null,
+                "provider": null,
+            }),
         );
     }
 
