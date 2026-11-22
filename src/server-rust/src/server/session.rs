@@ -34,18 +34,18 @@ pub fn session_store() -> &'static PostgresSessionStore {
     STORE.get_or_init(PostgresSessionStore::new)
 }
 
-/// The cookies of a `Cookie` header. `Err` where `decodeURIComponent` would throw.
-pub fn parse_cookies(cookie_header: &str) -> Result<IndexMap<String, String>, ()> {
+/// The cookies of a `Cookie` header. `None` where `decodeURIComponent` would throw.
+pub fn parse_cookies(cookie_header: &str) -> Option<IndexMap<String, String>> {
     let mut cookies = IndexMap::new();
     for part in cookie_header.split(';') {
         let Some(eq) = part.find('=') else { continue };
         let key = crate::server::validation::js_trim(&part[..eq]);
         let value = crate::server::validation::js_trim(&part[eq + 1..]);
         if !key.is_empty() {
-            cookies.insert(key.to_string(), decode_uri_component(value).ok_or(())?);
+            cookies.insert(key.to_string(), decode_uri_component(value)?);
         }
     }
-    Ok(cookies)
+    Some(cookies)
 }
 
 pub fn build_session_cookie(sid: &str, max_age: i64, secure: bool) -> String {
@@ -237,8 +237,8 @@ mod tests {
 
     #[test]
     fn a_cookie_value_that_does_not_decode_fails_the_whole_header() {
-        assert!(parse_cookies("session_id=%E0%A4%A").is_err());
-        assert!(parse_cookies("a=%").is_err());
+        assert!(parse_cookies("session_id=%E0%A4%A").is_none());
+        assert!(parse_cookies("a=%").is_none());
     }
 
     #[test]

@@ -14,10 +14,13 @@ pub const SSE_KEEPALIVE_MS: u64 = 30_000;
 pub const RING_BUFFER_MAX_ENTRIES: usize = 512;
 pub const RING_BUFFER_MAX_AGE_MS: f64 = 15.0 * 60.0 * 1000.0;
 
+/// Writes one `event:`/`data:` block (event name, data, event id); an error
+/// means the stream is gone.
+pub type SendEvent = Box<dyn Fn(&str, &Json, Option<&str>) -> Result<(), ()> + Send + Sync>;
+
 /// One open event stream.
 pub struct Subscriber {
-    /// Writes one `event:`/`data:` block; an error means the stream is gone.
-    pub send: Box<dyn Fn(&str, &Json, Option<&str>) -> Result<(), ()> + Send + Sync>,
+    pub send: SendEvent,
     /// Ends the stream and releases what it holds.
     pub close: Box<dyn Fn() + Send + Sync>,
     /// The identity provider's session id, on a stream opened by a single sign-on session.

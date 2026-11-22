@@ -88,7 +88,7 @@ pub fn is_api_path(path: &str) -> bool {
 
 async fn load_session(headers: &HashMap<String, String>) -> anyhow::Result<Session> {
     let cookie_header = headers.get("cookie").map(String::as_str).unwrap_or("");
-    let cookies = parse_cookies(cookie_header).map_err(|_| anyhow::anyhow!("URI error"))?;
+    let cookies = parse_cookies(cookie_header).ok_or_else(|| anyhow::anyhow!("URI error"))?;
     // An empty session id is falsy in the TypeScript: it is never looked up.
     if let Some(sid) = cookies.get(SESSION_COOKIE_NAME).filter(|sid| !sid.is_empty()) {
         if let Ok(Some(data)) = load_session_data(sid).await {
@@ -557,10 +557,12 @@ async fn handle(request: hyper::Request<Incoming>, peer: SocketAddr) -> Result<H
     // Serve static files for non-API paths. `/api-anything` is a client route.
     if !is_api_path(&full_path) {
         // A chunked body has no declared length; one past the limit is still refused.
-        if declared_length.is_none() && head.method != Method::GET && head.method != Method::HEAD {
-            if Limited::new(body, MAX_REQUEST_BODY_SIZE).collect().await.is_err() {
-                return Ok(payload_too_large());
-            }
+        if declared_length.is_none()
+            && head.method != Method::GET
+            && head.method != Method::HEAD
+            && Limited::new(body, MAX_REQUEST_BODY_SIZE).collect().await.is_err()
+        {
+            return Ok(payload_too_large());
         }
         return Ok(serve_static(&method, &full_path, &headers).await);
     }
