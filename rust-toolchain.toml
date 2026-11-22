@@ -1,0 +1,7 @@
+# The Rust the server is built, linted and tested with, here and in CI. Clippy
+# runs with warnings as errors: move this only in a commit that also fixes
+# whatever new lints the release brings.
+[toolchain]
+channel = "1.97.0"
+components = ["clippy"]
+profile = "minimal"
