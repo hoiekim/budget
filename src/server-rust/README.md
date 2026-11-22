@@ -115,3 +115,42 @@ a TypeScript or Bun detail.
 Pure logic gets unit tests beside it (`#[cfg(test)]`), porting the cases of
 the TypeScript `*.test.ts` where they apply. Everything reachable over HTTP
 is covered by `conformance/` instead: see `conformance/README.md`.
+
+## Where the two servers still differ
+
+Everything the conformance suite exercises answers the same on both servers.
+The differences below are known and left in place. Each is either something
+Rust's types or libraries cannot express, or a quirk of Bun's runtime rather
+than of the TypeScript.
+
+- **Numbers past the double range in a request body** (`1e999`). Bun's
+  `JSON.parse` reads them as `Infinity`; `serde_json::Value` cannot hold a
+  non-finite number, so Rust treats the whole body as unreadable, as if none
+  was sent. Matching it would need a JavaScript value type in place of
+  `serde_json::Value`.
+- **An unreachable Plaid host.** Bun's axios, sent through an HTTPS proxy,
+  never settles, and the request hangs until Bun's idle timeout resets the
+  connection. Rust answers 500 and alarms at once.
+- **Wording of transport and parse errors** from upstream calls (reqwest
+  against axios or `fetch`, JSON parse errors, `TypeError`s for malformed
+  answers) is close to Bun's, not identical. It shows in logs and alarm text,
+  never in a response body.
+- **Plaid webhook signatures** are verified for ES256 (P-256) only, the one
+  algorithm Plaid signs with; `jose` would also accept others.
+- **Time-zone data.** Rust reads the system tz database, Bun the copy inside
+  its ICU. Where the two versions disagree, local times differ too: for
+  example Europe/Dublin in 1925, Asia/Tehran in 1979, and Africa/Casablanca's
+  predicted changes from 2027.
+- **Date text with a vertical tab and non-ASCII Latin-1 characters.**
+  JavaScriptCore turns the vertical tab into a space only in strings it keeps
+  as 16-bit, which depends on where the string came from; Rust treats such
+  text as 8-bit.
+- **Unicode tables.** Merchant-name keys fold case and classify letters with
+  Rust's Unicode tables, which can disagree with JavaScriptCore's for
+  characters added in recent Unicode versions.
+- **Concurrent upstream calls.** Where the TypeScript runs calls with
+  `Promise.all` and Bun's order is nonetheless fixed (the detail and price
+  lookups of `POST /validate-ticker`), Rust makes them one after the other
+  so the calls arrive in the same order. Only latency differs. Where parallel
+  Plaid jobs fail before their `try` block, Rust reports the first failure
+  in input order, `Promise.all` the first in time.
