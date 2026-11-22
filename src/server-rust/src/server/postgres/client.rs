@@ -424,7 +424,7 @@ impl Executor for Client {
 }
 
 /// `executor` when given, else the pool: the `client ?? pool` of the TypeScript.
-pub fn or_pool<'a>(executor: Option<&'a dyn Executor>) -> &'a dyn Executor {
+pub fn or_pool(executor: Option<&dyn Executor>) -> &dyn Executor {
     executor.unwrap_or(&POOL_EXECUTOR)
 }
 

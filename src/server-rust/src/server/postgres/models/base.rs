@@ -485,7 +485,7 @@ impl Table {
     pub async fn hard_delete(&self, primary_key_value: &Json) -> anyhow::Result<bool> {
         self.assert_simple_primary_key("hardDelete")?;
         let sql = format!("DELETE FROM {} WHERE {} = $1 RETURNING {}", self.name, self.primary_key, self.primary_key);
-        let result = pool().query(&sql, &[primary_key_value.clone()]).await?;
+        let result = pool().query(&sql, std::slice::from_ref(primary_key_value)).await?;
         Ok(result.row_count.unwrap_or(0) > 0)
     }
 
@@ -508,7 +508,7 @@ impl Table {
     pub async fn hard_delete_by_column(&self, column: &str, column_value: &Json) -> anyhow::Result<u64> {
         self.assert_simple_primary_key("hardDeleteByColumn")?;
         let sql = format!("DELETE FROM {} WHERE {column} = $1 RETURNING {}", self.name, self.primary_key);
-        let result = pool().query(&sql, &[column_value.clone()]).await?;
+        let result = pool().query(&sql, std::slice::from_ref(column_value)).await?;
         Ok(result.row_count.unwrap_or(0))
     }
 
@@ -516,7 +516,7 @@ impl Table {
     pub async fn delete_by_condition(&self, column: &str, operator: &str, value: &Json) -> anyhow::Result<u64> {
         self.assert_simple_primary_key("deleteByCondition")?;
         let sql = format!("DELETE FROM {} WHERE {column} {operator} $1 RETURNING {}", self.name, self.primary_key);
-        let result = pool().query(&sql, &[value.clone()]).await?;
+        let result = pool().query(&sql, std::slice::from_ref(value)).await?;
         Ok(result.row_count.unwrap_or(0))
     }
 }
