@@ -37,7 +37,7 @@ use crate::server::logger;
 use crate::server::node_env::is_production;
 use crate::server::postgres::{initialize_postgres, pool};
 use crate::server::rate_limit::{get_client_ip, pre_session_shed_message, start_rate_limit_cleanup};
-use crate::server::realtime::{self, emit_to_sharing_group, mutation_emit_domain, mutation_side_effect_domains, origin_tab_payload};
+use crate::server::realtime::{self, mutation_emit_domain, mutation_side_effect_domains, origin_tab_payload, spawn_emit_to_sharing_group};
 use crate::server::request_limits::MAX_REQUEST_BODY_SIZE;
 use crate::server::route::{ApiResponse, Ctx, QueryValue, RawBody, Reply, Request, Route, Session};
 use crate::server::security_headers::{response_security_headers, SECURITY_HEADERS};
@@ -347,15 +347,10 @@ async fn handle_api_request(parts: IncomingParts, api_path: &str, log: &mut Obj)
             if let (Some(domain), "success", Some(user)) =
                 (mutation_emit_domain(&method, api_path), result.status, &ctx.session.user)
             {
-                let origin_tab_id = origin_tab_payload(&ctx.req.headers);
-                let side_effects = mutation_side_effect_domains(&method, api_path);
-                let user_id = user.user_id.clone();
-                tokio::spawn(async move {
-                    emit_to_sharing_group(&user_id, domain, origin_tab_id.as_deref()).await;
-                    for side_effect in side_effects {
-                        emit_to_sharing_group(&user_id, side_effect, None).await;
-                    }
-                });
+                spawn_emit_to_sharing_group(&user.user_id, domain, origin_tab_payload(&ctx.req.headers));
+                for side_effect in mutation_side_effect_domains(&method, api_path) {
+                    spawn_emit_to_sharing_group(&user.user_id, side_effect, None);
+                }
             }
             (full(json_stringify(&result.to_json())), Some("application/json"))
         }

@@ -170,10 +170,33 @@ pub async fn emit_to_sharing_group(user_id: &str, domain: &str, origin_tab_id: O
     }
 }
 
-/// Spawns [`emit_to_sharing_group`], the TypeScript's `void emitToSharingGroup(…)`.
+struct GroupEmit {
+    user_id: String,
+    domain: String,
+    origin_tab_id: Option<String>,
+}
+
+/// One task sends every group-wide event, in the order the writes asked for
+/// them. Each needs a query to find the group; run as separate tasks, two
+/// quick writes could reach a tab in the opposite order, and their event ids
+/// with them.
+fn group_emitter() -> &'static tokio::sync::mpsc::UnboundedSender<GroupEmit> {
+    static EMITTER: std::sync::OnceLock<tokio::sync::mpsc::UnboundedSender<GroupEmit>> = std::sync::OnceLock::new();
+    EMITTER.get_or_init(|| {
+        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<GroupEmit>();
+        tokio::spawn(async move {
+            while let Some(emit) = receiver.recv().await {
+                emit_to_sharing_group(&emit.user_id, &emit.domain, emit.origin_tab_id.as_deref()).await;
+            }
+        });
+        sender
+    })
+}
+
+/// [`emit_to_sharing_group`] off the response path, the TypeScript's
+/// `void emitToSharingGroup(…)`: queued, and sent after the events queued before it.
 pub fn spawn_emit_to_sharing_group(user_id: &str, domain: &str, origin_tab_id: Option<String>) {
-    let (user_id, domain) = (user_id.to_string(), domain.to_string());
-    tokio::spawn(async move { emit_to_sharing_group(&user_id, &domain, origin_tab_id.as_deref()).await });
+    let _ = group_emitter().send(GroupEmit { user_id: user_id.to_string(), domain: domain.to_string(), origin_tab_id });
 }
 
 pub fn register_subscriber(user_id: &str, subscriber: Arc<Subscriber>) {
