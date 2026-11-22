@@ -2,12 +2,14 @@
  * `Authorization: Bearer <API key>` on the one route that declares a scope,
  * `POST /suggest-category` (`transactions:suggest`). The assertions here are
  * about who the request is taken to be from: refused before the route (401,
- * "Not authenticated.") or let through to it. What the route then does with
- * its body belongs to its own test file.
+ * "Not authenticated.") or let through to it, and, once through, whose rows
+ * it reaches: its owner's and those of everyone sharing data with its owner.
+ * What else the route does with its body belongs to its own test file.
  */
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
 import { createUser, createUserClient, startStack, type ApiClient, type ApiResult, type SeededUser, type Stack } from "../harness";
+import { seedBudget, seedCategory, seedSection } from "../harness/seed/budgets";
 
 // Tests here start, restart and wait on real server processes: give each the suite's 30 seconds
 // rather than the runner's default of five.
@@ -312,6 +314,8 @@ describe("a key on a route that declares no scope", () => {
     expectRefused(await anonymous.post("/api-keys", { name: "more", scopes: [SCOPE] }, { headers }));
     expectRefused(await anonymous.delete("/api-keys", { headers, query: { key_id: key.key_id } }));
     expectRefused(await anonymous.get("/events", { headers }));
+    expectRefused(await anonymous.get("/sharing", { headers }));
+    expectRefused(await anonymous.post("/sharing/invitation", { username: "admin" }, { headers }));
     // The scoped path under another verb is another route, or none.
     expectRefused(await anonymous.get("/suggest-category", { headers }));
     expectRefused(await anonymous.delete("/suggest-category", { headers }));
@@ -327,5 +331,92 @@ describe("a key on a route that declares no scope", () => {
     // None of it counted as a use of the key, and the key still lists once.
     expect(await lastUsedAt(key.key_id)).toBeNull();
     expect((await client.get<{ api_keys: unknown[] }>("/api-keys")).body.api_keys).toHaveLength(1);
+  });
+});
+
+describe("a key and its owner's sharing group", () => {
+  /** Puts the two in one sharing group, through the routes. */
+  const share = async (inviter: { user: SeededUser; client: ApiClient }, invitee: { user: SeededUser; client: ApiClient }) => {
+    const invited = await inviter.client.post<{ invitation: { invitation_id: string } }>("/sharing/invitation", { username: invitee.user.username });
+    expect(invited.json.status).toBe("success");
+    const accepted = await invitee.client.post("/sharing/member", { invitation_id: invited.body.invitation.invitation_id });
+    expect(accepted.json).toEqual({ status: "success" });
+  };
+
+  /** A transaction of `user`'s, in an account of theirs, and a category of theirs to label it with. */
+  const seedOwnRows = async (user: SeededUser, tag: string) => {
+    const account_id = `bearer-acc-${tag}`;
+    const transaction_id = `bearer-tx-${tag}`;
+    await stack.db.insert("accounts", { account_id, user_id: user.user_id, item_id: `bearer-item-${tag}`, institution_id: "ins", name: "Shared account" });
+    await stack.db.insert("transactions", { transaction_id, user_id: user.user_id, account_id, name: "Shared spend", amount: "9.5", date: "2026-03-04" });
+    const budget_id = await seedBudget(stack, user.user_id);
+    const category_id = await seedCategory(stack, user.user_id, await seedSection(stack, user.user_id, budget_id));
+    return { transaction_id, budget_id, category_id };
+  };
+
+  const labelOf = async (transaction_id: string) =>
+    stack.db.one("SELECT user_id::text, label_budget_id::text, label_category_id::text, label_category_confidence FROM transactions WHERE transaction_id = $1", [
+      transaction_id,
+    ]);
+
+  test("reaches the rows of everyone its owner shares with, and only while they share", async () => {
+    const [owner, member] = [await newUser(), await newUser()];
+    const rows = await seedOwnRows(owner.user, `shared-${users}`);
+    await share(owner, member);
+    const key = await issueKey(member.client);
+    const suggestion = { transaction_id: rows.transaction_id, label_category_id: rows.category_id, label_budget_id: rows.budget_id, confidence: 0.5 };
+
+    const shared = await stack.anonymous().post("/suggest-category", { suggestions: [suggestion] }, { headers: { Authorization: `Bearer ${key.plaintext}` } });
+    expect(shared.status).toBe(200);
+    expect(shared.json).toEqual({
+      status: "success",
+      body: { outcomes: [{ transaction_id: rows.transaction_id, status: "updated" }], updated: 1, skipped: 0, errored: 0 },
+    });
+    // Labelled with the owner's category, and still the owner's row.
+    expect(await labelOf(rows.transaction_id)).toEqual({
+      user_id: owner.user.user_id,
+      label_budget_id: rows.budget_id,
+      label_category_id: rows.category_id,
+      label_category_confidence: 0.5,
+    });
+
+    // Once the key's owner leaves the group, the same key no longer sees the row.
+    expect((await member.client.delete("/sharing/member", { query: { user_id: member.user.user_id } })).json).toEqual({ status: "success" });
+    const apart = await stack.anonymous().post(
+      "/suggest-category",
+      { suggestions: [{ ...suggestion, confidence: 0.25 }] },
+      { headers: { Authorization: `Bearer ${key.plaintext}` } },
+    );
+    expect(apart.json).toEqual({
+      status: "success",
+      body: {
+        outcomes: [{ transaction_id: rows.transaction_id, status: "skipped", reason: "Transaction not found or not owned by this user." }],
+        updated: 0,
+        skipped: 1,
+        errored: 0,
+      },
+    });
+    expect((await labelOf(rows.transaction_id))?.label_category_confidence).toBe(0.5);
+  });
+
+  test("of someone who shares with nobody reaches only their own rows", async () => {
+    const [owner, stranger] = [await newUser(), await newUser()];
+    const rows = await seedOwnRows(owner.user, `unshared-${users}`);
+    const key = await issueKey(stranger.client);
+    const result = await stack.anonymous().post(
+      "/suggest-category",
+      { suggestions: [{ transaction_id: rows.transaction_id, label_category_id: rows.category_id, confidence: 0.5 }] },
+      { headers: { Authorization: `Bearer ${key.plaintext}` } },
+    );
+    expect(result.json).toEqual({
+      status: "success",
+      body: {
+        outcomes: [{ transaction_id: rows.transaction_id, status: "skipped", reason: "Transaction not found or not owned by this user." }],
+        updated: 0,
+        skipped: 1,
+        errored: 0,
+      },
+    });
+    expect(await labelOf(rows.transaction_id)).toEqual({ user_id: owner.user.user_id, label_budget_id: null, label_category_id: null, label_category_confidence: null });
   });
 });
