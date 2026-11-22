@@ -10,7 +10,9 @@ import {
   setRecurringSplits,
   validateFields,
   getRecurrings,
+  getRowOwner,
   normalizeMerchantName,
+  recurringsTable,
   transactionsTable,
   USER_ID,
   TRANSACTION_ID,
@@ -77,8 +79,8 @@ const readBack = async (user: MaskedUser, recurring_id: string) => {
 };
 
 export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/recurrings", async (req) => {
-  const { user } = req.session;
-  if (!user) {
+  const requester = req.session.user;
+  if (!requester) {
     return { status: "failed", message: "Request user is not authenticated." };
   }
 
@@ -86,6 +88,18 @@ export const postRecurringRoute = new Route<RecurringPostResponse>("POST", "/rec
   if (!bodyResult.success) return validationError(bodyResult.error!);
 
   const body = bodyResult.data as Record<string, unknown>;
+
+  // A recurring belongs to the owner of its transactions, and the detection
+  // job reads and locks it under that owner. A request from someone sharing
+  // data with the owner is carried out as the owner; an id outside the
+  // requester's reach stays the requester's, and is then not found.
+  const anchor =
+    typeof body.recurring_id === "string"
+      ? await getRowOwner(requester, recurringsTable, body.recurring_id)
+      : Array.isArray(body.transaction_ids) && typeof body.transaction_ids[0] === "string"
+        ? await getRowOwner(requester, transactionsTable, body.transaction_ids[0])
+        : undefined;
+  const user = anchor ?? requester;
 
   // If recurring_id is provided with transaction_ids, add those
   // transactions to the existing recurring (the detail page's "add to

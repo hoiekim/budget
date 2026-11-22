@@ -8,6 +8,7 @@ export class Item implements JSONClientItem {
   set id(_: string) {}
 
   item_id: string = getRandomId();
+  user_id?: string;
   institution_id: string | null = null;
   available_products: Products[] = [];
   cursor?: string;

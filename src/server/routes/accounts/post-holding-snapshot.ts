@@ -11,8 +11,10 @@ import {
   searchSecurities,
   upsertSecurities,
   getSecurity,
-  getAccount,
+  accountsTable,
+  getRowOwner,
   getHoldingSnapshotById,
+  sharedWith,
   polygon,
   marketData,
   polygonLookupRateLimiter,
@@ -228,7 +230,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
       if (patchDerivedOverflow) return validationError(patchDerivedOverflow);
 
       try {
-        await snapshotsTable.update(provided_snapshot_id, patch, undefined, user.user_id);
+        await snapshotsTable.update(provided_snapshot_id, patch, undefined, sharedWith(user));
 
         // Re-sync the current-holdings row from the latest snapshot state so
         // portfolio value calculations stay consistent with the edit.
@@ -249,7 +251,8 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
             iso_currency_code: null,
             unofficial_currency_code: null,
           };
-          await upsertHoldings(user, [holding]);
+          const owner = await getRowOwner(user, accountsTable, refreshed.holding_account_id);
+          if (owner) await upsertHoldings(owner, [holding]);
         }
 
         return {
@@ -311,7 +314,8 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     const parsedDate = optionalDateField(body, "snapshot_date");
     if (!parsedDate.success) return validationError(parsedDate.error!);
 
-    if (!(await getAccount(user, account_id))) {
+    const owner = await getRowOwner(user, accountsTable, account_id);
+    if (!owner) {
       return { status: "failed", message: "Account not found or access denied." };
     }
 
@@ -344,7 +348,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     };
 
     try {
-      await upsertHoldingSnapshots(user, [snapshot]);
+      await upsertHoldingSnapshots(owner, [snapshot]);
 
       const holding: JSONHolding = {
         holding_id: `${account_id}-${security_id}`,
@@ -358,7 +362,7 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         iso_currency_code: null,
         unofficial_currency_code: null,
       };
-      await upsertHoldings(user, [holding]);
+      await upsertHoldings(owner, [holding]);
 
       // Fire-and-forget monthly snapshot backfill from this snapshot's date
       // forward. Manual posts can backdate `snapshot_date`, in which case

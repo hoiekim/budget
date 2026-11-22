@@ -17,3 +17,4 @@ export * from "./recurrings";
 export * from "./api_keys";
 export * from "./rejected-categories";
 export * from "./cpi_snapshots";
+export * from "./sharing";

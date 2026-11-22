@@ -12,7 +12,7 @@ import {
   DATE,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult, noChangeResult } from "../database";
+import { UpsertResult, successResult, errorResult, noChangeResult, sharedWith } from "../database";
 import { logger } from "../../logger";
 
 export interface SearchInvestmentTransactionsOptions {
@@ -32,7 +32,7 @@ export const getInvestmentTransactions = async (
   options: SearchInvestmentTransactionsOptions = {},
 ): Promise<JSONInvestmentTransaction[]> => {
   const models = await investmentTransactionsTable.query(
-    { [USER_ID]: user.user_id, [ACCOUNT_ID]: options.account_id },
+    { [USER_ID]: sharedWith(user), [ACCOUNT_ID]: options.account_id },
     {
       dateRange:
         options.startDate || options.endDate
@@ -51,7 +51,7 @@ export const getInvestmentTransaction = async (
   investment_transaction_id: string,
 ): Promise<JSONInvestmentTransaction | null> => {
   const model = await investmentTransactionsTable.queryOne({
-    [USER_ID]: user.user_id,
+    [USER_ID]: sharedWith(user),
     [INVESTMENT_TRANSACTION_ID]: investment_transaction_id,
   });
   return model?.toJSON() ?? null;
@@ -113,7 +113,7 @@ export const updateInvestmentTransactions = async (
         tx.investment_transaction_id,
         row,
         undefined,
-        user.user_id,
+        sharedWith(user),
         undefined,
         undefined,
         true,
@@ -221,7 +221,7 @@ export const deleteInvestmentTransactions = async (
   if (!transaction_ids.length) return { deleted: 0 };
   const deleted = await investmentTransactionsTable.bulkSoftDelete(
     transaction_ids,
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     client,
   );
   return { deleted };

@@ -157,18 +157,20 @@ describe("runAutoSuggestions", () => {
   // Tests below use signal rows whose accepted/count_matched values
   // produce known quality = accepted / (count_matched × 107).
 
-  test("the category and section joins are scoped to the user, so a label naming another user's category joins nothing", async () => {
+  test("the category and section joins are scoped to the user and whoever shares data with them, so a label naming a stranger's category joins nothing", async () => {
     userRows = [userRow({ user_id: "user-1" })];
     unlabeledByUser.set("user-1", [txRow({ transaction_id: "txn-1", user_id: "user-1", merchant_name: "Coffee Shop" })]);
     await runAutoSuggestions();
-    const signalSql = String(mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string))?.[0]).replace(/\s+/g, " ");
+    const signalCall = mockUnsafe.mock.calls.find((c) => isSignalSql(c[0] as string));
+    const signalSql = String(signalCall?.[0]).replace(/\s+/g, " ");
     // Anchored on what follows each join, so a clause appended after the scope can't widen it.
     expect(signalSql).toContain(
-      "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = $1 JOIN sections",
+      "JOIN categories ON categories.category_id = w.label_category_id AND categories.user_id = ANY(sharing_user_ids($1)) JOIN sections",
     );
     expect(signalSql).toContain(
-      "JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = $1 LIMIT 1",
+      "JOIN sections ON sections.section_id = categories.section_id AND sections.user_id = ANY(sharing_user_ids($1)) LIMIT 1",
     );
+    expect(((signalCall?.[1] ?? []) as unknown[])[0]).toBe("user-1");
   });
 
   test("skips when count_matched < 3 (sample-size floor)", async () => {

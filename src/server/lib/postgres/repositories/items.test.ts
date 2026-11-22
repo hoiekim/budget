@@ -77,7 +77,7 @@ describe("deleteItem", () => {
     expect(snapshotDeletes.some((sql) => /WHERE\s+holding_account_id\s*=/i.test(sql))).toBe(true);
   });
 
-  test("cascades to transaction_pairs on BOTH join columns, scoped to the user", async () => {
+  test("cascades to transaction_pairs on BOTH join columns, scoped to the user and whoever shares data with them", async () => {
     mockUnsafe.mockImplementation(async (sql: string) => {
       if (/SELECT/i.test(sql) && /\baccounts\b/i.test(sql)) {
         return {
@@ -126,8 +126,8 @@ describe("deleteItem", () => {
       // travels through were soft-deleted earlier in the same transaction.
       expect(sql).toMatch(/SELECT\s+transaction_id\s+FROM\s+transactions\s+WHERE\s+account_id\s*=\s*ANY\(\$1\)\)/i);
       expect(sql).not.toMatch(/is_deleted\s*=\s*FALSE/i);
-      // Scoped to the owner — a pair is never reachable across users.
-      expect(sql).toMatch(/AND\s+user_id\s*=\s*\$2/i);
+      // Scoped to the user's sharing group — a pair is never reachable from outside it.
+      expect(sql).toMatch(/\)\s+AND\s+user_id\s*=\s*ANY\(sharing_user_ids\(\$2\)\)\s+RETURNING\b/i);
       // The `updated` bump is what lets a delta sync deliver the tombstone;
       // without it the client keeps the stale pair until a cold load.
       expect(sql).toMatch(/SET\s+is_deleted\s*=\s*TRUE,\s*updated\s*=\s*CURRENT_TIMESTAMP/i);

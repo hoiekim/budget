@@ -72,6 +72,18 @@ Behaviour:
 
 See `docs/SECURITY.md` for the full bearer-auth contract.
 
+## Whose Data a Route Serves
+
+`req.session.user` is who signed in. The data a route reads and writes is that user's and that of everyone sharing data with them, which the repositories state with `sharedWith(user)` (see `docs/DATABASE.md`, "Owner scope"). A route that creates a row under an existing one first asks who owns the parent and creates the row as that owner:
+
+```typescript
+const owner = await getRowOwner(user, accountsTable, account_id);
+if (!owner) return { status: "failed", message: "Account not found." };
+const created = await createManualTransaction(owner, { account_id });
+```
+
+`getRowOwner` answers `undefined` for a row outside the user's reach, so it doubles as the ownership check on the caller-supplied id.
+
 ## Security Headers
 
 Security response headers are set globally in `start.ts`:

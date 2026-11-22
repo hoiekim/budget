@@ -89,8 +89,32 @@ const recurringRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const squish = (sql: string) => sql.replace(/\s+/g, " ").trim();
+
+const SESSION_USER = { user_id: "u-1", username: "test" };
+
+// The route's first statement: who owns the row the request names.
+const ownerLookupSql = (table: string, primaryKey: string) =>
+  `SELECT u.user_id, u.username FROM ${table} r JOIN users u ON u.user_id = r.user_id ` +
+  `WHERE r.${primaryKey} = $1 AND r.user_id = ANY(sharing_user_ids($2)) ` +
+  `AND (r.is_deleted IS NULL OR r.is_deleted = FALSE)`;
+const RECURRING_OWNER_SQL = ownerLookupSql("recurrings", "recurring_id");
+
+/** Scripts the owner lookup. `null`: the row is out of the session user's reach. */
+const stageOwner = (owner: { user_id: string; username: string } | null = SESSION_USER) =>
+  mockUnsafe.mockResolvedValueOnce({ rows: owner ? [owner] : [], rowCount: owner ? 1 : 0 });
+
+const poolCalls = () => mockUnsafe.mock.calls.map(([sql, values]) => [squish(sql), values]);
+
+/** Nothing reached the database but the lookup of who owns `recurring_id`. */
+const expectOnlyOwnerLookup = (recurring_id: string) => {
+  expect(poolCalls()).toEqual([[RECURRING_OWNER_SQL, [recurring_id, "u-1"]]]);
+  expect(mockReservedUnsafe).not.toHaveBeenCalled();
+};
+
 describe("post-recurring — rename", () => {
   test("updates the name, trimmed and scoped to the session user", async () => {
+    stageOwner();
     mockUnsafe.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 });
 
     const result = await postRecurringRoute.execute(
@@ -100,8 +124,9 @@ describe("post-recurring — rename", () => {
 
     expect(result?.status).toBe("success");
     expect(result?.body).toEqual({ recurring_id: "r-1" });
-    expect(mockUnsafe).toHaveBeenCalledTimes(1);
-    const [sql, values] = mockUnsafe.mock.calls[0];
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    expect(poolCalls()[0]).toEqual([RECURRING_OWNER_SQL, ["r-1", "u-1"]]);
+    const [sql, values] = mockUnsafe.mock.calls[1];
     expect(sql).toMatch(/UPDATE recurrings/);
     expect(sql).toMatch(/merchant_name/);
     expect(sql).not.toMatch(/status/);
@@ -110,17 +135,38 @@ describe("post-recurring — rename", () => {
     expect(values).toContain("u-1");
   });
 
-  test("refuses a blank name without touching the database", async () => {
+  test("carries out a request from someone sharing data with the owner as the owner", async () => {
+    stageOwner({ user_id: "u-2", username: "owner" });
+    mockUnsafe.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 });
+
+    const result = await postRecurringRoute.execute(
+      makeReq({ recurring_id: "r-1", merchant_name: "Netflix" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(mockUnsafe).toHaveBeenCalledTimes(2);
+    // Asked as the session user; the write binds the owner it found.
+    expect(poolCalls()[0]).toEqual([RECURRING_OWNER_SQL, ["r-1", "u-1"]]);
+    const [sql, values] = poolCalls()[1];
+    expect(sql).toMatch(/^UPDATE recurrings SET .* WHERE recurring_id = \$2 AND user_id = \$3 AND /);
+    expect(values).toEqual(["Netflix", "r-1", "u-2"]);
+  });
+
+  test("refuses a blank name with only the owner lookup reaching the database", async () => {
+    stageOwner();
+
     const result = await postRecurringRoute.execute(
       makeReq({ recurring_id: "r-1", merchant_name: "   " }),
       fakeRes(),
     );
 
     expect(result?.status).toBe("failed");
-    expect(mockUnsafe).not.toHaveBeenCalled();
+    expectOnlyOwnerLookup("r-1");
   });
 
   test("reports a recurring that doesn't exist", async () => {
+    stageOwner(null);
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await postRecurringRoute.execute(
@@ -135,6 +181,7 @@ describe("post-recurring — rename", () => {
 
 describe("post-recurring — create", () => {
   test("confirms on conflict, keeps a custom name, and answers with the recurring", async () => {
+    stageOwner(); // owner of the first transaction
     mockUnsafe.mockResolvedValueOnce({ rows: [txnRow("t-1")], rowCount: 1 }); // members
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
@@ -168,7 +215,11 @@ describe("post-recurring — create", () => {
     expect(upsert[0] as string).toMatch(/status = 'confirmed'/);
     expect((upsert[1] as unknown[]).at(-1)).toBe(true);
 
-    const readBack = mockUnsafe.mock.calls[1];
+    expect(poolCalls()[0]).toEqual([
+      ownerLookupSql("transactions", "transaction_id"),
+      ["t-1", "u-1"],
+    ]);
+    const readBack = mockUnsafe.mock.calls[2];
     expect(readBack[0] as string).toMatch(/FROM recurrings/);
     expect(readBack[1] as unknown[]).toContain("r-1");
   });
@@ -184,10 +235,10 @@ const relabelCall = () =>
   mockReservedUnsafe.mock.calls.find((c) => /UPDATE transactions/.test(c[0] as string));
 const splitCall = () =>
   mockReservedUnsafe.mock.calls.find((c) => /INSERT INTO split_transactions/.test(c[0] as string));
-const squish = (sql: string) => sql.replace(/\s+/g, " ").trim();
 
 describe("post-recurring — confirm", () => {
   test("confirms, seeds the default from the members, relabels them, and answers with the recurring", async () => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // status
@@ -223,6 +274,7 @@ describe("post-recurring — confirm", () => {
   });
 
   test("relabels nothing when no member has a confirmed label to seed from", async () => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // status
@@ -244,6 +296,7 @@ describe("post-recurring — confirm", () => {
 
 describe("post-recurring — default label", () => {
   const stageLabel = (status: "confirmed" | "suggested") => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({
@@ -305,6 +358,7 @@ describe("post-recurring — default label", () => {
   });
 
   test("with no stored default, members follow the label they're most often confirmed with", async () => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({
@@ -336,20 +390,22 @@ describe("post-recurring — default label", () => {
     expect(relabelCall()![1]).toEqual(["u-1", ["t-1", "t-2"], B2, C2, 1, B1, C1]);
   });
 
-  test("refuses ids that aren't UUIDs before touching the database", async () => {
+  test("refuses ids that aren't UUIDs with only the owner lookup reaching the database", async () => {
+    stageOwner();
+
     const result = await postRecurringRoute.execute(
       makeReq({ recurring_id: "r-1", label: { budget_id: "nope", category_id: null } }),
       fakeRes(),
     );
 
     expect(result?.status).toBe("failed");
-    expect(mockUnsafe).not.toHaveBeenCalled();
-    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    expectOnlyOwnerLookup("r-1");
   });
 });
 
 describe("post-recurring — add to existing", () => {
   test("a recurring with no default leaves joining charges' labels alone", async () => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({
@@ -384,6 +440,7 @@ describe("post-recurring — add to existing", () => {
   });
 
   test("joining charges are split by the recurring's default splits", async () => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({
@@ -451,6 +508,7 @@ describe("post-recurring — add to existing", () => {
   });
 
   test("confirming a recurring splits none of its members", async () => {
+    stageOwner();
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // BEGIN
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{}], rowCount: 1 }); // advisory lock
     mockReservedUnsafe.mockResolvedValueOnce({ rows: [{ recurring_id: "r-1" }], rowCount: 1 }); // status
@@ -502,6 +560,7 @@ const categoryRow = {
 
 describe("post-recurring — default splits", () => {
   const stageSplits = (stored: unknown[], { owned = true } = {}) => {
+    stageOwner();
     if (owned) {
       mockUnsafe.mockResolvedValueOnce({ rows: [{ ...budgetRow, budget_id: B1 }], rowCount: 1 }); // owned budgets
       mockUnsafe.mockResolvedValueOnce({ rows: [{ ...categoryRow, category_id: C1 }], rowCount: 1 }); // owned categories
@@ -568,7 +627,8 @@ describe("post-recurring — default splits", () => {
       ],
       { budgets: [B1], categories: [C1] },
     ],
-  ])("refuses %s the user doesn't own without storing anything", async (_, splits, owned) => {
+  ])("refuses %s outside the user's sharing group without storing anything", async (_, splits, owned) => {
+    stageOwner();
     mockUnsafe.mockResolvedValueOnce({
       rows: owned.budgets.map((budget_id) => ({ ...budgetRow, budget_id })),
       rowCount: owned.budgets.length,
@@ -583,9 +643,9 @@ describe("post-recurring — default splits", () => {
     expect(result?.status).toBe("failed");
     expect(result?.message).toMatch(/not found/);
     expect(storeCall()).toBeUndefined();
-    const [budgetSql, budgetValues] = mockUnsafe.mock.calls[0];
-    expect(budgetSql as string).toMatch(/FROM budgets/);
-    expect(budgetValues).toContain("u-1");
+    const [budgetSql, budgetValues] = mockUnsafe.mock.calls[1];
+    expect(budgetSql as string).toMatch(/FROM budgets WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)/);
+    expect((budgetValues as unknown[])[0]).toBe("u-1");
   });
 
   test("an empty list clears them", async () => {
@@ -603,6 +663,7 @@ describe("post-recurring — default splits", () => {
   });
 
   test("reports a recurring that doesn't exist", async () => {
+    stageOwner(null);
     mockUnsafe.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await postRecurringRoute.execute(
@@ -622,14 +683,15 @@ describe("post-recurring — default splits", () => {
     ["a negative amount", [{ amount: -10 }]],
     ["a non-UUID label", [{ amount: 10, label: { budget_id: "nope" } }]],
     ["too many splits", Array.from({ length: 21 }, () => ({ amount: 1 }))],
-  ])("refuses %s before touching the database", async (_, splits) => {
+  ])("refuses %s with only the owner lookup reaching the database", async (_, splits) => {
+    stageOwner();
+
     const result = await postRecurringRoute.execute(
       makeReq({ recurring_id: "r-1", splits }),
       fakeRes(),
     );
 
     expect(result?.status).toBe("failed");
-    expect(mockUnsafe).not.toHaveBeenCalled();
-    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    expectOnlyOwnerLookup("r-1");
   });
 });

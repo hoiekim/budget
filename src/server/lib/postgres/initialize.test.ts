@@ -43,6 +43,7 @@ mock.module("./sql-driver", () => driver);
 mock.module("../password", () => ({ hashPassword: async (s: string) => `hashed:${s}` }));
 
 const { initializePostgres } = await import("./initialize");
+const { CREATE_SHARING_USER_IDS_FUNCTION } = await import("./models");
 
 afterAll(restoreLeaves);
 
@@ -78,6 +79,40 @@ describe("initializePostgres", () => {
     const checked = statements.indexOf(DUPLICATE_EMAILS_SQL);
     expect(checked).toBeGreaterThan(statements.indexOf("COMMIT"));
     expect(statements[checked + 1]).toBe(EMAIL_INDEX_SQL);
+  });
+
+  test("creates sharing_user_ids once, after the sharing_members table its body reads", async () => {
+    await initializePostgres();
+
+    const membersTable = statements.findIndex((s) =>
+      s.startsWith("CREATE TABLE IF NOT EXISTS sharing_members ("),
+    );
+    const functions = statements
+      .map((s, i) => [s, i] as const)
+      .filter(([s]) => s.startsWith("CREATE OR REPLACE FUNCTION"));
+
+    expect(membersTable).toBeGreaterThan(-1);
+    expect(functions.map(([s]) => s)).toEqual([CREATE_SHARING_USER_IDS_FUNCTION]);
+    expect(functions[0][0].startsWith("CREATE OR REPLACE FUNCTION sharing_user_ids(")).toBe(true);
+    expect(functions[0][1]).toBeGreaterThan(membersTable);
+  });
+
+  test("creates both sharing tables after the users table they reference, and indexes their lookup columns", async () => {
+    await initializePostgres();
+
+    const tables = statements
+      .filter((s) => s.startsWith("CREATE TABLE IF NOT EXISTS "))
+      .map((s) => s.slice("CREATE TABLE IF NOT EXISTS ".length, s.indexOf(" (")));
+    expect(tables.filter((name) => name.startsWith("sharing_"))).toEqual([
+      "sharing_members",
+      "sharing_invitations",
+    ]);
+    expect(tables.indexOf("users")).toBeGreaterThan(-1);
+    expect(tables.indexOf("sharing_members")).toBeGreaterThan(tables.indexOf("users"));
+    expect(statements.filter((s) => /^CREATE (UNIQUE )?INDEX .* ON sharing_/.test(s))).toEqual([
+      "CREATE INDEX IF NOT EXISTS idx_sharing_members_group_id ON sharing_members(group_id)",
+      "CREATE INDEX IF NOT EXISTS idx_sharing_invitations_invitee_user_id ON sharing_invitations(invitee_user_id)",
+    ]);
   });
 
   test("users sharing an email stop the start, naming the shared addresses and nothing else", async () => {

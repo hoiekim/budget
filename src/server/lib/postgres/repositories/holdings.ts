@@ -15,11 +15,11 @@ import {
   RAW,
   QueryExecutor,
 } from "../models";
-import { UpsertResult, successResult, errorResult } from "../database";
+import { UpsertResult, successResult, errorResult, sharedWith } from "../database";
 import { logger } from "../../logger";
 
 export const getHoldings = async (user: MaskedUser): Promise<JSONHolding[]> => {
-  const models = await holdingsTable.query({ [USER_ID]: user.user_id });
+  const models = await holdingsTable.query({ [USER_ID]: sharedWith(user) });
   return models.map((m) => m.toJSON());
 };
 
@@ -83,7 +83,7 @@ export const deleteHoldings = async (
   // writes a fresh `quantity = 0` terminator snapshot for every removed
   // holding BEFORE calling this — that terminator is the deletion signal
   // historical readers (charts, performance calcs) consume.
-  const deleted = await holdingsTable.bulkSoftDelete(holding_ids, { [USER_ID]: user.user_id });
+  const deleted = await holdingsTable.bulkSoftDelete(holding_ids, { [USER_ID]: sharedWith(user) });
   return { deleted };
 };
 
@@ -93,7 +93,7 @@ export const searchHoldingsByAccountId = async (
 ): Promise<JSONHolding[]> => {
   if (!account_ids.length) return [];
   const models = await holdingsTable.query(
-    { [USER_ID]: user.user_id },
+    { [USER_ID]: sharedWith(user) },
     { inFilters: { [ACCOUNT_ID]: account_ids } },
   );
   return models.map((m) => m.toJSON());

@@ -8,7 +8,7 @@ import {
   requireBodyObject,
   validationError,
   plaid,
-  emitToUser,
+  emitToSharingGroup,
   plaidItemKeyFetchRateLimiter,
 } from "server";
 import { logger } from "server/lib/logger";
@@ -114,7 +114,7 @@ const syncAndLog = async (item_id: string) => {
     // case body handles both series in a single /api/transactions fetch, so
     // emitting `investment_transactions` too would double the client refetch
     // (different debounce keys don't collapse into one call).
-    emitToUser(user_id, TableName.Transactions);
+    void emitToSharingGroup(user_id, TableName.Transactions);
   }
   return { status: "success" as const };
 };
@@ -127,7 +127,7 @@ const refreshItemProducts = async (item_id: string) => {
   const available_products = [...consented_products, ...products];
   await upsertItems(user, [{ ...item, available_products }]);
   logger.info("Refreshed available_products for item", { itemId: item_id, available_products });
-  emitToUser(user.user_id, TableName.Accounts);
+  void emitToSharingGroup(user.user_id, TableName.Accounts);
   return { status: "success" as const };
 };
 
@@ -144,7 +144,7 @@ const markBadItem = async (item_id: string, reason: string) => {
   const { user } = userItem;
   const updated = await updateItemStatus(user, item_id, ItemStatus.BAD, reason);
   if (!updated) return { status: "failed" as const };
-  emitToUser(user.user_id, TableName.Accounts);
+  void emitToSharingGroup(user.user_id, TableName.Accounts);
   return { status: "success" as const };
 };
 

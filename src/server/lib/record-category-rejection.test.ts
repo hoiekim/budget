@@ -185,6 +185,13 @@ describe("recordCategoryRejection — multi-user safety", () => {
     );
     const insert = findInsertRejection();
     expect(insert).toBeDefined();
-    expect(insert![0]).toMatch(/rejected_categories\.user_id\s*=\s*\$2/);
+    expect(insert![0]).toMatch(
+      /ON CONFLICT \(transaction_id,\s*category_id\)\s+DO UPDATE SET\s+rejected_at\s*=\s*CURRENT_TIMESTAMP\s+WHERE rejected_categories\.user_id\s*=\s*EXCLUDED\.user_id/,
+    );
+    // The inserted row takes its owner from a transaction within the user's reach.
+    expect(insert![0]).toMatch(
+      /WHERE t\.transaction_id\s*=\s*\$1 AND t\.user_id = ANY\(sharing_user_ids\(\$2\)\)/,
+    );
+    expect(insert![1]).toEqual(["tx-1", "u-1", "cat-A"]);
   });
 });

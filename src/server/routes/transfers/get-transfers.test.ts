@@ -66,7 +66,7 @@ describe("get-transfers", () => {
     expect(mockUnsafe).toHaveBeenCalledTimes(1);
   });
 
-  test("happy path scopes the pairs SELECT to the caller's user_id", async () => {
+  test("happy path scopes the pairs SELECT to the caller and whoever shares data with them", async () => {
     const pairRow = {
       pair_id: "p-1",
       user_id: "u-1",
@@ -117,11 +117,11 @@ describe("get-transfers", () => {
     expect(mockUnsafe).toHaveBeenCalledTimes(2);
     const [pairsSql, pairsValues] = mockUnsafe.mock.calls[0];
     expect(pairsSql).toMatch(/FROM transaction_pairs/);
-    expect(pairsSql).toMatch(/WHERE user_id = \$1/);
+    expect(pairsSql).toMatch(/WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)/);
     expect(pairsValues).toEqual(["u-1"]);
 
     const [txnsSql, txnsValues] = mockUnsafe.mock.calls[1];
-    expect(txnsSql).toMatch(/WHERE user_id = \$1/);
+    expect(txnsSql).toMatch(/WHERE user_id = ANY\(sharing_user_ids\(\$1\)\)/);
     expect(txnsValues?.[0]).toBe("u-1");
   });
 
