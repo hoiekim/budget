@@ -523,6 +523,30 @@ fn internal_error() -> HttpResponse {
     response
 }
 
+/// Listens the way `Bun.serve` does when given no hostname: on `::` with
+/// IPv6-only off where the host can open an IPv6 socket, so an IPv4 client's
+/// address reads `::ffff:a.b.c.d` there, as it does in Bun; on `0.0.0.0`
+/// where it cannot. The address is what rate limits key on and what reaches
+/// the identity provider as `X-Real-IP`.
+fn listen(port: u16) -> std::io::Result<TcpListener> {
+    use socket2::{Domain, Protocol, Socket, Type};
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    let (socket, address) = match Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP)) {
+        Ok(socket) => {
+            socket.set_only_v6(false)?;
+            (socket, SocketAddr::from((Ipv6Addr::UNSPECIFIED, port)))
+        }
+        Err(_) => (Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?, SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))),
+    };
+    socket.set_reuse_address(true)?;
+    socket.bind(&address.into())?;
+    // The backlog Bun's socket layer listens with.
+    socket.listen(512)?;
+    socket.set_nonblocking(true)?;
+    TcpListener::from_std(socket.into())
+}
+
 async fn handle(request: hyper::Request<Incoming>, peer: SocketAddr) -> Result<HttpResponse, Infallible> {
     let (head, body) = request.into_parts();
     let method = head.method.as_str().to_string();
@@ -637,7 +661,7 @@ pub async fn run() -> anyhow::Result<()> {
     crate::server::compute_tools::schedule::scheduled_sync();
 
     let port: u16 = std::env::var("PORT").ok().and_then(|port| port.parse().ok()).unwrap_or(3005);
-    let listener = TcpListener::bind(SocketAddr::from(([0, 0, 0, 0], port))).await?;
+    let listener = listen(port)?;
     logger::info("Budget app server is up", Some(&crate::ctx! { "port": listener.local_addr()?.port() }));
 
     let accept = async {

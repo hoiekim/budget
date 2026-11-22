@@ -76,6 +76,9 @@ Rules that keep the suite the same on both servers and on any machine:
 - Give requests that touch a rate limit their own address
   (`headers: { "X-Real-IP": "10.x.y.z" }`); limits are per address and live
   for the server process.
+- Do not write down the test process's own address. Where the host has IPv6
+  the servers see `::ffff:127.0.0.1`, where it has not `127.0.0.1`; ask
+  `loopbackAddress()`.
 - Mark an exchange whose answer is inherently different per run with
   `noCompare: true` so the transcript diff skips it; say why in a comment.
 - Wrap a request whose upstream calls the Bun server starts at once, and

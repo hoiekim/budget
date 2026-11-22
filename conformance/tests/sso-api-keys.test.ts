@@ -15,6 +15,7 @@ import {
   CLIENT_SECRET,
   ISSUER_HOST,
   jsonResponse,
+  loopbackAddress,
   startStack,
   type ApiClient,
   type ApiResult,
@@ -127,8 +128,9 @@ describe("a key the provider issued", () => {
   });
 
   describe("the caller's address", () => {
-    const passed: [string, Record<string, string>, string][] = [
-      ["the connection's own, when no header names one", {}, "127.0.0.1"],
+    // `null`: the connection's own address, which depends on the machine (`loopbackAddress`).
+    const passed: [string, Record<string, string>, string | null][] = [
+      ["the connection's own, when no header names one", {}, null],
       ["an IPv4 address from X-Real-IP", { "X-Real-IP": "198.51.100.23" }, "198.51.100.23"],
       ["an IPv6 address", { "X-Real-IP": "2001:db8::17" }, "2001:db8::17"],
       ["an IPv6 address with a zone", { "X-Real-IP": "fe80::1%eth0" }, "fe80::1%eth0"],
@@ -141,7 +143,7 @@ describe("a key the provider issued", () => {
         issuer().state.introspect = () => jsonResponse(200, active());
         const before = introspections().length;
         expectReached(await suggest(providerKey(), { headers }));
-        expect(introspections().slice(before)[0].headers["x-real-ip"]).toBe(expected);
+        expect(introspections().slice(before)[0].headers["x-real-ip"]).toBe(expected ?? (await loopbackAddress()));
       });
     }
 
