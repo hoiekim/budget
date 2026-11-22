@@ -612,6 +612,8 @@ async fn shutdown_signal() -> &'static str {
 
 /// Boots the app and serves until a termination signal.
 pub async fn run() -> anyhow::Result<()> {
+    crate::server::polygon::initialize();
+
     // Settings only: nothing here contacts the identity provider, so the app
     // starts whether or not it is reachable. A bad setting stops the start.
     initialize_sso()?;
