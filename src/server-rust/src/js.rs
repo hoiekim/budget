@@ -161,9 +161,18 @@ pub fn to_js_string(value: &Json) -> String {
     }
 }
 
-/// `Math.round`: halves round toward positive infinity.
+/// `Math.round`: halves round toward positive infinity. Not `floor(value +
+/// 0.5)`, whose sum rounds up by itself just under a half
+/// (0.49999999999999994) and on odd integers past 2^52.
 pub fn math_round(value: f64) -> f64 {
-    (value + 0.5).floor()
+    let floor = value.floor();
+    let rounded = if value - floor >= 0.5 { floor + 1.0 } else { floor };
+    // -0.5 up to -0 rounds to -0, as it does in JavaScript.
+    if rounded == 0.0 && value < 0.0 {
+        -0.0
+    } else {
+        rounded
+    }
 }
 
 /// `Number.prototype.toFixed`: the nearest decimal, a tie going to the larger
@@ -200,8 +209,8 @@ pub fn to_fixed(value: f64, digits: usize) -> String {
     }
     let whole_len = digits_out.len() - digits;
     let mut out = String::new();
-    let is_zero = digits_out.iter().all(|d| *d == 0);
-    if negative && !is_zero {
+    // The sign stays on a negative number that rounds to zero: `(-0.001).toFixed(2)` is `-0.00`.
+    if negative {
         out.push('-');
     }
     for (i, digit) in digits_out.iter().enumerate() {
@@ -920,9 +929,24 @@ mod tests {
         assert_eq!(to_fixed(-1.5, 0), "-2");
         assert_eq!(to_fixed(1234.5, 2), "1234.50");
         assert_eq!(to_fixed(0.0, 2), "0.00");
-        assert_eq!(to_fixed(-0.001, 2), "0.00");
+        assert_eq!(to_fixed(-0.0, 2), "0.00");
+        assert_eq!(to_fixed(-0.001, 2), "-0.00");
+        assert_eq!(to_fixed(-0.005, 2), "-0.01");
         assert_eq!(to_fixed(9.995, 2), "9.99");
         assert_eq!(to_fixed(99.5, 0), "100");
+    }
+
+    #[test]
+    fn math_round_rounds_halves_up_and_nothing_else() {
+        assert_eq!(math_round(2.5), 3.0);
+        assert_eq!(math_round(-2.5), -2.0);
+        assert_eq!(math_round(-2.50001), -3.0);
+        assert_eq!(math_round(0.49999999999999994), 0.0);
+        assert_eq!(math_round(4503599627370497.0), 4503599627370497.0);
+        assert_eq!(math_round(9007199254740991.0), 9007199254740991.0);
+        assert!(math_round(-0.5).is_sign_negative() && math_round(-0.5) == 0.0);
+        assert!(math_round(f64::NAN).is_nan());
+        assert_eq!(math_round(f64::NEG_INFINITY), f64::NEG_INFINITY);
     }
 
     #[test]
