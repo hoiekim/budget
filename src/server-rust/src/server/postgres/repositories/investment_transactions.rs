@@ -65,7 +65,7 @@ pub async fn upsert_investment_transactions(user: &MaskedUser, transactions: &[O
     for tx in transactions {
         let id = id_of(tx, "investment_transaction_id");
         let row = investment_transaction::from_json(tx, &user.user_id);
-        match investment_transaction::TABLE.upsert(&row, None, client).await {
+        match investment_transaction::TABLE.upsert(&row, None, client, None).await {
             Ok(_) => results.push(success_result(&id, Some(1))),
             Err(error) => {
                 logger::error(

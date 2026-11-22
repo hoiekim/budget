@@ -126,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_fails_the_obvious_wrong_helper_choice() {
-        assert_guarded(TABLE.upsert(&data(), None, None).await, "upsert");
+        assert_guarded(TABLE.upsert(&data(), None, None, None).await, "upsert");
     }
 
     #[tokio::test]

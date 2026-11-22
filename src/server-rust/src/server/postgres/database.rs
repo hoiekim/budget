@@ -199,20 +199,32 @@ pub fn build_update(
     Some(PreparedQuery { sql, values })
 }
 
-fn conflict_clause(primary_key: &str, update_columns: &[String]) -> String {
+/// `conflict_columns` is the conflict target; a conflict column is never in the SET list.
+fn conflict_clause(primary_key: &str, conflict_columns: &[&str], update_columns: &[String]) -> String {
+    let conflict_target = conflict_columns.join(", ");
     if update_columns.is_empty() {
-        return format!(" ON CONFLICT ({primary_key}) DO NOTHING");
+        return format!(" ON CONFLICT ({conflict_target}) DO NOTHING");
     }
     let mut clauses: Vec<String> = update_columns
         .iter()
-        .filter(|column| column.as_str() != primary_key)
+        .filter(|column| column.as_str() != primary_key && !conflict_columns.contains(&column.as_str()))
         .map(|column| format!("{column} = EXCLUDED.{column}"))
         .collect();
     clauses.push("updated = CURRENT_TIMESTAMP".to_string());
-    format!(" ON CONFLICT ({primary_key}) DO UPDATE SET {}", clauses.join(", "))
+    format!(" ON CONFLICT ({conflict_target}) DO UPDATE SET {}", clauses.join(", "))
 }
 
-pub fn build_upsert(table: &str, primary_key: &str, data: &QueryData, update_columns: &[String], returning: &[&str]) -> PreparedQuery {
+/// `conflict_columns` is the unique key a conflicting row is found by, when
+/// it is not the primary key (`None`). It names a row as the primary key
+/// does, so it is never rewritten.
+pub fn build_upsert(
+    table: &str,
+    primary_key: &str,
+    data: &QueryData,
+    update_columns: &[String],
+    returning: &[&str],
+    conflict_columns: Option<&[&str]>,
+) -> PreparedQuery {
     let mut columns = vec!["updated".to_string()];
     let mut placeholders = vec!["CURRENT_TIMESTAMP".to_string()];
     let mut values = Vec::new();
@@ -222,7 +234,7 @@ pub fn build_upsert(table: &str, primary_key: &str, data: &QueryData, update_col
         placeholders.push(format!("${}", values.len()));
     }
     let mut sql = format!("INSERT INTO {table} ({}) VALUES ({})", columns.join(", "), placeholders.join(", "));
-    sql.push_str(&conflict_clause(primary_key, update_columns));
+    sql.push_str(&conflict_clause(primary_key, conflict_columns.unwrap_or(&[primary_key]), update_columns));
     if !returning.is_empty() {
         sql.push_str(&format!(" RETURNING {}", returning.join(", ")));
     }
@@ -252,7 +264,7 @@ pub fn build_upsert_many(
     let mut all_columns = vec!["updated".to_string()];
     all_columns.extend(columns.iter().map(|c| c.to_string()));
     let mut sql = format!("INSERT INTO {table} ({}) VALUES {}", all_columns.join(", "), tuples.join(", "));
-    sql.push_str(&conflict_clause(primary_key, update_columns));
+    sql.push_str(&conflict_clause(primary_key, &[primary_key], update_columns));
     if !returning.is_empty() {
         sql.push_str(&format!(" RETURNING {}", returning.join(", ")));
     }
@@ -455,11 +467,43 @@ mod tests {
 
     #[test]
     fn upsert_updates_named_columns() {
-        let query = build_upsert("t", "id", &data(json!({ "id": "1", "a": 2 })), &["id".into(), "a".into()], &["*"]);
+        let query = build_upsert("t", "id", &data(json!({ "id": "1", "a": 2 })), &["id".into(), "a".into()], &["*"], None);
         assert_eq!(
             query.sql,
             "INSERT INTO t (updated, id, a) VALUES (CURRENT_TIMESTAMP, $1, $2) ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a, updated = CURRENT_TIMESTAMP RETURNING *"
         );
+    }
+
+    // `database.test.ts`, "buildUpsert".
+
+    #[test]
+    fn upsert_finds_the_conflicting_row_by_the_conflict_columns_given_and_never_rewrites_them() {
+        let query = build_upsert(
+            "invites",
+            "id",
+            &data(json!({ "owner": "u1", "address": "a@b", "expires": "2026-12-22" })),
+            &["owner".into(), "address".into(), "expires".into()],
+            &["id"],
+            Some(&["owner", "address"]),
+        );
+        assert_eq!(
+            query.sql,
+            "INSERT INTO invites (updated, owner, address, expires) VALUES (CURRENT_TIMESTAMP, $1, $2, $3) ON CONFLICT (owner, address) DO UPDATE SET expires = EXCLUDED.expires, updated = CURRENT_TIMESTAMP RETURNING id"
+        );
+        assert_eq!(query.values, vec![json!("u1"), json!("a@b"), json!("2026-12-22")]);
+    }
+
+    #[test]
+    fn upsert_names_the_conflict_columns_in_a_do_nothing_too() {
+        let query = build_upsert("invites", "id", &data(json!({ "owner": "u1", "address": "a@b" })), &[], &["id"], Some(&["owner", "address"]));
+        assert!(query.sql.contains(" ON CONFLICT (owner, address) DO NOTHING"), "{}", query.sql);
+    }
+
+    #[test]
+    fn upsert_many_keeps_the_primary_key_as_its_conflict_target() {
+        let rows = [data(json!({ "id": "1", "a": 2 }))];
+        let query = build_upsert_many("t", "id", &rows, &["a".into()], &["*"]).unwrap();
+        assert!(query.sql.contains(" ON CONFLICT (id) DO UPDATE SET a = EXCLUDED.a, updated = CURRENT_TIMESTAMP"), "{}", query.sql);
     }
 
     #[test]

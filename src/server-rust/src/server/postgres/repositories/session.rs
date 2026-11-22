@@ -72,7 +72,7 @@ impl PostgresSessionStore {
     pub async fn set(&self, sid: &str, data: &SessionData) -> anyhow::Result<()> {
         let row = session::from_session_data(sid, data);
         let columns: Vec<&str> = row.keys().map(|k| k.as_str()).filter(|k| *k != "session_id").collect();
-        session::TABLE.upsert(&row, Some(&columns), None).await?;
+        session::TABLE.upsert(&row, Some(&columns), None, None).await?;
         Ok(())
     }
 

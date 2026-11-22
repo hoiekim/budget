@@ -114,7 +114,7 @@ pub async fn upsert_items(user: &MaskedUser, items: &[PartialItem], client: Opti
     for item in items {
         let item_id = item.get("item_id").map(to_js_string).unwrap_or_default();
         let row = item::from_json(item, &user.user_id);
-        match item::TABLE.upsert(&row, Some(ITEM_UPDATE_COLUMNS), client).await {
+        match item::TABLE.upsert(&row, Some(ITEM_UPDATE_COLUMNS), client, None).await {
             Ok(_) => results.push(success_result(&item_id, Some(1))),
             Err(error) => {
                 logger::error("Failed to upsert item", Some(&crate::ctx! { "itemId": item.get("item_id") }), Some(&error));

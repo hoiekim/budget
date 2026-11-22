@@ -71,7 +71,7 @@ fn update_columns_of(sql: &str) -> Vec<String> {
 
 async fn upsert(data: Json, update_columns: Option<&[&str]>) -> String {
     let executor = FakeExecutor::default();
-    WIDGETS.upsert(&obj(data), update_columns, Some(&executor)).await.unwrap();
+    WIDGETS.upsert(&obj(data), update_columns, Some(&executor), None).await.unwrap();
     executor.emitted_sql()
 }
 
@@ -124,6 +124,20 @@ async fn an_allowlist_member_whose_value_is_undefined_is_dropped_too() {
 async fn an_explicit_null_is_a_value_so_it_still_overwrites() {
     let sql = upsert(json!({ "widget_id": "w-1", "label": "a", "note": null }), None).await;
     assert!(update_columns_of(&sql).contains(&"note".to_string()));
+}
+
+#[tokio::test]
+async fn the_primary_key_is_the_conflict_target_unless_other_conflict_columns_are_given() {
+    let sql = upsert(json!({ "widget_id": "w-1", "label": "a" }), Some(&["label"])).await;
+    assert!(sql.contains(" ON CONFLICT (widget_id) DO UPDATE SET "), "{sql}");
+
+    let executor = FakeExecutor::default();
+    let data = obj(json!({ "user_id": "u-1", "label": "a", "note": "n" }));
+    WIDGETS.upsert(&data, Some(&["user_id", "label", "note"]), Some(&executor), Some(&["user_id", "label"])).await.unwrap();
+    let sql = executor.emitted_sql();
+    assert!(sql.contains(" ON CONFLICT (user_id, label) DO UPDATE SET "), "{sql}");
+    // A conflict column names the row, so it is never in the SET list.
+    assert_eq!(update_columns_of(&sql), ["note", "updated"]);
 }
 
 // "Table.upsertMany"

@@ -142,5 +142,6 @@ pub const GROUP_ID: &str = "group_id";
 pub const INVITATION_ID: &str = "invitation_id";
 pub const INVITER_USER_ID: &str = "inviter_user_id";
 pub const INVITEE_USER_ID: &str = "invitee_user_id";
+pub const INVITEE_EMAIL: &str = "invitee_email";
 
 pub const NULL: &str = "NULL";

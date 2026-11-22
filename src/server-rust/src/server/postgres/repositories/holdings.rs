@@ -39,7 +39,7 @@ pub async fn upsert_holdings(user: &MaskedUser, holdings: &[Obj]) -> Vec<UpsertR
         let row = holding::from_json(holding, &user.user_id);
         // The row always carries the id: `from_json` derives one where the holding has none.
         let holding_id = row.get("holding_id").map(to_js_string).unwrap_or_default();
-        match holding::TABLE.upsert(&row, Some(HOLDING_UPDATE_COLUMNS), None).await {
+        match holding::TABLE.upsert(&row, Some(HOLDING_UPDATE_COLUMNS), None, None).await {
             Ok(_) => results.push(success_result(&holding_id, Some(1))),
             Err(error) => {
                 logger::error("Failed to upsert holding", Some(&crate::ctx! { "holdingId": row.get("holding_id") }), Some(&error));
@@ -55,7 +55,7 @@ pub async fn upsert_holdings(user: &MaskedUser, holdings: &[Obj]) -> Vec<UpsertR
 /// back without raising, so the caller would report a write that never
 /// happened.
 pub async fn upsert_holding_or_throw(user: &MaskedUser, holding: &Obj, client: Option<&dyn Executor>) -> anyhow::Result<()> {
-    holding::TABLE.upsert(&holding::from_json(holding, &user.user_id), Some(HOLDING_UPDATE_COLUMNS), client).await?;
+    holding::TABLE.upsert(&holding::from_json(holding, &user.user_id), Some(HOLDING_UPDATE_COLUMNS), client, None).await?;
     Ok(())
 }
 

@@ -443,7 +443,7 @@ pub async fn upsert_holding_snapshots(user: &MaskedUser, snapshots: &[HoldingSna
     for snapshot in snapshots {
         let snapshot_id = snapshot.get("snapshot_id").map(to_js_string).unwrap_or_default();
         let row = holding_snapshot_row(user, snapshot);
-        match snapshot::TABLE.upsert(&row, Some(HOLDING_SNAPSHOT_UPDATE_COLUMNS), None).await {
+        match snapshot::TABLE.upsert(&row, Some(HOLDING_SNAPSHOT_UPDATE_COLUMNS), None, None).await {
             Ok(_) => results.push(success_result(&snapshot_id, Some(1))),
             Err(error) => {
                 logger::error(
@@ -602,7 +602,7 @@ pub async fn upsert_snapshots(snapshots: &[Obj]) -> Vec<UpsertResult> {
 
         let written = async {
             if let Some((row, update_columns)) = snapshot_write(snapshot_data)? {
-                snapshot::TABLE.upsert(&row, update_columns, None).await?;
+                snapshot::TABLE.upsert(&row, update_columns, None, None).await?;
             }
             anyhow::Ok(())
         };
@@ -893,7 +893,7 @@ mod tests {
 
     async fn upsert_sql(row: &QueryData, update_columns: Option<&[&str]>) -> String {
         let client = FakeExecutor::default();
-        snapshot::TABLE.upsert(row, update_columns, Some(&client)).await.unwrap();
+        snapshot::TABLE.upsert(row, update_columns, Some(&client), None).await.unwrap();
         client.statements().remove(0)
     }
 

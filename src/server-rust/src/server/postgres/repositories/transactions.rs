@@ -178,7 +178,7 @@ pub async fn upsert_transactions(user: &MaskedUser, transactions: &[Obj], client
     for tx in transactions {
         let id = id_of(tx, "transaction_id");
         let row = transaction::from_json(tx, &user.user_id);
-        match transaction::TABLE.upsert(&row, None, client).await {
+        match transaction::TABLE.upsert(&row, None, client, None).await {
             Ok(_) => results.push(success_result(&id, Some(1))),
             Err(error) => {
                 logger::error("Failed to upsert transaction", Some(&id_context("transactionId", tx, "transaction_id")), Some(&error));

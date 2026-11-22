@@ -86,7 +86,7 @@ pub async fn upsert_securities(securities: &[Obj]) -> Vec<UpsertResult> {
     for security in securities {
         let security_id = security.get("security_id").map(to_js_string).unwrap_or_default();
         let row = security::from_json(security);
-        match security::TABLE.upsert(&row, None, None).await {
+        match security::TABLE.upsert(&row, None, None, None).await {
             Ok(_) => results.push(success_result(&security_id, Some(1))),
             Err(error) => {
                 logger::error("Failed to upsert security", Some(&crate::ctx! { "securityId": security.get("security_id") }), Some(&error));

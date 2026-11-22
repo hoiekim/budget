@@ -51,11 +51,17 @@ pub fn require_string_field(obj: &Obj, field: &str) -> Validation<String> {
 
 static TICKER_SYMBOL_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Z0-9.:-]{1,16}$").unwrap());
 
-/// `String.prototype.trim` whitespace: Unicode white space plus line
+/// JavaScript's white space, as `String.prototype.trim` strips it and a
+/// regular expression's `\s` matches it: Unicode white space plus line
 /// terminators and the BOM, without the next-line control (U+0085), which
 /// JavaScript does not count.
+pub fn is_js_whitespace(c: char) -> bool {
+    (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}'
+}
+
+/// `String.prototype.trim`.
 pub fn js_trim(text: &str) -> &str {
-    text.trim_matches(|c: char| (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}')
+    text.trim_matches(is_js_whitespace)
 }
 
 /// A ticker-symbol field, returned trimmed and upper-cased.
@@ -186,6 +192,17 @@ pub fn is_uuid(value: &Json) -> bool {
 
 pub fn is_uuid_str(value: &str) -> bool {
     UUID_RE.is_match(value)
+}
+
+/// Whether a value reads as an email address: one `@` with something on each
+/// side, and no whitespace (`/^[^\s@]+@[^\s@]+$/`). Deliverability isn't
+/// checked: an address is only ever compared with the one a user signed in
+/// with.
+pub fn is_email_address(value: &Json) -> bool {
+    let Some(text) = value.as_str() else { return false };
+    let Some((local, domain)) = text.split_once('@') else { return false };
+    let part = |side: &str| !side.is_empty() && !side.contains(|c: char| c == '@' || is_js_whitespace(c));
+    part(local) && part(domain)
 }
 
 // `.` does not match line terminators in a JS regex without the `s` flag.
@@ -353,6 +370,43 @@ mod tests {
             validate_fields(&obj(json!({ "amount": 1e13 })), &specs),
             Err("Field amount must be at most 9999999999999.99".into())
         );
+    }
+
+    // `validation.test.ts`, "isEmailAddress".
+
+    #[test]
+    fn an_email_address_is_one_at_sign_with_something_on_each_side() {
+        for value in ["friend@example.com", "Friend+tag@Example.co.uk", "a@b"] {
+            assert!(is_email_address(&json!(value)), "{value}");
+        }
+    }
+
+    #[test]
+    fn an_email_address_has_no_second_at_sign_no_empty_side_no_whitespace_and_is_a_string() {
+        for value in [
+            json!("friend.example.com"),
+            json!("a@b@example.com"),
+            json!("@example.com"),
+            json!("friend@"),
+            json!("a friend@example.com"),
+            json!("friend@example.com\n"),
+            json!(""),
+            json!(42),
+            Json::Null,
+        ] {
+            assert!(!is_email_address(&value), "{value}");
+        }
+    }
+
+    #[test]
+    fn an_email_address_takes_white_space_as_a_javascript_regular_expression_does() {
+        // `\s` matches the no-break space and the BOM, and not the next-line control.
+        for space in ['\t', '\u{a0}', '\u{2028}', '\u{3000}', '\u{feff}'] {
+            assert!(!is_email_address(&json!(format!("a{space}b@example.com"))), "{space:?}");
+        }
+        assert!(is_email_address(&json!("a\u{85}b@example.com")));
+        assert_eq!(js_trim("\u{feff}\u{a0} a@b \u{2029}"), "a@b");
+        assert_eq!(js_trim("a@b\u{85}"), "a@b\u{85}");
     }
 
     #[test]

@@ -23,6 +23,7 @@ pub const REJECTED_CATEGORIES: &str = "rejected_categories";
 pub const CPI_SNAPSHOTS: &str = "cpi_snapshots";
 pub const SHARING_MEMBERS: &str = "sharing_members";
 pub const SHARING_INVITATIONS: &str = "sharing_invitations";
+pub const SHARING_EMAIL_INVITATIONS: &str = "sharing_email_invitations";
 
 /// Id prefix of the holding snapshots the client derives from a holding's transactions.
 pub const DERIVED_HOLDING_SNAPSHOT_PREFIX: &str = "derived-holding-";

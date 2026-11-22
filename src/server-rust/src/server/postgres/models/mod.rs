@@ -59,6 +59,7 @@ pub fn tables() -> Vec<&'static Table> {
         &cpi_snapshot::TABLE,
         &sharing::MEMBERS_TABLE,
         &sharing::INVITATIONS_TABLE,
+        &sharing::EMAIL_INVITATIONS_TABLE,
     ]
 }
 
@@ -103,6 +104,39 @@ mod tests {
                 "cpi_snapshots",
                 "sharing_members",
                 "sharing_invitations",
+                "sharing_email_invitations",
+            ]
+        );
+    }
+
+    // `initialize.test.ts`, "creates every sharing table after the users table
+    // they reference, and indexes their lookup columns".
+    #[test]
+    fn every_sharing_table_comes_after_users_and_indexes_its_lookup_column() {
+        let tables = tables();
+        let names: Vec<&str> = tables.iter().map(|table| table.name).collect();
+        let sharing: Vec<&&'static Table> = tables.iter().filter(|table| table.name.starts_with("sharing_")).collect();
+        assert_eq!(
+            sharing.iter().map(|table| table.name).collect::<Vec<_>>(),
+            ["sharing_members", "sharing_invitations", "sharing_email_invitations"]
+        );
+        let position = |name: &str| names.iter().position(|n| *n == name).unwrap();
+        assert!(position("sharing_members") > position("users"));
+        let statements: Vec<String> = sharing
+            .iter()
+            .flat_map(|table| {
+                table.indexes.iter().map(|index| {
+                    let columns: Vec<String> = columns_of(index).iter().map(|c| c.to_string()).collect();
+                    crate::server::postgres::database::build_create_index(table.name, &columns, None, index.unique, index.predicate)
+                })
+            })
+            .collect();
+        assert_eq!(
+            statements,
+            [
+                "CREATE INDEX IF NOT EXISTS idx_sharing_members_group_id ON sharing_members(group_id)",
+                "CREATE INDEX IF NOT EXISTS idx_sharing_invitations_invitee_user_id ON sharing_invitations(invitee_user_id)",
+                "CREATE INDEX IF NOT EXISTS idx_sharing_email_invitations_invitee_email ON sharing_email_invitations(invitee_email)",
             ]
         );
     }

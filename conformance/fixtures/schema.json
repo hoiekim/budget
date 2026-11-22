@@ -1871,6 +1871,61 @@
       "column_default": null
     },
     {
+      "table_name": "sharing_email_invitations",
+      "column_name": "invitation_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "column_name": "inviter_user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "column_name": "invitee_email",
+      "data_type": "character varying",
+      "udt_name": "varchar",
+      "character_maximum_length": 255,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "column_name": "updated",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "character_maximum_length": null,
+      "numeric_precision": null,
+      "numeric_scale": null,
+      "is_nullable": "YES",
+      "column_default": "CURRENT_TIMESTAMP"
+    },
+    {
       "table_name": "sharing_invitations",
       "column_name": "invitation_id",
       "data_type": "uuid",
@@ -2946,6 +3001,21 @@
       "indexdef": "CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (session_id)"
     },
     {
+      "tablename": "sharing_email_invitations",
+      "indexname": "idx_sharing_email_invitations_invitee_email",
+      "indexdef": "CREATE INDEX idx_sharing_email_invitations_invitee_email ON public.sharing_email_invitations USING btree (invitee_email)"
+    },
+    {
+      "tablename": "sharing_email_invitations",
+      "indexname": "sharing_email_invitations_pair_unique",
+      "indexdef": "CREATE UNIQUE INDEX sharing_email_invitations_pair_unique ON public.sharing_email_invitations USING btree (inviter_user_id, invitee_email)"
+    },
+    {
+      "tablename": "sharing_email_invitations",
+      "indexname": "sharing_email_invitations_pkey",
+      "indexdef": "CREATE UNIQUE INDEX sharing_email_invitations_pkey ON public.sharing_email_invitations USING btree (invitation_id)"
+    },
+    {
       "tablename": "sharing_invitations",
       "indexname": "idx_sharing_invitations_invitee_user_id",
       "indexdef": "CREATE INDEX idx_sharing_invitations_invitee_user_id ON public.sharing_invitations USING btree (invitee_user_id)"
@@ -3298,6 +3368,24 @@
       "constraint_name": "sessions_pkey",
       "constraint_type": "p",
       "definition": "PRIMARY KEY (session_id)"
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "constraint_name": "sharing_email_invitations_inviter_user_id_fkey",
+      "constraint_type": "f",
+      "definition": "FOREIGN KEY (inviter_user_id) REFERENCES users(user_id) ON DELETE CASCADE"
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "constraint_name": "sharing_email_invitations_pair_unique",
+      "constraint_type": "u",
+      "definition": "UNIQUE (inviter_user_id, invitee_email)"
+    },
+    {
+      "table_name": "sharing_email_invitations",
+      "constraint_name": "sharing_email_invitations_pkey",
+      "constraint_type": "p",
+      "definition": "PRIMARY KEY (invitation_id)"
     },
     {
       "table_name": "sharing_invitations",

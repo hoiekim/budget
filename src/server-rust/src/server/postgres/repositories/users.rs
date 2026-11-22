@@ -24,7 +24,7 @@ pub async fn write_user(user_id: Option<&str>, username: &str, password: &str) -
     if let Some(user_id) = user_id.filter(|id| !id.is_empty()) {
         row.insert("user_id".into(), json!(user_id));
     }
-    let result = user::TABLE.upsert(&row, None, None).await?;
+    let result = user::TABLE.upsert(&row, None, None, None).await?;
     Ok(result.and_then(|row| row.get("user_id").and_then(|id| id.as_str()).map(str::to_string)))
 }
 

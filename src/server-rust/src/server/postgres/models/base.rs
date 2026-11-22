@@ -324,11 +324,14 @@ impl Table {
 
     /// Inserts a row or, on a primary-key conflict, updates `update_columns`
     /// (by default every column `data` carries). Returns the whole row.
+    /// `conflict_columns` finds the existing row by another unique key than
+    /// the primary key: the columns of a UNIQUE constraint the table declares.
     pub async fn upsert(
         &self,
         data: &QueryData,
         update_columns: Option<&[&str]>,
         client: Option<&dyn Executor>,
+        conflict_columns: Option<&[&str]>,
     ) -> anyhow::Result<Option<Obj>> {
         self.assert_simple_primary_key("upsert")?;
         let writable: Vec<String> = data.keys().filter(|key| key.as_str() != self.primary_key).cloned().collect();
@@ -336,7 +339,7 @@ impl Table {
             Some(columns) => columns.iter().filter(|c| writable.iter().any(|w| w == *c)).map(|c| c.to_string()).collect(),
             None => writable,
         };
-        let query = build_upsert(self.name, self.primary_key, data, &update_columns, &["*"]);
+        let query = build_upsert(self.name, self.primary_key, data, &update_columns, &["*"], conflict_columns);
         let result = or_pool(client).query(&query.sql, &query.values).await?;
         Ok(result.rows.into_iter().next())
     }

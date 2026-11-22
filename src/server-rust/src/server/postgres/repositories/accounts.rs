@@ -140,7 +140,7 @@ pub async fn upsert_accounts(user: &MaskedUser, accounts: &[Obj], client: Option
     for account in accounts {
         let account_id = account.get("account_id").map(to_js_string).unwrap_or_default();
         let row = account::from_json(account, &user.user_id);
-        match account::TABLE.upsert(&row, None, client).await {
+        match account::TABLE.upsert(&row, None, client, None).await {
             Ok(_) => results.push(success_result(&account_id, Some(1))),
             Err(error) => {
                 logger::error("Failed to upsert account", Some(&crate::ctx! { "accountId": account.get("account_id") }), Some(&error));
