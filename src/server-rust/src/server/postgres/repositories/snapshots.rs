@@ -374,11 +374,12 @@ pub async fn get_holding_snapshots(user: &MaskedUser, options: HoldingSnapshotsO
 /// One holding snapshot by primary key, user-scoped. The key is filtered on
 /// by the database (which, as for `query`, leaves out soft-deleted rows), so
 /// a lookup that finds nothing answers `None`: the caller's "not found or
-/// access denied".
-pub async fn get_holding_snapshot_by_id(user: &MaskedUser, snapshot_id: &str) -> anyhow::Result<Option<HoldingSnapshot>> {
+/// access denied". The id is bound as the value it is: a route passes on
+/// whatever its body named, as the TypeScript does.
+pub async fn get_holding_snapshot_by_id(user: &MaskedUser, snapshot_id: impl Into<Json>) -> anyhow::Result<Option<HoldingSnapshot>> {
     let row = snapshot::TABLE
         .query_one(filters! {
-            "snapshot_id" => snapshot_id,
+            "snapshot_id" => snapshot_id.into(),
             "snapshot_type" => SnapshotType::Holding.as_str(),
             "user_id" => shared_with(user),
         })
