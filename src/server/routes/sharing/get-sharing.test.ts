@@ -11,6 +11,7 @@ afterAll(restoreLeaves);
 
 const MEMBERS_QUERY = /\bFROM\s+sharing_members\s+m\b/i;
 const INVITATIONS_QUERY = /\bFROM\s+sharing_invitations\s+i\b/i;
+const EMAIL_INVITATIONS_QUERY = /\bFROM\s+sharing_email_invitations\s+e\b/i;
 
 const CALLER = { user_id: "a1000000-0000-4000-8000-000000000001", username: "caller" };
 const PEER = { user_id: "a1000000-0000-4000-8000-000000000002", username: "peer" };
@@ -19,9 +20,13 @@ const STRANGER = { user_id: "a1000000-0000-4000-8000-000000000004", username: "s
 
 let memberRows: Record<string, unknown>[] = [];
 let invitationRows: Record<string, unknown>[] = [];
+let emailInvitationRows: Record<string, unknown>[] = [];
 
 const queryRouter = async (sql: string) => {
   if (INVITATIONS_QUERY.test(sql)) return { rows: invitationRows, rowCount: invitationRows.length };
+  if (EMAIL_INVITATIONS_QUERY.test(sql)) {
+    return { rows: emailInvitationRows, rowCount: emailInvitationRows.length };
+  }
   if (MEMBERS_QUERY.test(sql)) return { rows: memberRows, rowCount: memberRows.length };
   return { rows: [], rowCount: 0 };
 };
@@ -31,6 +36,7 @@ beforeEach(() => {
   mockUnsafe.mockImplementation(queryRouter);
   memberRows = [];
   invitationRows = [];
+  emailInvitationRows = [];
 });
 
 function makeReq(user: { user_id: string; username: string } | null = CALLER) {
@@ -122,11 +128,55 @@ describe("GET /sharing", () => {
     expect(result).toEqual({ status: "success", body: { members: [], invitations: [] } });
   });
 
-  test("both reads are bound to the session user and nobody else", async () => {
+  test("an email invitation shows its address to the group that sent it, and the caller to the caller it reached", async () => {
+    emailInvitationRows = [
+      {
+        invitation_id: "b2000000-0000-4000-8000-000000000003",
+        invitee_email: "friend@example.com",
+        expires_at: "2026-12-22T00:00:00.000Z",
+        inviter_user_id: PEER.user_id,
+        inviter_username: PEER.username,
+        sent: true,
+      },
+      {
+        invitation_id: "b2000000-0000-4000-8000-000000000004",
+        invitee_email: "caller@example.com",
+        expires_at: "2026-12-23T00:00:00.000Z",
+        inviter_user_id: STRANGER.user_id,
+        inviter_username: STRANGER.username,
+        sent: false,
+      },
+    ];
+
+    const result = await getSharingRoute.execute(makeReq(), fakeRes());
+
+    expect(result).toEqual({
+      status: "success",
+      body: {
+        members: [],
+        invitations: [
+          {
+            invitation_id: "b2000000-0000-4000-8000-000000000003",
+            inviter: PEER,
+            invitee: { email: "friend@example.com" },
+            expires_at: "2026-12-22T00:00:00.000Z",
+          },
+          {
+            invitation_id: "b2000000-0000-4000-8000-000000000004",
+            inviter: STRANGER,
+            invitee: CALLER,
+            expires_at: "2026-12-23T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+  });
+
+  test("every read is bound to the session user and nobody else", async () => {
     await getSharingRoute.execute(makeReq(PEER), fakeRes());
 
     const issued = statements();
-    expect(issued).toHaveLength(2);
+    expect(issued).toHaveLength(3);
     for (const { values } of issued) expect(values).toEqual([PEER.user_id]);
 
     const members = issued.find(({ sql }) => MEMBERS_QUERY.test(sql))!;
@@ -134,6 +184,10 @@ describe("GET /sharing", () => {
     const invitations = issued.find(({ sql }) => INVITATIONS_QUERY.test(sql))!;
     expect(invitations.sql).toMatch(
       /i\.invitee_user_id = \$1 OR i\.inviter_user_id = ANY\(sharing_user_ids\(\$1\)\)/,
+    );
+    const emailInvitations = issued.find(({ sql }) => EMAIL_INVITATIONS_QUERY.test(sql))!;
+    expect(emailInvitations.sql).toMatch(
+      /e\.inviter_user_id = ANY\(sharing_user_ids\(\$1\)\) OR \(e\.invitee_email = \(SELECT lower\(u\.email\) FROM users u WHERE u\.user_id = \$1\)/,
     );
     expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });

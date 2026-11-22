@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterAll, setSystemTime } from "bun:test";
 import { createFakeSql, restoreLeaves, type FakeQueryResult } from "test-helpers";
 
 const { driver, mockUnsafe, mockReservedUnsafe, mockReserve, mockRelease, resetSqlMocks } =
@@ -14,9 +14,11 @@ const {
   getSharing,
   getRowOwner,
   inviteToShare,
+  inviteByEmail,
   deleteSharingInvitation,
   acceptSharingInvitation,
   removeSharingMember,
+  EMAIL_INVITATION_LIFETIME_MS,
 } = await import("./sharing");
 
 afterAll(restoreLeaves);
@@ -84,6 +86,14 @@ const SELECT_GROUP = "SELECT unnest(sharing_user_ids($1)) AS user_id";
 const CONCERNS_USER =
   "(i.invitee_user_id = $1 OR i.inviter_user_id = ANY(sharing_user_ids($1)))";
 
+// An email invitation concerns the group that sent it, lapsed or not, and the
+// user whose address it was sent to while it is open.
+const EMAIL_FROM_GROUP = "e.inviter_user_id = ANY(sharing_user_ids($1))";
+const openTo = (param: string) =>
+  `(e.invitee_email = (SELECT lower(u.email) FROM users u WHERE u.user_id = ${param})` +
+  " AND e.expires_at > CURRENT_TIMESTAMP)";
+const EMAIL_CONCERNS_USER = `(${EMAIL_FROM_GROUP} OR ${openTo("$1")})`;
+
 describe("getSharingUserIds", () => {
   test("asks the pool for the user's group and answers the ids in the order returned", async () => {
     queue(mockUnsafe, answer(ids(bob, alice)));
@@ -120,14 +130,32 @@ describe("getSharing", () => {
     " JOIN users invitee ON invitee.user_id = i.invitee_user_id" +
     ` WHERE ${CONCERNS_USER}` +
     " ORDER BY invitee.username, i.invitation_id";
+  const SELECT_EMAIL_INVITATIONS =
+    "SELECT e.invitation_id, e.invitee_email, e.expires_at," +
+    " inviter.user_id AS inviter_user_id, inviter.username AS inviter_username," +
+    ` ${EMAIL_FROM_GROUP} AS sent` +
+    " FROM sharing_email_invitations e" +
+    " JOIN users inviter ON inviter.user_id = e.inviter_user_id" +
+    ` WHERE ${EMAIL_CONCERNS_USER}` +
+    " ORDER BY e.invitee_email, e.invitation_id";
 
-  // The two reads start together, so each is answered by what it selects from.
-  const answerReads = (members: unknown[], invitations: unknown[]) =>
+  // The reads start together, so each is answered by what it selects from.
+  const answerReads = (members: unknown[], invitations: unknown[], emailInvitations: unknown[] = []) =>
     mockUnsafe.mockImplementation(async (sql: string) => {
       if (/FROM sharing_members m\b/.test(sql)) return answer(members);
       if (/FROM sharing_invitations i\b/.test(sql)) return answer(invitations);
+      if (/FROM sharing_email_invitations e\b/.test(sql)) return answer(emailInvitations);
       throw new Error(`unexpected statement: ${sql}`);
     });
+
+  const emailRow = (invitation_id: string, inviter: typeof alice, sent: boolean) => ({
+    invitation_id,
+    invitee_email: "friend@example.com",
+    expires_at: "2026-12-22T00:00:00.000Z",
+    inviter_user_id: inviter.user_id,
+    inviter_username: inviter.username,
+    sent,
+  });
 
   test("answers the group's members and the invitations that concern the user", async () => {
     answerReads(
@@ -165,10 +193,57 @@ describe("getSharing", () => {
     await getSharing(alice);
 
     const ran = statements(mockUnsafe);
-    expect(ran).toHaveLength(2);
+    expect(ran).toHaveLength(3);
     expect(ran).toContainEqual([SELECT_MEMBERS, ["u-alice"]]);
     expect(ran).toContainEqual([SELECT_INVITATIONS, ["u-alice"]]);
+    expect(ran).toContainEqual([SELECT_EMAIL_INVITATIONS, ["u-alice"]]);
     expect(mockReservedUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("names the address of an email invitation the group sent, and the user reading one sent to their address", async () => {
+    answerReads(
+      [alice, bob],
+      [],
+      [emailRow("inv-sent", bob, true), emailRow("inv-received", dave, false)],
+    );
+
+    expect(await getSharing(alice)).toEqual({
+      members: [alice, bob],
+      invitations: [
+        {
+          invitation_id: "inv-sent",
+          inviter: bob,
+          invitee: { email: "friend@example.com" },
+          expires_at: "2026-12-22T00:00:00.000Z",
+        },
+        {
+          invitation_id: "inv-received",
+          inviter: dave,
+          invitee: alice,
+          expires_at: "2026-12-22T00:00:00.000Z",
+        },
+      ],
+    });
+  });
+
+  test("lists invitations to users before invitations to addresses", async () => {
+    answerReads(
+      [],
+      [
+        {
+          invitation_id: "inv-user",
+          inviter_user_id: "u-alice",
+          inviter_username: "alice",
+          invitee_user_id: "u-carol",
+          invitee_username: "carol",
+        },
+      ],
+      [emailRow("inv-email", alice, true)],
+    );
+
+    const { invitations } = await getSharing(alice);
+
+    expect(invitations.map(({ invitation_id }) => invitation_id)).toEqual(["inv-user", "inv-email"]);
   });
 
   test("answers empty lists for a user who shares with nobody and has no invitation", async () => {
@@ -377,6 +452,128 @@ describe("inviteToShare", () => {
   });
 });
 
+describe("inviteByEmail", () => {
+  const FIND_HOLDER =
+    "SELECT * FROM users WHERE lower(email) = lower($1) AND (is_deleted IS NULL OR is_deleted = FALSE) LIMIT $2";
+  const UPSERT_INVITATION =
+    "INSERT INTO sharing_email_invitations (updated, inviter_user_id, invitee_email, expires_at)" +
+    " VALUES (CURRENT_TIMESTAMP, $1, $2, $3)" +
+    " ON CONFLICT (inviter_user_id, invitee_email)" +
+    " DO UPDATE SET expires_at = EXCLUDED.expires_at, updated = CURRENT_TIMESTAMP RETURNING *";
+
+  const NOW = Date.parse("2026-11-22T10:00:00.000Z");
+  const EXPIRES_AT = "2026-12-22T10:00:00.000Z";
+
+  beforeEach(() => setSystemTime(new Date(NOW)));
+  afterAll(() => setSystemTime());
+
+  const emailInvitationRow = (invitation_id: string, expires_at = EXPIRES_AT) => ({
+    invitation_id,
+    inviter_user_id: "u-alice",
+    invitee_email: "friend@example.com",
+    expires_at,
+    updated: "2026-11-22T10:00:00.000Z",
+  });
+
+  const holderRow = (user: typeof bob, email: string) => ({ ...userRow(user), email });
+
+  const upsert: [string, unknown[]] = [
+    UPSERT_INVITATION,
+    ["u-alice", "friend@example.com", EXPIRES_AT],
+  ];
+
+  test("the demo account can't invite, and no statement runs", async () => {
+    expect(await inviteByEmail(demo, "friend@example.com")).toEqual(DEMO_REFUSAL);
+
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("an address nobody has yet gets an invitation open for thirty days, stored trimmed and in lower case", async () => {
+    expect(EMAIL_INVITATION_LIFETIME_MS).toBe(30 * 24 * 60 * 60 * 1000);
+    queue(mockUnsafe, answer(), answer([emailInvitationRow("inv-e1")]));
+
+    expect(await inviteByEmail(alice, "  Friend@Example.COM ")).toEqual({
+      ok: true,
+      invitation: {
+        invitation_id: "inv-e1",
+        inviter: alice,
+        invitee: { email: "friend@example.com" },
+        expires_at: EXPIRES_AT,
+      },
+      invitee_user_id: undefined,
+    });
+
+    expect(statements(mockUnsafe)).toEqual([[FIND_HOLDER, ["friend@example.com", 1]], upsert]);
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("an address someone outside the group has answers as one nobody has, and names that user only for the event", async () => {
+    queue(
+      mockUnsafe,
+      answer([holderRow(bob, "Friend@example.com")]),
+      answer(ids(alice)),
+      answer([emailInvitationRow("inv-e1")]),
+    );
+
+    const result = await inviteByEmail(alice, "friend@example.com");
+
+    expect(result).toEqual({
+      ok: true,
+      invitation: {
+        invitation_id: "inv-e1",
+        inviter: alice,
+        invitee: { email: "friend@example.com" },
+        expires_at: EXPIRES_AT,
+      },
+      invitee_user_id: "u-bob",
+    });
+    // Nothing the inviter is shown names the user behind the address.
+    expect(JSON.stringify(result.ok && result.invitation)).not.toContain("bob");
+    expect(statements(mockUnsafe)).toEqual([
+      [FIND_HOLDER, ["friend@example.com", 1]],
+      [SELECT_GROUP, ["u-alice"]],
+      upsert,
+    ]);
+  });
+
+  test("refuses the user's own address before reading the group", async () => {
+    queue(mockUnsafe, answer([holderRow(alice, "friend@example.com")]));
+
+    expect(await inviteByEmail(alice, "friend@example.com")).toEqual({
+      ok: false,
+      error: "You can't invite yourself.",
+    });
+
+    expect(statements(mockUnsafe)).toEqual([[FIND_HOLDER, ["friend@example.com", 1]]]);
+  });
+
+  test("refuses the address of someone already in the user's group, and writes nothing", async () => {
+    queue(mockUnsafe, answer([holderRow(bob, "friend@example.com")]), answer(ids(bob, alice)));
+
+    expect(await inviteByEmail(alice, "friend@example.com")).toEqual({
+      ok: false,
+      error: "You already share data with bob.",
+    });
+
+    expect(statements(mockUnsafe)).toEqual([
+      [FIND_HOLDER, ["friend@example.com", 1]],
+      [SELECT_GROUP, ["u-alice"]],
+    ]);
+  });
+
+  test("inviting an address again answers the same invitation, open thirty days from now", async () => {
+    // The conflict on (inviter, address) rewrites only the lapse time of the row already there.
+    queue(mockUnsafe, answer(), answer([emailInvitationRow("inv-open")]));
+
+    const result = await inviteByEmail(alice, "friend@example.com");
+
+    expect(result.ok && result.invitation.invitation_id).toBe("inv-open");
+    expect(result.ok && result.invitation.expires_at).toBe(EXPIRES_AT);
+    expect(statements(mockUnsafe)).toEqual([[FIND_HOLDER, ["friend@example.com", 1]], upsert]);
+  });
+});
+
 describe("deleteSharingInvitation", () => {
   const DELETE_INVITATION =
     "DELETE FROM sharing_invitations i" +
@@ -394,18 +591,61 @@ describe("deleteSharingInvitation", () => {
     expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
-  test("answers undefined when nothing was deleted", async () => {
-    queue(mockUnsafe, answer());
+  const DELETE_EMAIL_INVITATION =
+    "DELETE FROM sharing_email_invitations e" +
+    ` WHERE e.invitation_id = $2 AND ${EMAIL_CONCERNS_USER}` +
+    " RETURNING e.inviter_user_id," +
+    " (SELECT u.user_id FROM users u WHERE lower(u.email) = e.invitee_email) AS invitee_user_id";
+
+  test("an invitation to a user is deleted without looking among the email invitations", async () => {
+    queue(mockUnsafe, answer([{ inviter_user_id: "u-bob", invitee_user_id: "u-alice" }]));
+
+    await deleteSharingInvitation(alice, "inv-1");
+
+    expect(statements(mockUnsafe)).toEqual([[DELETE_INVITATION, ["u-alice", "inv-1"]]]);
+  });
+
+  test("otherwise deletes an email invitation that concerns the user, and answers its inviter and the user with the address", async () => {
+    queue(mockUnsafe, answer(), answer([{ inviter_user_id: "u-bob", invitee_user_id: "u-alice" }]));
+
+    expect(await deleteSharingInvitation(alice, "inv-e1")).toEqual({
+      affected_user_ids: ["u-bob", "u-alice"],
+    });
+
+    expect(statements(mockUnsafe)).toEqual([
+      [DELETE_INVITATION, ["u-alice", "inv-e1"]],
+      [DELETE_EMAIL_INVITATION, ["u-alice", "inv-e1"]],
+    ]);
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+  });
+
+  test("an email invitation to an address nobody has answers its inviter alone", async () => {
+    queue(mockUnsafe, answer(), answer([{ inviter_user_id: "u-alice", invitee_user_id: null }]));
+
+    expect(await deleteSharingInvitation(alice, "inv-e1")).toEqual({
+      affected_user_ids: ["u-alice"],
+    });
+  });
+
+  test("answers undefined when nothing was deleted from either table", async () => {
+    queue(mockUnsafe, answer(), answer());
 
     expect(await deleteSharingInvitation(alice, "inv-1")).toBeUndefined();
 
-    expect(statements(mockUnsafe)).toEqual([[DELETE_INVITATION, ["u-alice", "inv-1"]]]);
+    expect(statements(mockUnsafe)).toEqual([
+      [DELETE_INVITATION, ["u-alice", "inv-1"]],
+      [DELETE_EMAIL_INVITATION, ["u-alice", "inv-1"]],
+    ]);
   });
 });
 
 describe("acceptSharingInvitation", () => {
+  // Sent to the user, or open, sent to their address, and not by themself.
   const FIND_INVITATION =
-    "SELECT inviter_user_id FROM sharing_invitations WHERE invitation_id = $1 AND invitee_user_id = $2";
+    "SELECT inviter_user_id FROM sharing_invitations WHERE invitation_id = $1 AND invitee_user_id = $2" +
+    " UNION ALL" +
+    " SELECT e.inviter_user_id FROM sharing_email_invitations e" +
+    ` WHERE e.invitation_id = $1 AND e.inviter_user_id <> $2 AND ${openTo("$2")}`;
   const FIND_MEMBERSHIPS = "SELECT * FROM sharing_members WHERE user_id IN ($1, $2)";
   const INSERT_MEMBERS =
     "INSERT INTO sharing_members (updated, user_id, group_id)" +
@@ -414,6 +654,13 @@ describe("acceptSharingInvitation", () => {
   const DELETE_SETTLED_INVITATIONS =
     "DELETE FROM sharing_invitations i USING sharing_members inviter, sharing_members invitee" +
     " WHERE inviter.user_id = i.inviter_user_id AND invitee.user_id = i.invitee_user_id" +
+    " AND inviter.group_id = $1 AND invitee.group_id = $1";
+  // An email invitation is settled once its inviter and the user with the address share.
+  const DELETE_SETTLED_EMAIL_INVITATIONS =
+    "DELETE FROM sharing_email_invitations e" +
+    " USING sharing_members inviter, sharing_members invitee, users u" +
+    " WHERE inviter.user_id = e.inviter_user_id AND u.user_id = invitee.user_id" +
+    " AND lower(u.email) = e.invitee_email" +
     " AND inviter.group_id = $1 AND invitee.group_id = $1";
 
   // Bob accepts the invitation alice sent him.
@@ -461,7 +708,7 @@ describe("acceptSharingInvitation", () => {
   });
 
   test("creates a group for an inviter who shared with nobody, and puts both people in it", async () => {
-    queueTransaction(invitationFromAlice, answer(), answer(), answer(), answer(ids(alice, bob)));
+    queueTransaction(invitationFromAlice, answer(), answer(), answer(), answer(), answer(ids(alice, bob)));
 
     expect(await acceptSharingInvitation(bob, "inv-1")).toEqual({
       ok: true,
@@ -478,6 +725,7 @@ describe("acceptSharingInvitation", () => {
       findMemberships,
       [INSERT_MEMBERS, ["u-alice", groupId, "u-bob", groupId]],
       [DELETE_SETTLED_INVITATIONS, [groupId]],
+      [DELETE_SETTLED_EMAIL_INVITATIONS, [groupId]],
       [SELECT_GROUP, ["u-bob"]],
       COMMIT,
     ]);
@@ -490,6 +738,7 @@ describe("acceptSharingInvitation", () => {
     queueTransaction(
       invitationFromAlice,
       answer([memberRow("u-alice", "g-alice")]),
+      answer(),
       answer(),
       answer(),
       answer(ids(alice, carol, bob)),
@@ -507,6 +756,7 @@ describe("acceptSharingInvitation", () => {
       findMemberships,
       [INSERT_MEMBERS, ["u-alice", "g-alice", "u-bob", "g-alice"]],
       [DELETE_SETTLED_INVITATIONS, ["g-alice"]],
+      [DELETE_SETTLED_EMAIL_INVITATIONS, ["g-alice"]],
       [SELECT_GROUP, ["u-bob"]],
       COMMIT,
     ]);

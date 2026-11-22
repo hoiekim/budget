@@ -73,6 +73,19 @@ describe("Table.upsert conflict clause", () => {
     await widgetsTable.upsert({ widget_id: "w-1", label: "a", note: null });
     expect(updateColumnsOf(emittedSql())).toContain("note");
   });
+
+  test("the primary key is the conflict target unless other conflict columns are given", async () => {
+    await widgetsTable.upsert({ widget_id: "w-1", label: "a" }, ["label"]);
+    expect(emittedSql()).toContain(" ON CONFLICT (widget_id) DO UPDATE SET ");
+
+    clearSqlMocks();
+    await widgetsTable.upsert({ user_id: "u-1", label: "a", note: "n" }, ["user_id", "label", "note"], undefined, {
+      conflictColumns: ["user_id", "label"],
+    });
+    expect(emittedSql()).toContain(" ON CONFLICT (user_id, label) DO UPDATE SET ");
+    // A conflict column names the row, so it is never in the SET list.
+    expect(updateColumnsOf(emittedSql())).toEqual(["note", "updated"]);
+  });
 });
 
 describe("Table.upsertMany", () => {

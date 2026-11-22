@@ -1,4 +1,4 @@
-import { describe, test, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
+import { describe, test, expect, mock, beforeEach, afterEach, afterAll, setSystemTime } from "bun:test";
 import { createFakeSql, restoreLeaves } from "test-helpers";
 
 const { driver, mockUnsafe, mockReservedUnsafe, resetSqlMocks } = createFakeSql();
@@ -22,6 +22,9 @@ const CROSSING_LOOKUP =
   /^\s*SELECT \* FROM sharing_invitations WHERE inviter_user_id = \$1 AND invitee_user_id = \$2 LIMIT \$3\s*$/i;
 const INVITATION_READ = /^\s*SELECT \* FROM sharing_invitations\b/i;
 const INVITATION_INSERT = /^\s*INSERT INTO sharing_invitations\b/i;
+const USER_BY_EMAIL = /^\s*SELECT \* FROM users WHERE lower\(email\) = lower\(\$1\)/i;
+const EMAIL_INVITATION_UPSERT = /^\s*INSERT INTO sharing_email_invitations\b/i;
+const EMAIL_INVITATION_ID = "c3000000-0000-4000-8000-0000000000bb";
 
 const userRow = (user: { user_id: string; username: string }) => ({
   ...user,
@@ -49,6 +52,8 @@ const db = {
   crossing: false,
   /** Fail the group lookup from this call on (1 = the first). */
   failGroupLookupFrom: Infinity,
+  /** The email address each user signed in with, by user id. */
+  emails: {} as Record<string, string>,
 };
 let groupLookups = 0;
 
@@ -56,6 +61,18 @@ const queryRouter = async (sql: string, values: unknown[] = []) => {
   if (USER_BY_NAME.test(sql)) {
     const rows = db.users.filter((user) => user.username === values[0]).map(userRow);
     return { rows, rowCount: rows.length };
+  }
+  if (USER_BY_EMAIL.test(sql)) {
+    const address = String(values[0]).toLowerCase();
+    const rows = db.users
+      .filter((user) => db.emails[user.user_id]?.toLowerCase() === address)
+      .map((user) => ({ ...userRow(user), email: db.emails[user.user_id] }));
+    return { rows, rowCount: rows.length };
+  }
+  if (EMAIL_INVITATION_UPSERT.test(sql)) {
+    const [inviter_user_id, invitee_email, expires_at] = values;
+    const row = { invitation_id: EMAIL_INVITATION_ID, inviter_user_id, invitee_email, expires_at, updated: null };
+    return { rows: [row], rowCount: 1 };
   }
   if (GROUP_LOOKUP.test(sql)) {
     if (++groupLookups >= db.failGroupLookupFrom) throw new Error("connection lost");
@@ -106,6 +123,7 @@ beforeEach(() => {
   db.groups = { [INVITER.user_id]: [INVITER.user_id, PEER.user_id] };
   db.crossing = false;
   db.failGroupLookupFrom = Infinity;
+  db.emails = {};
   groupLookups = 0;
   inbox = {
     inviter: listen(INVITER),
@@ -303,6 +321,145 @@ describe("POST /sharing/invitation", () => {
   test("the demo account cannot invite anyone, and no SQL is issued for it", async () => {
     const result = await postSharingInvitationRoute.execute(
       makeReq({ username: INVITEE.username }, { user: { user_id: OUTSIDER.user_id, username: "demo" } }),
+      fakeRes(),
+    );
+
+    expect(result).toEqual({ status: "failed", message: "The demo account can't share data." });
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    await expectNothingEmitted();
+  });
+});
+
+describe("POST /sharing/invitation { email }", () => {
+  const NOW = Date.parse("2026-11-22T10:00:00.000Z");
+  const EXPIRES_AT = "2026-12-22T10:00:00.000Z";
+
+  beforeEach(() => setSystemTime(new Date(NOW)));
+  afterAll(() => setSystemTime());
+
+  const sentTo = (email: string) => ({
+    status: "success",
+    body: {
+      invitation: {
+        invitation_id: EMAIL_INVITATION_ID,
+        inviter: INVITER,
+        invitee: { email },
+        expires_at: EXPIRES_AT,
+      },
+    },
+  });
+
+  test.each([
+    ["a null address", { email: null }, "Missing required field: email"],
+    ["a numeric address", { email: 42 }, "Field email must be a string"],
+    ["an address with no @", { email: "friend.example.com" }, "Field email must be an email address"],
+    ["an address with nothing before the @", { email: "@example.com" }, "Field email must be an email address"],
+    ["an address with nothing after the @", { email: "friend@" }, "Field email must be an email address"],
+    ["an address with a space in it", { email: "a friend@example.com" }, "Field email must be an email address"],
+    ["an address with two @", { email: "a@b@example.com" }, "Field email must be an email address"],
+    ["a blank address", { email: "   " }, "Field email must be an email address"],
+    [
+      "an address longer than the column",
+      { email: `${"a".repeat(244)}@example.com` },
+      "Field email must be at most 255 characters",
+    ],
+  ])("refuses %s before any SQL", async (_, body, message) => {
+    const result = await postSharingInvitationRoute.execute(makeReq(body), fakeRes());
+    expect(result).toEqual({ status: "failed", message });
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    await expectNothingEmitted();
+  });
+
+  test("an address of 255 characters is long enough to be accepted", async () => {
+    const email = `${"a".repeat(243)}@example.com`;
+    expect(email).toHaveLength(255);
+
+    const result = await postSharingInvitationRoute.execute(makeReq({ email }), fakeRes());
+
+    expect(result).toEqual(sentTo(email));
+    await settle();
+  });
+
+  test("invites an address nobody has yet, trimmed and in lower case, open for thirty days", async () => {
+    const result = await postSharingInvitationRoute.execute(
+      makeReq({ email: "  Friend@Example.com " }),
+      fakeRes(),
+    );
+
+    expect(result).toEqual(sentTo("friend@example.com"));
+    expect(find(USER_BY_EMAIL)!.values).toEqual(["friend@example.com", 1]);
+    expect(find(EMAIL_INVITATION_UPSERT)!.values).toEqual([
+      INVITER.user_id,
+      "friend@example.com",
+      EXPIRES_AT,
+    ]);
+    expect(find(INVITATION_INSERT)).toBeNull();
+    await settle();
+  });
+
+  test("answers an address someone has exactly as one nobody has", async () => {
+    const nobody = await postSharingInvitationRoute.execute(makeReq({ email: "friend@example.com" }), fakeRes());
+    db.emails = { [INVITEE.user_id]: "Friend@Example.com" };
+    const someone = await postSharingInvitationRoute.execute(makeReq({ email: "friend@example.com" }), fakeRes());
+
+    expect(someone).toEqual(nobody);
+    expect(JSON.stringify(someone)).not.toContain(`"username":"${INVITEE.username}"`);
+    expect(JSON.stringify(someone)).not.toContain(INVITEE.user_id);
+    await settle();
+  });
+
+  test("tells the inviter's group, and the user with the address when anyone has it", async () => {
+    db.emails = { [INVITEE.user_id]: "friend@example.com" };
+
+    await postSharingInvitationRoute.execute(
+      makeReq({ email: "friend@example.com" }, { headers: { "x-tab-id": "tab-7" } }),
+      fakeRes(),
+    );
+    await settle();
+
+    const event = { event: "sharing_invitations-updated", payload: { originTabId: "tab-7" } };
+    expect(inbox).toEqual({ inviter: [event], peer: [event], invitee: [event], outsider: [] });
+  });
+
+  test("an address nobody has tells the inviter's group alone", async () => {
+    await postSharingInvitationRoute.execute(makeReq({ email: "friend@example.com" }), fakeRes());
+    await settle();
+
+    const event = { event: "sharing_invitations-updated", payload: {} };
+    expect(inbox).toEqual({ inviter: [event], peer: [event], invitee: [], outsider: [] });
+  });
+
+  test("an address takes precedence over a username sent with it", async () => {
+    const result = await postSharingInvitationRoute.execute(
+      makeReq({ email: "friend@example.com", username: INVITEE.username }),
+      fakeRes(),
+    );
+
+    expect(result).toEqual(sentTo("friend@example.com"));
+    expect(find(USER_BY_NAME)).toBeNull();
+    await settle();
+  });
+
+  test.each([
+    ["the caller's own address", INVITER, "You can't invite yourself."],
+    ["the address of someone in the caller's group", PEER, "You already share data with peer."],
+  ])("passes the refusal for %s through, writes nothing and emits nothing", async (_, holder, message) => {
+    db.emails = { [holder.user_id]: "friend@example.com" };
+
+    const result = await postSharingInvitationRoute.execute(
+      makeReq({ email: "friend@example.com" }, { headers: { "x-tab-id": "tab-7" } }),
+      fakeRes(),
+    );
+
+    expect(result).toEqual({ status: "failed", message });
+    expect(find(EMAIL_INVITATION_UPSERT)).toBeNull();
+    await expectNothingEmitted();
+  });
+
+  test("the demo account cannot invite an address, and no SQL is issued for it", async () => {
+    const result = await postSharingInvitationRoute.execute(
+      makeReq({ email: "friend@example.com" }, { user: { user_id: OUTSIDER.user_id, username: "demo" } }),
       fakeRes(),
     );
 

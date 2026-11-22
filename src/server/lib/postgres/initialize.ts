@@ -28,6 +28,7 @@ import {
   cpiSnapshotsTable,
   sharingMembersTable,
   sharingInvitationsTable,
+  sharingEmailInvitationsTable,
   CREATE_SHARING_USER_IDS_FUNCTION,
 } from "./models";
 
@@ -57,6 +58,7 @@ const tables: Table<unknown, Schema>[] = [
   cpiSnapshotsTable,
   sharingMembersTable,
   sharingInvitationsTable,
+  sharingEmailInvitationsTable,
 ];
 
 /**
