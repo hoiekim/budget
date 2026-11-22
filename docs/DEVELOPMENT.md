@@ -10,6 +10,8 @@ bun run start          # Build and start production server
 bun run lint           # Run ESLint
 bun run lint:fix       # Run ESLint with auto-fix
 bun run typecheck      # Run TypeScript type checking
+bun run lint:conformance       # Run ESLint on the conformance suite
+bun run typecheck:conformance  # Type-check the conformance suite
 ```
 
 ## Dev Server

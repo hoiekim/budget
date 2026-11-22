@@ -26,9 +26,11 @@
     "test:conformance:rust": "bun conformance/run.ts --target rust",
     "build-server-rust": "cargo build --release --bin budget-server && mkdir -p build/server-rust && cp target/release/budget-server build/server-rust/budget-server",
     "start-server-rust": "./build/server-rust/budget-server",
-    "lint": "bun --bun eslint src scripts conformance vite.config.ts healthcheck.js",
-    "lint:fix": "bun --bun eslint src scripts conformance vite.config.ts healthcheck.js --fix",
-    "typecheck": "bun run --bun tsc --noEmit && bun run --bun tsc --noEmit -p conformance",
+    "lint": "bun --bun eslint src scripts vite.config.ts healthcheck.js",
+    "lint:fix": "bun --bun eslint src scripts vite.config.ts healthcheck.js --fix",
+    "lint:conformance": "bun --bun eslint conformance",
+    "typecheck": "bun run --bun tsc --noEmit",
+    "typecheck:conformance": "bun run --bun tsc --noEmit -p conformance",
     "preview": "vite preview"
   },
   "devDependencies": {
