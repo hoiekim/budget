@@ -24,6 +24,7 @@ const INVITATION_READ = /^\s*SELECT \* FROM sharing_invitations\b/i;
 const INVITATION_INSERT = /^\s*INSERT INTO sharing_invitations\b/i;
 const USER_BY_EMAIL = /^\s*SELECT \* FROM users WHERE lower\(email\) = lower\(\$1\)/i;
 const EMAIL_INVITATION_UPSERT = /^\s*INSERT INTO sharing_email_invitations\b/i;
+const EMAIL_INVITATIONS_SENT = /^\s*SELECT \* FROM sharing_email_invitations WHERE inviter_user_id = \$1\s*$/i;
 const EMAIL_INVITATION_ID = "c3000000-0000-4000-8000-0000000000bb";
 
 const userRow = (user: { user_id: string; username: string }) => ({
@@ -54,6 +55,8 @@ const db = {
   failGroupLookupFrom: Infinity,
   /** The email address each user signed in with, by user id. */
   emails: {} as Record<string, string>,
+  /** How many invitations the caller already sent to addresses other than the one in the request. */
+  sentToOtherAddresses: 0,
 };
 let groupLookups = 0;
 
@@ -67,6 +70,16 @@ const queryRouter = async (sql: string, values: unknown[] = []) => {
     const rows = db.users
       .filter((user) => db.emails[user.user_id]?.toLowerCase() === address)
       .map((user) => ({ ...userRow(user), email: db.emails[user.user_id] }));
+    return { rows, rowCount: rows.length };
+  }
+  if (EMAIL_INVITATIONS_SENT.test(sql)) {
+    const rows = Array.from({ length: db.sentToOtherAddresses }, (_, i) => ({
+      invitation_id: `c3000000-0000-4000-8000-0000000001${String(i).padStart(2, "0")}`,
+      inviter_user_id: values[0],
+      invitee_email: `other${i}@example.com`,
+      expires_at: "2026-12-01T00:00:00.000Z",
+      updated: null,
+    }));
     return { rows, rowCount: rows.length };
   }
   if (EMAIL_INVITATION_UPSERT.test(sql)) {
@@ -119,11 +132,13 @@ let inbox: { inviter: Sent[]; peer: Sent[]; invitee: Sent[]; outsider: Sent[] };
 beforeEach(() => {
   resetSqlMocks();
   mockUnsafe.mockImplementation(queryRouter);
+  mockReservedUnsafe.mockImplementation(queryRouter);
   db.users = [INVITER, PEER, INVITEE, OUTSIDER];
   db.groups = { [INVITER.user_id]: [INVITER.user_id, PEER.user_id] };
   db.crossing = false;
   db.failGroupLookupFrom = Infinity;
   db.emails = {};
+  db.sentToOtherAddresses = 0;
   groupLookups = 0;
   inbox = {
     inviter: listen(INVITER),
@@ -172,8 +187,10 @@ const fakeRes = () =>
     end() {},
   }) as unknown as Parameters<typeof postSharingInvitationRoute.execute>[1];
 
+/** The first statement `matcher` names, on the pool or in a transaction. */
 const find = (matcher: RegExp) => {
-  const call = mockUnsafe.mock.calls.find(([sql]) => matcher.test(String(sql)));
+  const calls = [...mockUnsafe.mock.calls, ...mockReservedUnsafe.mock.calls];
+  const call = calls.find(([sql]) => matcher.test(String(sql)));
   return call ? { sql: String(call[0]), values: (call[1] ?? []) as unknown[] } : null;
 };
 
@@ -453,6 +470,36 @@ describe("POST /sharing/invitation { email }", () => {
     );
 
     expect(result).toEqual({ status: "failed", message });
+    expect(find(EMAIL_INVITATION_UPSERT)).toBeNull();
+    await expectNothingEmitted();
+  });
+
+  test("measures an address in the lower case it is stored in, which can be longer than what was sent", async () => {
+    const email = `${"İ".repeat(245)}@x.io`;
+    expect(email).toHaveLength(250);
+    expect(email.toLowerCase().length).toBeGreaterThan(255);
+
+    const result = await postSharingInvitationRoute.execute(makeReq({ email }), fakeRes());
+
+    expect(result).toEqual({ status: "failed", message: "Field email must be at most 255 characters" });
+    expect(mockUnsafe).not.toHaveBeenCalled();
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    await expectNothingEmitted();
+  });
+
+  test("passes the refusal for a caller at the limit through, writes nothing and emits nothing", async () => {
+    db.sentToOtherAddresses = 20;
+
+    const result = await postSharingInvitationRoute.execute(
+      makeReq({ email: "friend@example.com" }, { headers: { "x-tab-id": "tab-7" } }),
+      fakeRes(),
+    );
+
+    expect(result).toEqual({
+      status: "failed",
+      message: "You have 20 invitations sent to email addresses. Withdraw one before sending another.",
+    });
+    expect(find(EMAIL_INVITATIONS_SENT)!.values).toEqual([INVITER.user_id]);
     expect(find(EMAIL_INVITATION_UPSERT)).toBeNull();
     await expectNothingEmitted();
   });

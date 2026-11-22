@@ -19,6 +19,7 @@ const {
   acceptSharingInvitation,
   removeSharingMember,
   EMAIL_INVITATION_LIFETIME_MS,
+  EMAIL_INVITATIONS_PER_USER,
 } = await import("./sharing");
 
 afterAll(restoreLeaves);
@@ -455,6 +456,8 @@ describe("inviteToShare", () => {
 describe("inviteByEmail", () => {
   const FIND_HOLDER =
     "SELECT * FROM users WHERE lower(email) = lower($1) AND (is_deleted IS NULL OR is_deleted = FALSE) LIMIT $2";
+  const LOCK_SENDER = "SELECT pg_advisory_xact_lock(hashtext($1 || ':email-invitations'))";
+  const SELECT_SENT = "SELECT * FROM sharing_email_invitations WHERE inviter_user_id = $1";
   const UPSERT_INVITATION =
     "INSERT INTO sharing_email_invitations (updated, inviter_user_id, invitee_email, expires_at)" +
     " VALUES (CURRENT_TIMESTAMP, $1, $2, $3)" +
@@ -467,19 +470,42 @@ describe("inviteByEmail", () => {
   beforeEach(() => setSystemTime(new Date(NOW)));
   afterAll(() => setSystemTime());
 
-  const emailInvitationRow = (invitation_id: string, expires_at = EXPIRES_AT) => ({
+  const emailInvitationRow = (
+    invitation_id: string,
+    invitee_email = "friend@example.com",
+    expires_at = EXPIRES_AT,
+  ) => ({
     invitation_id,
     inviter_user_id: "u-alice",
-    invitee_email: "friend@example.com",
+    invitee_email,
     expires_at,
     updated: "2026-11-22T10:00:00.000Z",
   });
 
+  /** `count` invitations alice already sent, none of them to friend@example.com. */
+  const sentElsewhere = (count: number) =>
+    Array.from({ length: count }, (_, i) => emailInvitationRow(`inv-${i}`, `other${i}@example.com`));
+
   const holderRow = (user: typeof bob, email: string) => ({ ...userRow(user), email });
 
-  const upsert: [string, unknown[]] = [
-    UPSERT_INVITATION,
-    ["u-alice", "friend@example.com", EXPIRES_AT],
+  // The two reads start together, so each is answered by what it selects from.
+  const answerLookups = (holder: unknown[], group: { user_id: string }[]) =>
+    mockUnsafe.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT * FROM users")) return answer(holder);
+      if (sql.includes("sharing_user_ids")) return answer(group);
+      throw new Error(`unexpected statement: ${sql}`);
+    });
+
+  const lookups: Array<[string, unknown[]]> = [
+    [FIND_HOLDER, ["friend@example.com", 1]],
+    [SELECT_GROUP, ["u-alice"]],
+  ];
+  const write = (upsertValues: unknown[] = ["u-alice", "friend@example.com", EXPIRES_AT]) => [
+    BEGIN,
+    [LOCK_SENDER, ["u-alice"]],
+    [SELECT_SENT, ["u-alice"]],
+    [UPSERT_INVITATION, upsertValues],
+    COMMIT,
   ];
 
   test("the demo account can't invite, and no statement runs", async () => {
@@ -491,7 +517,8 @@ describe("inviteByEmail", () => {
 
   test("an address nobody has yet gets an invitation open for thirty days, stored trimmed and in lower case", async () => {
     expect(EMAIL_INVITATION_LIFETIME_MS).toBe(30 * 24 * 60 * 60 * 1000);
-    queue(mockUnsafe, answer(), answer([emailInvitationRow("inv-e1")]));
+    answerLookups([], ids(alice));
+    queue(mockReservedUnsafe, answer(), answer(), answer(), answer([emailInvitationRow("inv-e1")]));
 
     expect(await inviteByEmail(alice, "  Friend@Example.COM ")).toEqual({
       ok: true,
@@ -504,17 +531,14 @@ describe("inviteByEmail", () => {
       invitee_user_id: undefined,
     });
 
-    expect(statements(mockUnsafe)).toEqual([[FIND_HOLDER, ["friend@example.com", 1]], upsert]);
-    expect(mockReservedUnsafe).not.toHaveBeenCalled();
+    expect(statements(mockUnsafe)).toEqual(lookups);
+    expect(statements(mockReservedUnsafe)).toEqual(write());
+    expect(mockRelease).toHaveBeenCalledTimes(1);
   });
 
-  test("an address someone outside the group has answers as one nobody has, and names that user only for the event", async () => {
-    queue(
-      mockUnsafe,
-      answer([holderRow(bob, "Friend@example.com")]),
-      answer(ids(alice)),
-      answer([emailInvitationRow("inv-e1")]),
-    );
+  test("an address someone outside the group has runs the same statements and answers alike, naming that user only for the event", async () => {
+    answerLookups([holderRow(bob, "Friend@example.com")], ids(alice));
+    queue(mockReservedUnsafe, answer(), answer(), answer(), answer([emailInvitationRow("inv-e1")]));
 
     const result = await inviteByEmail(alice, "friend@example.com");
 
@@ -530,47 +554,100 @@ describe("inviteByEmail", () => {
     });
     // Nothing the inviter is shown names the user behind the address.
     expect(JSON.stringify(result.ok && result.invitation)).not.toContain("bob");
-    expect(statements(mockUnsafe)).toEqual([
-      [FIND_HOLDER, ["friend@example.com", 1]],
-      [SELECT_GROUP, ["u-alice"]],
-      upsert,
-    ]);
+    // A sender timing the request learns nothing either: the work is the same as for nobody.
+    expect(statements(mockUnsafe)).toEqual(lookups);
+    expect(statements(mockReservedUnsafe)).toEqual(write());
   });
 
-  test("refuses the user's own address before reading the group", async () => {
-    queue(mockUnsafe, answer([holderRow(alice, "friend@example.com")]));
+  test("refuses the user's own address, and writes nothing", async () => {
+    answerLookups([holderRow(alice, "friend@example.com")], ids(alice));
 
     expect(await inviteByEmail(alice, "friend@example.com")).toEqual({
       ok: false,
       error: "You can't invite yourself.",
     });
 
-    expect(statements(mockUnsafe)).toEqual([[FIND_HOLDER, ["friend@example.com", 1]]]);
+    expect(statements(mockUnsafe)).toEqual(lookups);
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("refuses the address of someone already in the user's group, and writes nothing", async () => {
-    queue(mockUnsafe, answer([holderRow(bob, "friend@example.com")]), answer(ids(bob, alice)));
+    answerLookups([holderRow(bob, "friend@example.com")], ids(bob, alice));
 
     expect(await inviteByEmail(alice, "friend@example.com")).toEqual({
       ok: false,
       error: "You already share data with bob.",
     });
 
-    expect(statements(mockUnsafe)).toEqual([
-      [FIND_HOLDER, ["friend@example.com", 1]],
-      [SELECT_GROUP, ["u-alice"]],
-    ]);
+    expect(statements(mockUnsafe)).toEqual(lookups);
+    expect(mockReservedUnsafe).not.toHaveBeenCalled();
   });
 
   test("inviting an address again answers the same invitation, open thirty days from now", async () => {
     // The conflict on (inviter, address) rewrites only the lapse time of the row already there.
-    queue(mockUnsafe, answer(), answer([emailInvitationRow("inv-open")]));
+    answerLookups([], ids(alice));
+    queue(
+      mockReservedUnsafe,
+      answer(),
+      answer(),
+      answer([emailInvitationRow("inv-open", "friend@example.com", "2026-11-30T00:00:00.000Z")]),
+      answer([emailInvitationRow("inv-open")]),
+    );
 
     const result = await inviteByEmail(alice, "friend@example.com");
 
     expect(result.ok && result.invitation.invitation_id).toBe("inv-open");
     expect(result.ok && result.invitation.expires_at).toBe(EXPIRES_AT);
-    expect(statements(mockUnsafe)).toEqual([[FIND_HOLDER, ["friend@example.com", 1]], upsert]);
+    expect(statements(mockReservedUnsafe)).toEqual(write());
+  });
+
+  test(`a user with ${EMAIL_INVITATIONS_PER_USER} invitations to other addresses can't send another, and nothing is written`, async () => {
+    expect(EMAIL_INVITATIONS_PER_USER).toBe(20);
+    answerLookups([], ids(alice));
+    queue(mockReservedUnsafe, answer(), answer(), answer(sentElsewhere(20)));
+
+    expect(await inviteByEmail(alice, "friend@example.com")).toEqual({
+      ok: false,
+      error: "You have 20 invitations sent to email addresses. Withdraw one before sending another.",
+    });
+
+    expect(statements(mockReservedUnsafe)).toEqual([
+      BEGIN,
+      [LOCK_SENDER, ["u-alice"]],
+      [SELECT_SENT, ["u-alice"]],
+      COMMIT,
+    ]);
+    expect(mockRelease).toHaveBeenCalledTimes(1);
+  });
+
+  test("one under the limit can still send", async () => {
+    answerLookups([], ids(alice));
+    queue(
+      mockReservedUnsafe,
+      answer(),
+      answer(),
+      answer(sentElsewhere(19)),
+      answer([emailInvitationRow("inv-e1")]),
+    );
+
+    expect((await inviteByEmail(alice, "friend@example.com")).ok).toBe(true);
+    expect(statements(mockReservedUnsafe)).toEqual(write());
+  });
+
+  test("at the limit, sending to an address already invited renews it, since it adds no row", async () => {
+    answerLookups([], ids(alice));
+    queue(
+      mockReservedUnsafe,
+      answer(),
+      answer(),
+      answer([...sentElsewhere(19), emailInvitationRow("inv-open")]),
+      answer([emailInvitationRow("inv-open")]),
+    );
+
+    const result = await inviteByEmail(alice, "friend@example.com");
+
+    expect(result.ok && result.invitation.invitation_id).toBe("inv-open");
+    expect(statements(mockReservedUnsafe)).toEqual(write());
   });
 });
 

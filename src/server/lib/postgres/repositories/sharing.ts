@@ -257,12 +257,20 @@ export const inviteToShare = async (
 };
 
 /**
+ * The most invitations to email addresses one user keeps, open and lapsed
+ * together. Nothing deletes a lapsed one but its group, and every member
+ * reads them all on every sync, so the number has to stop somewhere.
+ */
+export const EMAIL_INVITATIONS_PER_USER = 20;
+
+/**
  * Invites whoever signs in with `email` to share data: the user who has that
  * address now, or one who signs up with it before the invitation lapses. It
- * answers alike whether anyone has the address yet, so it can't be used to
- * learn who has an account. Inviting an address again keeps the invitation
- * and restarts its time. `invitee_user_id` names the user who has the
- * address, for the event that tells them; it never goes back to the inviter.
+ * answers alike whether anyone has the address yet, in what it says and in
+ * the statements it runs, so it can't be used to learn who has an account.
+ * Inviting an address again keeps the invitation and restarts its time.
+ * `invitee_user_id` names the user who has the address, for the event that
+ * tells them; it never goes back to the inviter.
  */
 export const inviteByEmail = async (
   user: MaskedUser,
@@ -271,37 +279,55 @@ export const inviteByEmail = async (
   if (user.username === DEMO_USERNAME) return DEMO_REFUSAL;
   const invitee_email = email.trim().toLowerCase();
 
-  const [holder] = await usersTable.query(
-    {},
-    { equalsIgnoringCase: { column: EMAIL, value: invitee_email }, limit: 1 },
-  );
+  const [[holder], groupIds] = await Promise.all([
+    usersTable.query({}, { equalsIgnoringCase: { column: EMAIL, value: invitee_email }, limit: 1 }),
+    getSharingUserIds(user.user_id),
+  ]);
   if (holder?.user_id === user.user_id) return { ok: false, error: "You can't invite yourself." };
-  if (holder) {
-    const groupIds = await getSharingUserIds(user.user_id);
-    if (groupIds.includes(holder.user_id)) {
-      return { ok: false, error: `You already share data with ${holder.username}.` };
-    }
+  if (holder && groupIds.includes(holder.user_id)) {
+    return { ok: false, error: `You already share data with ${holder.username}.` };
   }
 
-  const expires_at = new Date(Date.now() + EMAIL_INVITATION_LIFETIME_MS).toISOString();
-  const row = await sharingEmailInvitationsTable.upsert(
-    { [INVITER_USER_ID]: user.user_id, [INVITEE_EMAIL]: invitee_email, [EXPIRES_AT]: expires_at },
-    [EXPIRES_AT],
-    undefined,
-    { conflictColumns: [INVITER_USER_ID, INVITEE_EMAIL] },
-  );
-  // A conflict updates the row, so the statement always answers one.
-  const invitation = new SharingEmailInvitationModel(row);
-  return {
-    ok: true,
-    invitation: {
-      invitation_id: invitation.invitation_id,
-      inviter: { user_id: user.user_id, username: user.username },
-      invitee: { email: invitation.invitee_email },
-      expires_at: invitation.expires_at,
-    },
-    invitee_user_id: holder?.user_id,
-  };
+  return withTransaction(async (client) => {
+    // One user's sends wait for each other, so two at once can't both pass the cap.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1 || ':email-invitations'))`, [
+      user.user_id,
+    ]);
+    const sent = await sharingEmailInvitationsTable.query(
+      { [INVITER_USER_ID]: user.user_id },
+      {},
+      client,
+    );
+    const others = sent.filter((invitation) => invitation.invitee_email !== invitee_email);
+    if (others.length >= EMAIL_INVITATIONS_PER_USER) {
+      return {
+        ok: false,
+        error:
+          `You have ${EMAIL_INVITATIONS_PER_USER} invitations sent to email addresses.` +
+          " Withdraw one before sending another.",
+      };
+    }
+
+    const expires_at = new Date(Date.now() + EMAIL_INVITATION_LIFETIME_MS).toISOString();
+    const row = await sharingEmailInvitationsTable.upsert(
+      { [INVITER_USER_ID]: user.user_id, [INVITEE_EMAIL]: invitee_email, [EXPIRES_AT]: expires_at },
+      [EXPIRES_AT],
+      client,
+      { conflictColumns: [INVITER_USER_ID, INVITEE_EMAIL] },
+    );
+    // A conflict updates the row, so the statement always answers one.
+    const invitation = new SharingEmailInvitationModel(row);
+    return {
+      ok: true,
+      invitation: {
+        invitation_id: invitation.invitation_id,
+        inviter: { user_id: user.user_id, username: user.username },
+        invitee: { email: invitation.invitee_email },
+        expires_at: invitation.expires_at,
+      },
+      invitee_user_id: holder?.user_id,
+    };
+  });
 };
 
 /**

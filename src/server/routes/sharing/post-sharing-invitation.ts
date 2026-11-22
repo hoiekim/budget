@@ -39,7 +39,8 @@ export const postSharingInvitationRoute = new Route<SharingInvitationPostRespons
     if (body.email !== undefined) {
       const emailResult = requireStringField(body, "email");
       if (!emailResult.success) return validationError(emailResult.error!);
-      const email = emailResult.data!.trim();
+      // Measured as it is stored: lower case can be longer ("İ" becomes two units).
+      const email = emailResult.data!.trim().toLowerCase();
       const lengthCheck = validateFields({ email }, [
         { path: "email", type: "string", maxLength: 255 },
       ]);
