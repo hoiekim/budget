@@ -80,9 +80,8 @@ pub type Filters = Vec<(String, Filter)>;
 #[macro_export]
 macro_rules! filters {
     ($($column:expr => $value:expr),* $(,)?) => {{
-        #[allow(unused_mut)]
-        let mut list: $crate::server::postgres::database::Filters = Vec::new();
-        $( list.push(($column.to_string(), $crate::server::postgres::database::Filter::from($value))); )*
+        let list: $crate::server::postgres::database::Filters =
+            vec![$( ($column.to_string(), $crate::server::postgres::database::Filter::from($value)) ),*];
         list
     }};
 }
