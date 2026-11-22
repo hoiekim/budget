@@ -46,7 +46,7 @@ const freshServer = async (prepare: () => void = () => undefined): Promise<void>
   issuer().reset();
   issuer().setUnreachable(false);
   prepare();
-  await stack.restart({}, { skipSyncWait: true });
+  await stack.restart();
 };
 
 const expectUnavailable = (result: ApiResult) => {
@@ -366,7 +366,7 @@ describe("the provider's signing keys", () => {
     expect((await signIn()).headers.get("location")).toBe("/");
 
     published = { keys: [real, other] };
-    await stack.restart({}, { skipSyncWait: true });
+    await stack.restart();
     expectFailed(await signIn(), "failed");
   });
 });

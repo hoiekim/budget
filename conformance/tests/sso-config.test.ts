@@ -110,7 +110,7 @@ describe("turning single sign-on on and off again", () => {
     expect(await whoAmI(passwordSession)).toBe("admin");
 
     // On, with single sign-on the only way in: the password session ends.
-    await stack.restart(stack.upstream.issuer.env(), { skipSyncWait: true });
+    await stack.restart(stack.upstream.issuer.env());
     await stack.waitForLog("Single sign-on is on");
     expect(stack.logs.find((line) => line.includes("Single sign-on is on"))).toContain(`{"issuer":"${ISSUER}","localLogin":false}`);
     expect(await ssoMode(stack)).toEqual({ enabled: true, localLogin: false });
@@ -130,7 +130,7 @@ describe("turning single sign-on on and off again", () => {
 
     // Off again: the single sign-on session ends, and the linked account's password signs in as before.
     const off = Object.fromEntries(Object.keys(stack.upstream.issuer.env()).map((name) => [name, undefined]));
-    await stack.restart(off, { skipSyncWait: true });
+    await stack.restart(off);
     expect(await ssoMode(stack)).toEqual({ enabled: false, localLogin: true });
     const ssoSid = sso.cookies.get("session_id");
     expect(await whoAmI(sso)).toBeUndefined();
@@ -154,7 +154,7 @@ describe("turning single sign-on on and off again", () => {
       ["  ", false],
     ];
     for (const [value, localLogin] of spellings) {
-      await stack.restart({ ...stack.upstream.issuer.env(), AUTH_LOCAL_LOGIN: value }, { skipSyncWait: true });
+      await stack.restart({ ...stack.upstream.issuer.env(), AUTH_LOCAL_LOGIN: value });
       expect(await ssoMode(stack)).toEqual({ enabled: true, localLogin });
     }
   });
@@ -291,7 +291,7 @@ describe("an issuer on localhost over plain http", () => {
       jwks_uri: `${base}/.well-known/jwks.json`,
       end_session_endpoint: `${base}/logout`,
     };
-    await stack.restart({ AUTH_ISSUER: base, AUTH_BACKCHANNEL_URL: undefined }, { skipSyncWait: true });
+    await stack.restart({ AUTH_ISSUER: base, AUTH_BACKCHANNEL_URL: undefined });
 
     const client = stack.anonymous();
     const started = await startSsoLogin(client);

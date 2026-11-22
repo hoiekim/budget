@@ -462,7 +462,7 @@ describe("with single sign-on the only way in", () => {
     const restartWith = async (prepare: () => void): Promise<void> => {
       issuer().reset();
       prepare();
-      await stack.restart({}, { skipSyncWait: true });
+      await stack.restart();
     };
 
     test("a session is still there, and still not due", async () => {
