@@ -321,8 +321,14 @@ pub fn to_number(text: &str) -> f64 {
     if trimmed.is_empty() {
         return 0.0;
     }
-    if let Some(hex) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
-        return u64::from_str_radix(hex, 16).map(|n| n as f64).unwrap_or(f64::NAN);
+    // Hexadecimal, octal and binary integer literals, digits only (no sign).
+    for (prefixes, radix) in [(["0x", "0X"], 16), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
+        if let Some(digits) = prefixes.iter().find_map(|prefix| trimmed.strip_prefix(prefix)) {
+            if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+                return f64::NAN;
+            }
+            return u64::from_str_radix(digits, radix).map(|n| n as f64).unwrap_or(f64::NAN);
+        }
     }
     match trimmed {
         "Infinity" | "+Infinity" => return f64::INFINITY,
@@ -950,6 +956,18 @@ mod tests {
         assert_eq!(number_to_string(1.5e-7), "1.5e-7");
         assert_eq!(number_to_string(-0.0), "0");
         assert_eq!(number_to_string(123456789012345680000.0), "123456789012345680000");
+    }
+
+    #[test]
+    fn to_number_reads_what_number_reads() {
+        assert_eq!(to_number(" 12.5 "), 12.5);
+        assert_eq!(to_number(""), 0.0);
+        assert_eq!(to_number("0x10"), 16.0);
+        assert_eq!(to_number("0o17"), 15.0);
+        assert_eq!(to_number("0B101"), 5.0);
+        for text in ["0x", "0b2", "0o8", "0x+1", "-0x10", "1,000", "abc"] {
+            assert!(to_number(text).is_nan(), "{text}");
+        }
     }
 
     #[test]
