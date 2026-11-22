@@ -993,8 +993,9 @@ fn parse_zone(zone: &str) -> Option<i64> {
 
 /// `Date.parse(text)`: milliseconds since the epoch, or NaN.
 pub fn date_parse(text: &str) -> f64 {
-    let trimmed = text.trim();
-    let ms = parse_iso(trimmed).or_else(|| parse_legacy(trimmed)).unwrap_or(f64::NAN);
+    // The ISO form is read as written: white space around it sends the text
+    // to the legacy forms, which have no `T`.
+    let ms = parse_iso(text).or_else(|| parse_legacy(text.trim())).unwrap_or(f64::NAN);
     time_clip(ms)
 }
 
@@ -1077,6 +1078,17 @@ mod tests {
         assert!(date_parse("2024-01-05T24:00:01").is_nan());
         assert!(date_parse("2024-01-05Tgarbage").is_nan());
         assert!(date_parse("not a date").is_nan());
+    }
+
+    #[test]
+    fn an_iso_date_time_is_read_as_written() {
+        // White space around the ISO form with a `T` is not skipped: JavaScriptCore reads NaN.
+        assert!(date_parse(" 2024-01-05T10:11:12Z").is_nan());
+        assert!(date_parse("2024-01-05T10:11:12Z ").is_nan());
+        assert!(date_parse("\t2024-01-05T10:11:12.123+02:00\n").is_nan());
+        // The legacy forms skip it.
+        assert_eq!(date_parse(" Fri, 05 Jan 2024 10:11:12 GMT "), 1_704_449_472_000.0);
+        assert_eq!(date_parse("  2024-01-05 10:11:12 +02:00 "), 1_704_442_272_000.0);
     }
 
     #[test]

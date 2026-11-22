@@ -58,7 +58,10 @@ fn empty() -> Body {
 }
 
 fn set_header(response: &mut HttpResponse, name: &str, value: &str) {
-    if let (Ok(name), Ok(value)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_str(value)) {
+    // A header value is a byte string: each character up to U+00FF is sent as
+    // its one byte, as Bun sends it.
+    let Some(bytes) = value.chars().map(|c| u8::try_from(u32::from(c)).ok()).collect::<Option<Vec<u8>>>() else { return };
+    if let (Ok(name), Ok(value)) = (HeaderName::from_bytes(name.as_bytes()), HeaderValue::from_bytes(&bytes)) {
         response.headers_mut().append(name, value);
     }
 }
@@ -538,7 +541,8 @@ async fn handle(request: hyper::Request<Incoming>, peer: SocketAddr) -> Result<H
     // Header values by lower-case name; a repeated header joins with ", ".
     let mut headers: HashMap<String, String> = HashMap::new();
     for (name, value) in &head.headers {
-        let value = String::from_utf8_lossy(value.as_bytes()).into_owned();
+        // A header value is a byte string: each byte is one character, as Bun reads it.
+        let value: String = value.as_bytes().iter().map(|&byte| char::from(byte)).collect();
         headers
             .entry(name.as_str().to_string())
             .and_modify(|existing| {

@@ -1,7 +1,7 @@
 //! `Authorization: Bearer` credentials against the API-key store:
 //! `src/server/lib/bearer-auth.ts`.
 
-use std::net::IpAddr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::server::auth_client::AuthError;
 use crate::server::postgres::models::MaskedUser;
@@ -15,9 +15,19 @@ const BEARER_PREFIX: &str = "Bearer ";
 #[derive(Debug)]
 pub struct Unavailable;
 
-/// `net.isIP(text) !== 0`.
+/// `net.isIP(text) !== 0`. An IPv6 address may name its zone (`fe80::1%eth0`),
+/// in letters, digits, `-`, `.` and `:`.
 pub fn is_ip(text: &str) -> bool {
-    text.parse::<IpAddr>().is_ok()
+    if text.parse::<Ipv4Addr>().is_ok() {
+        return true;
+    }
+    let (address, zone) = match text.split_once('%') {
+        Some((address, zone)) => (address, Some(zone)),
+        None => (text, None),
+    };
+    let zone_is_valid =
+        |zone: &str| !zone.is_empty() && zone.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b':'));
+    zone.map(zone_is_valid).unwrap_or(true) && address.parse::<Ipv6Addr>().is_ok()
 }
 
 /// A key budget's own store does not hold, checked with the identity provider
@@ -59,4 +69,67 @@ pub async fn resolve_bearer_auth(
         return Ok(Ok(None));
     }
     Ok(Ok(get_masked_user_by_id(&resolved.user_id).await?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_address_is_told_from_everything_else_the_way_net_is_ip_does() {
+        for address in [
+            "1.2.3.4",
+            "0.0.0.0",
+            "255.255.255.255",
+            "::",
+            "::1",
+            "2001:db8::",
+            "1:2:3:4:5:6:7:8",
+            "1:2:3:4:5:6:7::",
+            "::2:3:4:5:6:7:8",
+            "::FFFF",
+            "::ffff:1.2.3.4",
+            "1:2:3:4:5:6:1.2.3.4",
+            "fe80::1%eth0",
+            "fe80::1%eth0.1",
+            "fe80::1%25eth0",
+            "::1%1",
+            "::1%-.:",
+        ] {
+            assert!(is_ip(address), "{address}");
+        }
+        for other in [
+            "",
+            "unknown",
+            "gateway.internal",
+            "1.2.3",
+            "1.2.3.4.5",
+            "1.2.3.256",
+            "01.2.3.4",
+            "1.2.3.04",
+            "0x1.2.3.4",
+            "1.2.3.4 ",
+            " 1.2.3.4",
+            "1.2.3.4:80",
+            "1.2.3.4%eth0",
+            "[::1]",
+            ":::1",
+            "1::2::3",
+            "1:2:3:4:5:6:7",
+            "1:2:3:4:5:6:7:8:9",
+            "1:2:3:4:5:6:7::8",
+            "12345::",
+            "g::1",
+            "::01.2.3.4",
+            "::ffff:1.2.3",
+            "::1%",
+            "::1%eth_0",
+            "::1%a b",
+            "::1%eth0%x",
+            "::1%é",
+            "198.51.100.23, 10.0.0.1",
+        ] {
+            assert!(!is_ip(other), "{other}");
+        }
+    }
 }
