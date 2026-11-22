@@ -4,8 +4,8 @@
  * same command with the given environment, waits for the process to exit,
  * and hands back its exit code and everything it printed.
  */
-import net from "node:net";
 import { POSTGRES, REPO_ROOT, TARGET, VERBOSE, serverCommand } from "./config";
+import { serverPort } from "./ports";
 
 export interface FailedStart {
   exitCode: number;
@@ -13,16 +13,6 @@ export interface FailedStart {
   output: string;
 }
 
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as net.AddressInfo;
-      server.close(() => resolve(port));
-    });
-  });
 
 const stripColors = (text: string): string => text.replace(/\u001b\[[0-9;]*m/g, "");
 
@@ -42,7 +32,7 @@ export const startExpectingFailure = async (
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     TZ: process.env.TZ ?? "UTC",
-    PORT: String(await freePort()),
+    PORT: String(await serverPort()),
     POSTGRES_HOST: POSTGRES.host,
     POSTGRES_PORT: String(POSTGRES.port),
     POSTGRES_USER: POSTGRES.user,

@@ -10,12 +10,15 @@ import net from "node:net";
 
 let known: Promise<string> | undefined;
 
-const canListenOnIpv6 = (): Promise<boolean> =>
-  new Promise((resolve) => {
+let ipv6: Promise<boolean> | undefined;
+
+/** Whether this host can listen on `::`, as `Bun.serve` tries first. */
+export const canListenOnIpv6 = (): Promise<boolean> =>
+  (ipv6 ??= new Promise((resolve) => {
     const server = net.createServer();
     server.once("error", () => resolve(false));
     server.listen({ port: 0, host: "::", ipv6Only: false }, () => server.close(() => resolve(true)));
-  });
+  }));
 
 export const loopbackAddress = (): Promise<string> =>
   (known ??= canListenOnIpv6().then((ipv6) => (ipv6 ? "::ffff:127.0.0.1" : "127.0.0.1")));

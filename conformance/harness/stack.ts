@@ -7,7 +7,6 @@
  *   beforeAll(async () => { stack = await startStack(); });
  *   afterAll(() => stack.stop());
  */
-import net from "node:net";
 import {
   ADMIN_PASSWORD,
   CLIENT_DIR,
@@ -30,6 +29,7 @@ import { FakePlaid } from "./upstreams/plaid";
 import { FakeSimpleFin } from "./upstreams/simplefin";
 import { FakePolygon } from "./upstreams/polygon";
 import { FakeYahoo } from "./upstreams/yahoo";
+import { serverPort } from "./ports";
 
 export interface StackOptions {
   /** Extra environment for the server; `undefined` removes a default. */
@@ -42,16 +42,6 @@ export interface StackOptions {
   skipSyncWait?: boolean;
 }
 
-const freePort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address() as net.AddressInfo;
-      server.close(() => resolve(port));
-    });
-  });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -102,7 +92,7 @@ export class Stack {
     const [db, hub] = await Promise.all([Database.create(file.replace(/\.test\.ts$/, "")), UpstreamHub.start()]);
     const stack = new Stack(db, hub, file, index);
     try {
-      stack.port = await freePort();
+      stack.port = await serverPort();
       stack.env = stack.buildEnv(options);
       await options.beforeStart?.(stack);
       await stack.spawn();
