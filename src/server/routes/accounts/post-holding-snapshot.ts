@@ -11,6 +11,7 @@ import {
   searchSecurities,
   upsertSecurities,
   getSecurity,
+  getLatestSecurityClosePrice,
   accountsTable,
   getRowOwner,
   getHoldingSnapshotById,
@@ -30,6 +31,9 @@ import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositorie
 export interface HoldingSnapshotPostResponse {
   snapshot_id: string;
   security_id: string;
+  /** The price and value the create path stored, so the client's copy matches. */
+  institution_price?: number | null;
+  institution_value?: number | null;
 }
 
 /**
@@ -84,6 +88,21 @@ const derivedInstitutionValueOverflow = (
     return `Field institution_value must be at most ${DECIMAL_15_2_MAX}`;
   }
   return null;
+};
+
+/**
+ * The price a manually entered holding is worth on `snapshot_date` when the
+ * caller supplies none: the security's latest close on or before that date,
+ * else the security's latest known close. Null when neither exists.
+ */
+const resolveInstitutionPrice = async (
+  security_id: string,
+  snapshot_date: string,
+): Promise<number | null> => {
+  const snapshotPrice = await getLatestSecurityClosePrice(security_id, snapshot_date);
+  if (snapshotPrice !== null) return snapshotPrice;
+  const security = await getSecurity(security_id);
+  return security?.close_price ?? null;
 };
 
 /**
@@ -336,15 +355,23 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     // updates in place rather than producing duplicate rows.
     const snapshot_id = `holding-${account_id}-${security_id}-${dateString}`;
 
+    const snapshot_date = date.toISOString().split("T")[0];
+    const price =
+      institution_price ??
+      (institution_value == null ? await resolveInstitutionPrice(security_id, snapshot_date) : null);
+    const resolvedOverflow = derivedInstitutionValueOverflow(quantity, price, institution_value);
+    if (resolvedOverflow) return validationError(resolvedOverflow);
+    const value = institution_value ?? quantity * (price ?? 0);
+
     const snapshot: HoldingSnapshot = {
       snapshot_id,
-      snapshot_date: date.toISOString().split("T")[0],
+      snapshot_date,
       holding_account_id: account_id,
       holding_security_id: security_id,
       quantity,
       cost_basis,
-      institution_price,
-      institution_value,
+      institution_price: price ?? undefined,
+      institution_value: value,
     };
 
     try {
@@ -356,9 +383,9 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         security_id,
         quantity,
         cost_basis: cost_basis ?? null,
-        institution_price: institution_price ?? 0,
+        institution_price: price ?? 0,
         institution_price_as_of: date.toISOString(),
-        institution_value: institution_value ?? quantity * (institution_price ?? 0),
+        institution_value: value,
         iso_currency_code: null,
         unofficial_currency_code: null,
       };
@@ -377,7 +404,10 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         ),
       );
 
-      return { status: "success", body: { snapshot_id, security_id } };
+      return {
+        status: "success",
+        body: { snapshot_id, security_id, institution_price: price, institution_value: value },
+      };
     } catch (error: unknown) {
       logger.error("Failed to upsert holding snapshot", { snapshot_id }, error);
       throw error instanceof Error ? error : new Error(String(error));

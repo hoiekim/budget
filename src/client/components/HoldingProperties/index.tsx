@@ -468,7 +468,12 @@ export const HoldingProperties = () => {
     // Same client-side propagation as updateField — insert the newly created
     // snapshot into appContext.data so the composition table updates without
     // a round-trip through /api/snapshots.
-    const { snapshot_id: newSnapshotId, security_id: newSecurityId } = r.body;
+    const {
+      snapshot_id: newSnapshotId,
+      security_id: newSecurityId,
+      institution_price: storedPrice,
+      institution_value: storedValue,
+    } = r.body;
     const newSnapshot = new HoldingSnapshot({
       snapshot: new Snapshot({
         snapshot_id: newSnapshotId,
@@ -479,8 +484,8 @@ export const HoldingProperties = () => {
         security_id: newSecurityId,
         quantity,
         cost_basis: costBasis ?? null,
-        institution_price: 0,
-        institution_value: 0,
+        institution_price: storedPrice ?? 0,
+        institution_value: storedValue ?? 0,
         institution_price_as_of: snapshotDateInput,
       }),
     });

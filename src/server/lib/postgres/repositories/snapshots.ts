@@ -209,6 +209,18 @@ export const getSecuritySnapshots = async (
   }));
 };
 
+/** The security's latest close on or before `date`, from its price snapshots. */
+export const getLatestSecurityClosePrice = async (
+  security_id: string,
+  date: string,
+): Promise<number | null> => {
+  const [latest] = await snapshotsTable.query(
+    { [SNAPSHOT_TYPE]: "security", [SECURITY_ID]: security_id },
+    { dateRange: { column: SNAPSHOT_DATE, end: date }, orderBy: `${SNAPSHOT_DATE} DESC`, limit: 1 },
+  );
+  return latest?.close_price != null ? Number(latest.close_price) : null;
+};
+
 /** Row → `HoldingSnapshot`, the seven field conversions `getHoldingSnapshots`
  *  applies per row. Shared by the list accessor and the by-id accessor so
  *  the two cannot drift apart. */
