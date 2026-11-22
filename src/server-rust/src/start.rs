@@ -627,6 +627,7 @@ pub async fn run() -> anyhow::Result<()> {
         );
     }
 
+    crate::server::plaid::util::warn_if_not_configured();
     realtime::initialize();
     initialize_postgres().await?;
     start_rate_limit_cleanup();
