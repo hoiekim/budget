@@ -33,6 +33,7 @@ export enum TableName {
   CpiSnapshots = "cpi_snapshots",
   SharingMembers = "sharing_members",
   SharingInvitations = "sharing_invitations",
+  SharingEmailInvitations = "sharing_email_invitations",
 }
 
 export const USERS = TableName.Users;
@@ -57,6 +58,7 @@ export const REJECTED_CATEGORIES = TableName.RejectedCategories;
 export const CPI_SNAPSHOTS = TableName.CpiSnapshots;
 export const SHARING_MEMBERS = TableName.SharingMembers;
 export const SHARING_INVITATIONS = TableName.SharingInvitations;
+export const SHARING_EMAIL_INVITATIONS = TableName.SharingEmailInvitations;
 
 /**
  * Id prefix of the holding snapshots the client derives from a holding's

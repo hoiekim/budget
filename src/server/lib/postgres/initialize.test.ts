@@ -97,7 +97,7 @@ describe("initializePostgres", () => {
     expect(functions[0][1]).toBeGreaterThan(membersTable);
   });
 
-  test("creates both sharing tables after the users table they reference, and indexes their lookup columns", async () => {
+  test("creates every sharing table after the users table they reference, and indexes their lookup columns", async () => {
     await initializePostgres();
 
     const tables = statements
@@ -106,12 +106,14 @@ describe("initializePostgres", () => {
     expect(tables.filter((name) => name.startsWith("sharing_"))).toEqual([
       "sharing_members",
       "sharing_invitations",
+      "sharing_email_invitations",
     ]);
     expect(tables.indexOf("users")).toBeGreaterThan(-1);
     expect(tables.indexOf("sharing_members")).toBeGreaterThan(tables.indexOf("users"));
     expect(statements.filter((s) => /^CREATE (UNIQUE )?INDEX .* ON sharing_/.test(s))).toEqual([
       "CREATE INDEX IF NOT EXISTS idx_sharing_members_group_id ON sharing_members(group_id)",
       "CREATE INDEX IF NOT EXISTS idx_sharing_invitations_invitee_user_id ON sharing_invitations(invitee_user_id)",
+      "CREATE INDEX IF NOT EXISTS idx_sharing_email_invitations_invitee_email ON sharing_email_invitations(invitee_email)",
     ]);
   });
 

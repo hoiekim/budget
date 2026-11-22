@@ -10,6 +10,7 @@ import {
   requireNumberField,
   optionalDateField,
   isUuid,
+  isEmailAddress,
   validateFields,
   validationError,
   DECIMAL_15_2_MAX,
@@ -267,6 +268,31 @@ describe("isUuid", () => {
   it("rejects malformed ids and non-strings", () => {
     for (const value of ["nope", "c-1", "", 123, null, undefined, {}, []]) {
       expect(isUuid(value)).toBe(false);
+    }
+  });
+});
+
+describe("isEmailAddress", () => {
+  it("accepts one @ with something on each side", () => {
+    for (const value of ["friend@example.com", "Friend+tag@Example.co.uk", "a@b"]) {
+      expect(isEmailAddress(value)).toBe(true);
+    }
+  });
+
+  it("rejects text with no @, two @, an empty side or whitespace, and non-strings", () => {
+    for (const value of [
+      "friend.example.com",
+      "a@b@example.com",
+      "@example.com",
+      "friend@",
+      "a friend@example.com",
+      "friend@example.com\n",
+      "",
+      42,
+      null,
+      undefined,
+    ]) {
+      expect(isEmailAddress(value)).toBe(false);
     }
   });
 });

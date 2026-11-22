@@ -300,6 +300,31 @@ describe("buildUpsert", () => {
     );
     expect(sql.endsWith("RETURNING id, updated")).toBe(true);
   });
+
+  it("finds the conflicting row by the conflict columns given, and never rewrites them", () => {
+    const { sql, values } = buildUpsert(
+      "invites",
+      "id",
+      { owner: "u1", address: "a@b", expires: "2026-12-22" },
+      { updateColumns: ["owner", "address", "expires"], conflictColumns: ["owner", "address"] },
+    );
+    expect(sql).toBe(
+      "INSERT INTO invites (updated, owner, address, expires) VALUES (CURRENT_TIMESTAMP, $1, $2, $3)" +
+        " ON CONFLICT (owner, address) DO UPDATE SET expires = EXCLUDED.expires, updated = CURRENT_TIMESTAMP" +
+        " RETURNING id",
+    );
+    expect(values).toEqual(["u1", "a@b", "2026-12-22"]);
+  });
+
+  it("names the conflict columns in a DO NOTHING too", () => {
+    const { sql } = buildUpsert(
+      "invites",
+      "id",
+      { owner: "u1", address: "a@b" },
+      { conflictColumns: ["owner", "address"] },
+    );
+    expect(sql).toContain(" ON CONFLICT (owner, address) DO NOTHING");
+  });
 });
 
 describe("buildUpsertMany", () => {

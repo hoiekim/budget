@@ -273,6 +273,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const isUuid = (value: unknown): boolean =>
   isString(value) && UUID_RE.test(value);
 
+/** One `@` with something on each side, and no whitespace. */
+const EMAIL_ADDRESS_RE = /^[^\s@]+@[^\s@]+$/;
+
+/**
+ * Whether a value reads as an email address. Deliverability isn't checked: an
+ * address is only ever compared with the one a user signed in with.
+ */
+export const isEmailAddress = (value: unknown): boolean =>
+  isString(value) && EMAIL_ADDRESS_RE.test(value);
+
 // The client serializes a date column as `YYYY-MM-DDT00:00:00`, which a DATE
 // column takes as readily as a bare `YYYY-MM-DD` — so the time part stays
 // allowed and only the calendar day is pinned. `Date.parse` alone is not that

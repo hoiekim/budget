@@ -1460,7 +1460,8 @@ export const useSync = () => {
             await indexedDb.saveInstitutions(r.institutions).catch(console.error);
             return;
           }
-          case TableName.SharingInvitations: {
+          case TableName.SharingInvitations:
+          case TableName.SharingEmailInvitations: {
             const r = await fetchSharing();
             if (r.networkFailed) return;
             // The answer names the members too. Taking new members from here
