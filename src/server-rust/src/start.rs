@@ -45,6 +45,7 @@ use crate::server::security_headers::{response_security_headers, SECURITY_HEADER
 use crate::server::session::{
     build_session_cookie, load_session_data, parse_cookies, save_session, SESSION_COOKIE_NAME, SESSION_MAX_AGE_S,
 };
+use crate::server::session_read::read_session_data;
 use crate::server::sso::{get_sso, initialize_sso, sso_public_path_methods, AUTH_CALLBACK_PATH, AUTH_EVENTS_PATH};
 
 type Body = UnsyncBoxBody<Bytes, anyhow::Error>;
@@ -92,7 +93,7 @@ async fn load_session(headers: &HashMap<String, String>) -> anyhow::Result<Sessi
     let cookies = parse_cookies(cookie_header).ok_or_else(|| anyhow::anyhow!("URI error"))?;
     // An empty session id is falsy in the TypeScript: it is never looked up.
     if let Some(sid) = cookies.get(SESSION_COOKIE_NAME).filter(|sid| !sid.is_empty()) {
-        if let Ok(Some(data)) = load_session_data(sid).await {
+        if let Some(data) = read_session_data(sid, |sid| async move { load_session_data(&sid).await }).await {
             return Ok(Session {
                 id: sid.clone(),
                 user: Some(data.user),
