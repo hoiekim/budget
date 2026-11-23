@@ -6,6 +6,7 @@ mod auth_client_impl;
 pub mod bearer_auth;
 pub mod bls;
 pub mod compute_tools;
+pub mod connection;
 pub mod daily_closes;
 pub mod entity_routes;
 pub mod infer_label_confidence;

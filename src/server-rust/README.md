@@ -163,3 +163,45 @@ than of the TypeScript.
 - **`undefined` in log context.** Bun's logger prints a context of only
   undefined values as `{}`; Rust has no `undefined` and prints nothing. It
   shows on one webhook log line, for a body without an `item_id`.
+- **Error stacks in logs.** A logged error's `stack` lists the Rust functions
+  it passed through, not TypeScript files, and its `message` includes the
+  context Rust adds on the way up (`outer: inner`). Its `name` is the
+  TypeScript error class where Rust has a matching error type (`AxiosError`
+  for Plaid, `error` for one Postgres reported, `ModelValidationError`, the
+  identity provider's errors), and `Error` otherwise.
+- **When an idle connection closes.** Both close a connection 10 seconds after
+  its last byte (90 for an event stream). Bun checks its deadlines on a coarse
+  timer and closes up to about 4 seconds later.
+- **Shutdown.** On `SIGTERM` both stop taking connections. Rust then waits up
+  to 10 seconds for the requests it is still handling before closing the
+  database pool. Bun closes the pool once no query is running and exits, so a
+  request waiting on an upstream between two writes stops there.
+
+## Running it in production
+
+The Docker image holds both servers. `BUDGET_SERVER=rust` in the container's
+environment runs this one (`start.sh`); without it, or with `bun`, the image
+runs the Bun server as before. The settings are the same for both, and so is
+the database: each migrates the schema the same way at start and reads what
+the other wrote, so switching back is a restart without the setting.
+
+To try it on real data first, run both servers locally, each against its own
+copy of the production database, and compare what they store:
+
+```bash
+pg_dump --format=custom "$PRODUCTION_DATABASE_URL" > budget.dump
+createdb budget_bun && pg_restore --no-owner --dbname=budget_bun budget.dump
+createdb budget_rust && pg_restore --no-owner --dbname=budget_rust budget.dump
+bun run build && bun run build-server-rust
+# With the production settings (.env), each on its own port and copy:
+POSTGRES_DATABASE=budget_bun PORT=3006 bun run start-server
+POSTGRES_DATABASE=budget_rust PORT=3007 bun run start-server-rust
+# Once both have logged "Scheduled sync completed", and after using each app the same way:
+bun conformance/compare-databases.ts postgres://…/budget_bun postgres://…/budget_rust
+```
+
+Each server syncs every item with Plaid at start, from the cursor the copy
+holds, so both receive the same updates. Plaid keeps the production server's
+place; a webhook still goes to production only. Avoid removing a connection
+in either copy: that removes the item at Plaid too. The copies hold real data:
+drop them when done.

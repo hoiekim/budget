@@ -87,17 +87,57 @@ pub fn json_parse(text: &str) -> Option<Json> {
     Some(value)
 }
 
-fn write_json(value: &Json, out: &mut String) {
+/// Appends `text` as a JSON string literal, escaped as `JSON.stringify`
+/// escapes it: `"` and `\`, the short forms of five control characters,
+/// `\u00xx` for the other control characters, everything else as is.
+fn write_json_string(text: &str, out: &mut String) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    out.push('"');
+    let mut start = 0;
+    for (index, byte) in text.bytes().enumerate() {
+        let short = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0x08 => "\\b",
+            0x0c => "\\f",
+            0x00..=0x1f => "",
+            _ => continue,
+        };
+        // Every escaped byte is ASCII, so `index` is a character boundary.
+        out.push_str(&text[start..index]);
+        if short.is_empty() {
+            out.push_str("\\u00");
+            out.push(HEX[usize::from(byte >> 4)] as char);
+            out.push(HEX[usize::from(byte & 0xf)] as char);
+        } else {
+            out.push_str(short);
+        }
+        start = index + 1;
+    }
+    out.push_str(&text[start..]);
+    out.push('"');
+}
+
+/// `JSON.stringify(value)` appended to `out`.
+pub fn write_json(value: &Json, out: &mut String) {
     match value {
         Json::Null => out.push_str("null"),
         Json::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
         // The digits `Number.prototype.toString` writes, so text that is
         // stored or hashed is the same on both servers.
-        Json::Number(n) => match n.as_f64() {
-            Some(f) if f.is_finite() => out.push_str(&number_to_string(f)),
+        Json::Number(n) => match (n.as_i64(), n.as_f64()) {
+            // A safe integer prints as its digits; past 2^53 `toString` pads the shortest digits with zeros.
+            (Some(integer), _) if integer.unsigned_abs() <= MAX_SAFE_INTEGER as u64 => {
+                use std::fmt::Write as _;
+                let _ = write!(out, "{integer}");
+            }
+            (_, Some(f)) if f.is_finite() => out.push_str(&number_to_string(f)),
             _ => out.push_str("null"),
         },
-        Json::String(text) => out.push_str(&serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string())),
+        Json::String(text) => write_json_string(text, out),
         Json::Array(items) => {
             out.push('[');
             for (index, item) in items.iter().enumerate() {
@@ -114,7 +154,7 @@ fn write_json(value: &Json, out: &mut String) {
                 if index > 0 {
                     out.push(',');
                 }
-                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| "\"\"".to_string()));
+                write_json_string(key, out);
                 out.push(':');
                 write_json(member, out);
             }
@@ -1923,5 +1963,27 @@ mod tests {
         assert_eq!(json_stringify(&value), r#"{"a":5,"b":9007199254740992,"c":1.5}"#);
         let odd = serde_json::json!([0.0000015, 9000000000000000000u64, 1234567890123456789u64, -0.0, 1e21, "a\"b\n"]);
         assert_eq!(json_stringify(&odd), r#"[0.0000015,9000000000000000000,1234567890123456800,0,1e+21,"a\"b\n"]"#);
+    }
+
+    #[test]
+    fn strings_escape_as_serde_json_does() {
+        let mut text: String = (0u8..0x80).map(char::from).collect();
+        text.push_str("é€😀\u{2028}\u{2029}\u{7f}\u{80}\u{9f}ab\"c\\");
+        for sample in [text.as_str(), "", "plain", "\"", "\\", "\u{1}x", "x\u{1f}"] {
+            let value = Json::String(sample.to_string());
+            assert_eq!(json_stringify(&value), serde_json::to_string(&value).unwrap(), "{sample:?}");
+            let object = serde_json::json!({ sample: 1 });
+            assert_eq!(json_stringify(&object), serde_json::to_string(&object).unwrap(), "{sample:?}");
+        }
+    }
+
+    #[test]
+    fn integers_print_as_number_to_string_does() {
+        let edges = [0i64, 1, -1, 42, 9_007_199_254_740_991, -9_007_199_254_740_991, 9_007_199_254_740_992, i64::MAX, i64::MIN];
+        for integer in edges {
+            let value = Json::Number(Number::from(integer));
+            assert_eq!(json_stringify(&value), number_to_string(integer as f64), "{integer}");
+        }
+        assert_eq!(json_stringify(&Json::Number(Number::from(u64::MAX))), number_to_string(u64::MAX as f64));
     }
 }

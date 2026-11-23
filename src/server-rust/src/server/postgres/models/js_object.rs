@@ -6,9 +6,14 @@
 
 use crate::js::{to_js_string, truthy, Json, Obj};
 
-/// An object literal being written. Keys keep the order they are given in.
+/// An object literal being written. Keys keep the order they are given in;
+/// a key given twice keeps its first place and takes its last value, as an
+/// assignment to a JS object does.
+///
+/// The members are gathered first and made into one object of the right
+/// size at the end: the models build one of these per row of a list.
 #[derive(Default)]
-pub(super) struct Literal(Obj);
+pub(super) struct Literal(Vec<(String, Json)>);
 
 impl Literal {
     pub(super) fn new() -> Self {
@@ -17,7 +22,7 @@ impl Literal {
 
     /// `key: value` for a value that is never `undefined`.
     pub(super) fn set(mut self, key: &str, value: impl Into<Json>) -> Self {
-        self.0.insert(key.to_string(), value.into());
+        self.0.push((key.to_string(), value.into()));
         self
     }
 
@@ -25,19 +30,23 @@ impl Literal {
     /// `if (value !== undefined) object[key] = value`.
     pub(super) fn opt(mut self, key: &str, value: Option<&Json>) -> Self {
         if let Some(value) = value {
-            self.0.insert(key.to_string(), value.clone());
+            self.0.push((key.to_string(), value.clone()));
         }
         self
     }
 
     pub(super) fn into_obj(self) -> Obj {
-        self.0
+        let mut object = Obj::with_capacity(self.0.len());
+        for (key, value) in self.0 {
+            object.insert(key, value);
+        }
+        object
     }
 }
 
 impl From<Literal> for Json {
     fn from(literal: Literal) -> Json {
-        Json::Object(literal.0)
+        Json::Object(literal.into_obj())
     }
 }
 

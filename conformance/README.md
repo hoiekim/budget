@@ -21,6 +21,10 @@ It needs a PostgreSQL the run may create databases in (default
 each started server keeps a pool of 20, and the `openssl` command.
 `CONFORMANCE_VERBOSE=1` echoes each server's log.
 
+`compare-databases.ts` compares what two databases hold, table by table, for
+checking the servers against each other on copies of real data (see "Running
+it in production" in `src/server-rust/README.md`).
+
 ## How it works
 
 - **`harness/stack.ts`** — `startStack(options)` makes an empty database,

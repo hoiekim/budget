@@ -10,7 +10,7 @@ use indexmap::IndexMap;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::js::{json_stringify, Json, Obj};
+use crate::js::{json_stringify, write_json, Json, Obj};
 use crate::server::alarm::send_alarm;
 use crate::server::logger;
 use crate::server::postgres::models::{MaskedUser, SessionAuth};
@@ -121,9 +121,14 @@ impl JsonStream {
                             Err(error) => Some(Err(error)),
                             Ok(rows) if rows.is_empty() => None,
                             Ok(rows) => {
-                                let joined = rows.iter().map(json_stringify).collect::<Vec<_>>().join(",");
-                                let text = if first { joined } else { format!(",{joined}") };
-                                first = false;
+                                let mut text = String::new();
+                                for row in &rows {
+                                    if !first {
+                                        text.push(',');
+                                    }
+                                    first = false;
+                                    write_json(row, &mut text);
+                                }
                                 Some(Ok(Bytes::from(text)))
                             }
                         };
@@ -208,6 +213,8 @@ pub struct Request {
     pub ip: String,
     /// Cancelled when the client disconnects.
     pub disconnected: CancellationToken,
+    /// The idle deadline of the connection this request came on.
+    pub idle_timeout: crate::server::connection::IdleTimeout,
 }
 
 impl Request {
