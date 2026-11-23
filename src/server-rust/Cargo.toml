@@ -10,6 +10,11 @@ publish = false
 name = "budget-server"
 path = "src/main.rs"
 
+# The Docker image's health check (Dockerfile.rust).
+[[bin]]
+name = "budget-healthcheck"
+path = "src/bin/healthcheck.rs"
+
 [lib]
 name = "budget_server"
 path = "src/lib.rs"

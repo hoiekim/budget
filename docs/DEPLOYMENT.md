@@ -27,6 +27,12 @@ Merges to `main` trigger:
 2. Push to Docker Hub
 3. Deployment webhook
 
+CD builds the Bun server's image from `Dockerfile`. `Dockerfile.rust` builds
+the image with the Rust server (`src/server-rust`) instead; its builder runs
+the same checks and the Rust server's Clippy and unit tests. Cutting over to
+it, and back, is changing `file:` in `cd.yml` (see "Running it in production"
+in `src/server-rust/README.md`).
+
 ### Pull Request Checks
 
 `ci.yml`'s `test` job runs ESLint (`bun run lint`), TypeScript

@@ -180,11 +180,22 @@ than of the TypeScript.
 
 ## Running it in production
 
-The Docker image holds both servers. `BUDGET_SERVER=rust` in the container's
-environment runs this one (`start.sh`); without it, or with `bun`, the image
-runs the Bun server as before. The settings are the same for both, and so is
-the database: each migrates the schema the same way at start and reads what
-the other wrote, so switching back is a restart without the setting.
+This server has an image of its own, built from `Dockerfile.rust`: the same
+client, and this server in place of the Bun one, on Debian without Bun. It
+takes the same settings, listens on the same port and answers the same health
+check (`budget-healthcheck`, which checks what `healthcheck.js` checks). Its
+builder runs the TypeScript checks the Bun image's builder runs, then Clippy
+and the Rust unit tests; the conformance suite needs a database, so only CI
+runs it. Both servers use the same database: each migrates the schema the same
+way at start and reads what the other wrote.
+
+CD builds the Bun image from `Dockerfile` until the cutover, which is one line
+in `.github/workflows/cd.yml`: `file: ./Dockerfile.rust`. The image is pushed
+under the same name and tags as the Bun one. Rolling back is reverting that
+line, and CD builds and deploys the Bun image again. Nothing builds
+`Dockerfile.rust` before then, so should it have broken in the meantime, the
+cutover's CD run fails at the build, before the deploy, and the Bun image keeps
+running.
 
 To try it on real data first, run both servers locally, each against its own
 copy of the production database, and compare what they store:
