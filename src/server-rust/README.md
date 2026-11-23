@@ -134,7 +134,8 @@ than of the TypeScript.
 - **Wording of transport and parse errors** from upstream calls (reqwest
   against axios or `fetch`, JSON parse errors, `TypeError`s for malformed
   answers) is close to Bun's, not identical. It shows in logs and alarm text,
-  never in a response body.
+  and in an item's `last_sync_error` after a failed sync, which is stored and
+  answered with the item by `GET /accounts` (the client does not show it).
 - **Plaid webhook signatures** are verified for ES256 (P-256) only, the one
   algorithm Plaid signs with; `jose` would also accept others.
 - **Time-zone data.** Rust reads the system tz database, Bun the copy inside
