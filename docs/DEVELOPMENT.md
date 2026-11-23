@@ -10,6 +10,8 @@ bun run start          # Build and start production server
 bun run lint           # Run ESLint
 bun run lint:fix       # Run ESLint with auto-fix
 bun run typecheck      # Run TypeScript type checking
+bun run lint:conformance       # Run ESLint on the conformance suite
+bun run typecheck:conformance  # Type-check the conformance suite
 ```
 
 ## Dev Server
@@ -27,6 +29,23 @@ bun run dev-client     # Vite dev server on :3000 (proxies /api to :3005)
 bun run dev-server     # Bun server on :3005 with --watch
 ```
 
+## Rust Backend
+
+`src/server-rust` serves the same API from a Rust server, side by side with
+`src/server`:
+
+```bash
+cargo build                    # debug build at target/debug/budget-server
+cargo test                     # its unit tests
+bun run build-server-rust      # release build copied to build/server-rust/
+bun run start-server-rust      # serves build/client, as the Bun bundle does
+bun run test:conformance       # the shared HTTP suite against both backends
+```
+
+A change to one backend's behavior is a change to both: see
+`src/server-rust/README.md` for the port's conventions and
+`conformance/README.md` for the suite that holds them together.
+
 ## Build
 
 ```bash
@@ -43,6 +62,9 @@ bun run build-client   # Client only (Vite, outputs to build/client/)
 2. Export route instance using the `Route` class
 3. Add to `src/server/routes/<domain>/index.ts`
 4. Define the response type with `export type`
+5. Port it to the Rust backend at `src/server-rust/src/routes/<domain>/` (see
+   `src/server-rust/README.md`) and cover every branch of it in
+   `conformance/tests/`, which runs against both backends
 
 ### Adding a New Component
 

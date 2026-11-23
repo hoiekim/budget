@@ -1,0 +1,6 @@
+# Conformance tests drive a running server over HTTP, so they take none of the
+# unit suite's preload (happy-dom, module mocks). Run through `bun run
+# test:conformance` or from this directory.
+[test]
+preload = ["./harness/preload.ts"]
+# The per-test timeout is not read from here: run.ts passes --timeout 30000.

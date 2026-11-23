@@ -16,6 +16,8 @@ See the [live demo](https://budget.hoie.kim) (username: `demo`, password: `budge
 - [Security](docs/SECURITY.md) — auth middleware, data sharing, session fixation, anti-enumeration, ownership verification
 - [Design Patterns](docs/DESIGN_PATTERNS.md) — sync patterns, concurrency, performance
 - [Deployment](docs/DEPLOYMENT.md) — production, Docker, CI/CD
+- [Rust backend](src/server-rust/README.md) — the same API served by a Rust server, kept side by side with the Bun one
+- [Conformance suite](conformance/README.md) — one HTTP test suite run against both backends
 
 ## Sharing data with another user
 
