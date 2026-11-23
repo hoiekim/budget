@@ -209,12 +209,15 @@ fn names_unowned_label(tx: &PartialTransaction, budget_ids: &HashSet<String>, ca
     unowned("budget_id", budget_ids) || unowned("category_id", category_ids)
 }
 
-/// The columns an update of `tx` sets: never its id, its owner or its account.
+/// The columns an update of `tx` sets: never its id, its owner, its account or
+/// its origin. Provenance is fixed at creation; the delete gate and sync removal
+/// both key on it.
 fn update_row(tx: &PartialTransaction, user_id: &str) -> QueryData {
     let mut row = transaction::from_json(tx, user_id);
     row.shift_remove("transaction_id");
     row.shift_remove("user_id");
     row.shift_remove("account_id");
+    row.shift_remove("source");
     row
 }
 
@@ -850,6 +853,18 @@ mod tests {
     #[tokio::test]
     async fn update_returns_empty_array_for_empty_input() {
         assert!(update_transactions(&user("usr-1"), &[]).await.unwrap().is_empty());
+    }
+
+    #[test]
+    fn update_never_sets_source() {
+        for source in [json!("manual"), Json::Null, json!("x".repeat(21))] {
+            let (sql, values) = update_statement(json!({ "transaction_id": "tx-1", "source": source, "amount": 4.5 })).unwrap();
+            assert_eq!(
+                sql,
+                "UPDATE transactions SET updated = CURRENT_TIMESTAMP, amount = $1 WHERE transaction_id = $2 AND user_id = $3 AND (is_deleted IS NULL OR is_deleted = FALSE) RETURNING transaction_id"
+            );
+            assert_eq!(values, vec![json!(4.5), json!("tx-1"), json!("usr-1")]);
+        }
     }
 
     #[test]
