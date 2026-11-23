@@ -533,7 +533,12 @@ export const HoldingProperties = () => {
         }));
         return;
       }
-      const { snapshot_id: returnedSnapshotId, security_id: returnedSecurityId } = r.body;
+      const {
+        snapshot_id: returnedSnapshotId,
+        security_id: returnedSecurityId,
+        institution_price: storedPrice,
+        institution_value: storedValue,
+      } = r.body;
       const nextHolding = new Holding({
         ...snap.holding,
         security_id: returnedSecurityId,
@@ -541,13 +546,17 @@ export const HoldingProperties = () => {
         cost_basis:
           "cost_basis" in patch ? (patch.cost_basis as number | null) : snap.holding.cost_basis,
         institution_price:
-          "institution_price" in patch
-            ? (patch.institution_price as number)
-            : snap.holding.institution_price,
+          storedPrice !== undefined
+            ? (storedPrice ?? 0)
+            : "institution_price" in patch
+              ? (patch.institution_price as number)
+              : snap.holding.institution_price,
         institution_value:
-          "institution_value" in patch
-            ? (patch.institution_value as number)
-            : snap.holding.institution_value,
+          storedValue !== undefined
+            ? (storedValue ?? 0)
+            : "institution_value" in patch
+              ? (patch.institution_value as number)
+              : snap.holding.institution_value,
       });
       const nextDate =
         "snapshot_date" in patch && typeof patch.snapshot_date === "string"

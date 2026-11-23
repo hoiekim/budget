@@ -31,7 +31,7 @@ import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositorie
 export interface HoldingSnapshotPostResponse {
   snapshot_id: string;
   security_id: string;
-  /** The price and value the create path stored, so the client's copy matches. */
+  /** The price and value the route stored, so the client's copy matches. */
   institution_price?: number | null;
   institution_value?: number | null;
 }
@@ -225,28 +225,46 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         return validationError("no fields to update");
       }
 
-      // The re-sync below derives the holdings row's institution_value from
-      // the patched quantity * institution_price when the snapshot carries
-      // no explicit value — the same overflow the create path refuses. Check
-      // the effective post-patch values (body over the stored row) before
-      // the snapshot write, so a refused combination leaves no written
-      // snapshot behind a stale holdings row.
+      // A stored value is quantity * price on the snapshot's date, so an edit
+      // to any of those inputs recomputes it — and a date or security edit
+      // re-resolves the price first — unless the caller sets the value itself.
+      const securityChanged = patch.holding_security_id !== undefined;
+      const repriced = securityChanged || patch.snapshot_date !== undefined;
+      const rederive =
+        body.institution_value === undefined &&
+        (repriced || body.quantity !== undefined || body.institution_price !== undefined);
+
       const effectiveQuantity =
         body.quantity !== undefined ? (body.quantity as number | null) : existing.quantity;
-      const effectivePrice =
+      let effectivePrice =
         body.institution_price !== undefined
           ? (body.institution_price as number | null)
           : existing.institution_price;
-      const effectiveValue =
-        body.institution_value !== undefined
+      if (rederive && repriced && body.institution_price === undefined) {
+        const resolvedPrice = await resolveInstitutionPrice(
+          (patch.holding_security_id as string | undefined) ?? existing.holding_security_id,
+          (patch.snapshot_date as string | undefined) ?? existing.snapshot_date,
+        );
+        effectivePrice = resolvedPrice ?? (securityChanged ? null : effectivePrice);
+        patch.institution_price = effectivePrice;
+      }
+      const effectiveValue = rederive
+        ? null
+        : body.institution_value !== undefined
           ? (body.institution_value as number | null)
           : existing.institution_value;
+
+      // Checked before the snapshot write, so a refused combination leaves no
+      // written snapshot behind a stale holdings row.
       const patchDerivedOverflow = derivedInstitutionValueOverflow(
         effectiveQuantity,
         effectivePrice,
         effectiveValue,
       );
       if (patchDerivedOverflow) return validationError(patchDerivedOverflow);
+      if (rederive) {
+        patch.institution_value = (effectiveQuantity ?? 0) * (effectivePrice ?? 0);
+      }
 
       try {
         await snapshotsTable.update(provided_snapshot_id, patch, undefined, sharedWith(user));
@@ -279,6 +297,10 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
           body: {
             snapshot_id: provided_snapshot_id,
             security_id: new_security_id ?? existing.holding_security_id,
+            ...(rederive && {
+              institution_price: effectivePrice,
+              institution_value: patch.institution_value as number,
+            }),
           },
         };
       } catch (error: unknown) {
