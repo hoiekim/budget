@@ -31,7 +31,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          # The Rust server's image. `./Dockerfile` builds the Bun server's,
+          # which is the way back to it.
+          file: ./Dockerfile.rust
           push: true
           tags: |
             ${{ secrets.DOCKER_HUB_USERNAME }}/budget:latest
