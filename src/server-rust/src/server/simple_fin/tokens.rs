@@ -12,6 +12,7 @@ use regex::Regex;
 use url::Url;
 
 use crate::js::decode_uri_component;
+use crate::server::alarm::build_client;
 
 /// Private and reserved ranges a SimpleFin URL may not point at, to prevent
 /// SSRF: loopback, link-local, private networks and cloud metadata endpoints.
@@ -111,14 +112,10 @@ pub fn decode_base64_leniently(text: &str) -> String {
 /// The HTTP client for SimpleFin: like the shared one, but it never follows a
 /// redirect, whose target would skip the allowlist (and receive the
 /// credentials).
-pub(super) fn http_client() -> &'static reqwest::Client {
-    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-        reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("the HTTP client has valid settings")
-    });
-    &CLIENT
+pub(super) fn http_client() -> anyhow::Result<&'static reqwest::Client> {
+    static CLIENT: LazyLock<Result<reqwest::Client, String>> =
+        LazyLock::new(|| build_client("SimpleFin", |builder| builder.redirect(reqwest::redirect::Policy::none())));
+    CLIENT.as_ref().map_err(anyhow::Error::msg)
 }
 
 /// What `fetch(url, { redirect: "error" })` throws for a redirect.
@@ -142,7 +139,7 @@ pub(super) fn status_text(response: &reqwest::Response) -> &'static str {
 pub async fn exchange_setup_token(setup_token: &str) -> anyhow::Result<String> {
     let raw_url = decode_base64_leniently(setup_token);
     let setup_url = validate_simple_fin_url(&raw_url, "setup token")?;
-    let response = http_client().post(setup_url.as_str()).header("Content-Length", "0").send().await?;
+    let response = http_client()?.post(setup_url.as_str()).header("Content-Length", "0").send().await?;
     refuse_redirect(&response, setup_url.as_str())?;
     if !response.status().is_success() {
         anyhow::bail!("SimpleFin token exchange failed: {} {}", response.status().as_u16(), status_text(&response));

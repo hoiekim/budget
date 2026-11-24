@@ -20,6 +20,7 @@ use url::Url;
 
 use super::auth_client::*;
 use crate::js::{encode_uri_component, js_length, js_slice_start, json_parse, json_stringify, num, to_js_string, truthy, Json, JsDate, Obj};
+use crate::server::alarm::build_client;
 use crate::server::bearer_auth::is_ip;
 use crate::server::validation::js_trim;
 
@@ -135,15 +136,12 @@ pub struct AuthClient {
 
 /// The client for calls to the identity provider. Like the shared one
 /// (`alarm::http_client`) it honours the proxy environment and the system
-/// certificate store, but it never follows a redirect.
-fn http() -> &'static reqwest::Client {
-    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
-        reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("the HTTP client has valid settings")
-    });
-    &CLIENT
+/// certificate store, but it never follows a redirect. A client that cannot be
+/// built leaves the provider as unreachable as a failed call does.
+fn http() -> Result<&'static reqwest::Client, AuthError> {
+    static CLIENT: LazyLock<Result<reqwest::Client, String>> =
+        LazyLock::new(|| build_client("auth", |builder| builder.redirect(reqwest::redirect::Policy::none())));
+    CLIENT.as_ref().map_err(|_| unavailable("auth is unreachable"))
 }
 
 fn is_ok(status: u16) -> bool {
@@ -420,7 +418,7 @@ impl Inner {
 
     async fn load_discovery(&self) -> Result<Arc<Obj>, AuthError> {
         let url = self.via_back_channel(&format!("{}/.well-known/openid-configuration", self.issuer_base));
-        let response = call(http().get(url).header("Accept", "application/json")).await?;
+        let response = call(http()?.get(url).header("Accept", "application/json")).await?;
         let status = response.status().as_u16();
         if !is_ok(status) {
             return Err(unavailable(format!("discovery answered {status}")));
@@ -468,7 +466,7 @@ impl Inner {
 
     async fn post(&self, endpoint: &str, params: &[(&str, &str)], extra: &[(&str, &str)]) -> Result<reqwest::Response, AuthError> {
         let mut form: Vec<(&str, &str)> = params.to_vec();
-        let mut request = http()
+        let mut request = http()?
             .post(self.via_back_channel(endpoint))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("Accept", "application/json");
@@ -509,7 +507,7 @@ impl Inner {
     async fn fetch_keys(self: &Arc<Self>) -> Result<HashMap<String, [u8; 32]>, AuthError> {
         let discovery = self.discover().await?;
         let url = self.via_back_channel(&Self::required_endpoint(&discovery, "jwks_uri"));
-        let response = call(http().get(url).header("Accept", "application/json")).await?;
+        let response = call(http()?.get(url).header("Accept", "application/json")).await?;
         let status = response.status().as_u16();
         if !is_ok(status) {
             return Err(unavailable(format!("the key set answered {status}")));

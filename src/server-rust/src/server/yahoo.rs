@@ -117,11 +117,14 @@ fn chart_result(json: &Json) -> Option<Cow<'_, Json>> {
 /// 429 is a refusal, not a verdict on the symbol.
 pub async fn fetch_chart(yahoo_ticker: &str, query: &str, max_wait_ms: Option<f64>) -> anyhow::Result<PolygonResult<Json>> {
     let path = chart_url(yahoo_ticker, query);
-    let request = || http_client().get(&path).header("User-Agent", USER_AGENT).header("Accept", "application/json").send();
+    let request = move || async move {
+        let client = http_client().map_err(|error| error.to_string())?;
+        let sent = client.get(&path).header("User-Agent", USER_AGENT).header("Accept", "application/json").send().await;
+        sent.map_err(|error| fetch_error_message(&error))
+    };
     let response = match YAHOO_QUEUE.add(request, max_wait_ms).await {
         Err(_waited_too_long) => return Ok(Err(rate_limited_result(yahoo_ticker))),
-        Ok(Err(error)) => {
-            let message = fetch_error_message(&error);
+        Ok(Err(message)) => {
             logger::error(
                 &format!("Yahoo API error for {yahoo_ticker}: {message}"),
                 Some(&crate::ctx! { "component": "yahoo" }),

@@ -95,6 +95,8 @@ and their context keys, alarm titles. Tests and operators both read them.
 
 **Outbound HTTP goes through `server::alarm::http_client()`**, one shared
 `reqwest` client that honours `HTTPS_PROXY` and the system certificate store.
+It answers an error, never a panic, when no client can be built
+(`alarm::build_client`): send that down the path a failed call takes.
 Send the request the TypeScript sends: same method, URL, query order, headers
 and body. The conformance suite records every upstream call and compares the
 two servers' calls.

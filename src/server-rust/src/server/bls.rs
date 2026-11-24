@@ -252,7 +252,11 @@ pub async fn get_cpi_series(start_year: i64, end_year: i64, series_id: Option<&s
     let url = series_url(&tier);
     let body = request_body(series_id, start_year, end_year, api_key.as_deref());
 
-    let request = || http_client().post(&url).header("Content-Type", "application/json").body(body).send();
+    let request = move || async move {
+        let client = http_client().map_err(|error| Thrown::new(error.to_string()))?;
+        let sent = client.post(&url).header("Content-Type", "application/json").body(body).send().await;
+        sent.map_err(|error| Thrown::new(fetch_error_message(&error)))
+    };
     // Fail fast on a spent budget: 0 would wait forever for a slot hours away.
     let response = match BUDGET_QUEUE.add(request, Some(1.0)).await {
         Err(_budget_spent) => {
@@ -261,7 +265,7 @@ pub async fn get_cpi_series(start_year: i64, end_year: i64, series_id: Option<&s
                 format!("BLS daily request budget ({}) is spent", tier.daily_budget),
             ));
         }
-        Ok(sent) => sent.map_err(|error| Thrown::new(fetch_error_message(&error))),
+        Ok(sent) => sent,
     };
 
     let attempt = async {
