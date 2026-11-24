@@ -1,6 +1,6 @@
-# The image with the Rust server (src/server-rust) in place of the Bun one:
-# the same client, served from the same build/ layout. CD builds the Bun image
-# from `Dockerfile` until the cutover points cd.yml at this file.
+# The image CD builds and deploys: the Rust server (src/server-rust) and the
+# client, served from the same build/ layout as the Bun image. `Dockerfile`
+# builds the Bun server's image instead, which is the way back to it.
 FROM oven/bun:1.4.4 AS client-builder
 
 WORKDIR /app
