@@ -390,6 +390,30 @@ describe("with single sign-on the only way in", () => {
       expect(replay.json.message).toBe("Not logged in.");
     });
 
+    test("still revokes the refresh token when the session row cannot be deleted, and answers 500 with no logout URL", async () => {
+      const { client, refreshToken } = await signIn(stack);
+      const sid = client.cookies.get("session_id") as string;
+      const before = revocations().length;
+      await stack.db.query(
+        "CREATE OR REPLACE FUNCTION conformance_refuse_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused by test'; END $$",
+      );
+      await stack.db.query(
+        "CREATE TRIGGER conformance_refuse_session_delete BEFORE DELETE ON sessions FOR EACH ROW EXECUTE FUNCTION conformance_refuse_row()",
+      );
+      try {
+        const result = await client.delete("/login");
+        expect(result.status).toBe(500);
+        expect(result.json).toEqual({ status: "error", message: "Internal server error" });
+        expect(result.setCookies).toEqual([SESSION_CLEARED]);
+        await stack.waitFor(() => revocations().length > before, { what: "the revocation" });
+        expect(revocations().slice(before).map((request) => request.form.get("token"))).toEqual([refreshToken]);
+      } finally {
+        await stack.db.query("DROP TRIGGER conformance_refuse_session_delete ON sessions");
+      }
+      // The provider ends the surviving row at its next re-check; here it is still there.
+      expect(await stack.db.rows("sessions", { session_id: sid })).toHaveLength(1);
+    });
+
     test("revokes nothing for a session that has no refresh token, and for nobody at all", async () => {
       const before = revocations().length;
       const without = await signIn(stack, { refreshToken: null });

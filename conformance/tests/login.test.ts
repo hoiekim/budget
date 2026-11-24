@@ -8,6 +8,26 @@ beforeAll(async () => {
 afterAll(() => stack.stop());
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SERVER_ERROR = { status: "error", message: "Internal server error" };
+const SESSION_CLEARED = "session_id=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict";
+
+const alarmsFor = (route: string) =>
+  stack.upstream.discord.alarms().filter((alarm) => alarm.title === `🚨 Budget Server Error: Route Error: ${route}`);
+
+/** Runs `body` while the database refuses to delete any session row. */
+const whileSessionsCannotBeDeleted = async (body: () => Promise<void>): Promise<void> => {
+  await stack.db.query(
+    "CREATE OR REPLACE FUNCTION conformance_refuse_row() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'refused by test'; END $$",
+  );
+  await stack.db.query(
+    "CREATE TRIGGER conformance_refuse_session_delete BEFORE DELETE ON sessions FOR EACH ROW EXECUTE FUNCTION conformance_refuse_row()",
+  );
+  try {
+    await body();
+  } finally {
+    await stack.db.query("DROP TRIGGER conformance_refuse_session_delete ON sessions");
+  }
+};
 
 /** A client whose requests all come from `ip`, so its login rate limit is its own. */
 const from = (ip: string): ApiClient => {
@@ -337,5 +357,34 @@ describe("DELETE /login", () => {
     expect(result.status).toBe(200);
     expect(result.json).toEqual({ status: "success" });
     expect(result.setCookies).toEqual(["session_id=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict"]);
+  });
+
+  test("answers 500 and raises an alarm when the session row cannot be deleted, clearing the cookie all the same", async () => {
+    const client = await from("10.3.0.2").login("admin", ADMIN_PASSWORD);
+    const sid = client.cookies.get("session_id")!;
+    await whileSessionsCannotBeDeleted(async () => {
+      const result = await client.delete("/login");
+      expect(result.status).toBe(500);
+      expect(result.json).toEqual(SERVER_ERROR);
+      expect(result.setCookies).toEqual([SESSION_CLEARED]);
+      await stack.waitFor(() => alarmsFor("DELETE /login").length > 0, { what: "the DELETE /login alarm" });
+    });
+    // The row the delete was refused is still there.
+    expect(await stack.db.rows("sessions", { session_id: sid })).toHaveLength(1);
+  });
+});
+
+describe("POST /login, replacing a session", () => {
+  test("answers 500 and raises an alarm when the session it replaces cannot be deleted, and signs nobody in", async () => {
+    const client = await from("10.3.1.1").login("admin", ADMIN_PASSWORD);
+    const sid = client.cookies.get("session_id")!;
+    await whileSessionsCannotBeDeleted(async () => {
+      const result = await client.post("/login", { username: "admin", password: ADMIN_PASSWORD });
+      expect(result.status).toBe(500);
+      expect(result.json).toEqual(SERVER_ERROR);
+      expect(result.setCookies).toEqual([]);
+      await stack.waitFor(() => alarmsFor("POST /login").length > 0, { what: "the POST /login alarm" });
+    });
+    expect(await stack.db.rows("sessions", { session_id: sid })).toHaveLength(1);
   });
 });
