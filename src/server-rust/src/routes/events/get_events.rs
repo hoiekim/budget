@@ -17,7 +17,7 @@ use crate::js::{json_stringify, parse_int, Json};
 use crate::server::logger;
 use crate::server::realtime::{
     current_event_id, get_events_since, register_subscriber, subscriber_count, unregister_subscriber, EventsSince, Subscriber,
-    SSE_KEEPALIVE_MS,
+    SSE_IDLE_TIMEOUT_SECONDS, SSE_KEEPALIVE_MS,
 };
 use crate::server::route::{ApiResponse, Ctx, HandlerResult, RawBody, RawResponse, Reply, Route};
 use crate::server::security_headers::SECURITY_HEADERS;
@@ -107,6 +107,8 @@ static OPENING: Mutex<()> = Mutex::new(());
 
 async fn get_events(ctx: &mut Ctx) -> HandlerResult {
     let user_id = ctx.user().map(|user| user.user_id.clone()).ok_or_else(|| anyhow::anyhow!("the event stream has no user"))?;
+
+    ctx.req.idle_timeout.set(SSE_IDLE_TIMEOUT_SECONDS);
 
     // Headers are lowercased. The query parameter is how the client's own
     // reconnect sends it: a new EventSource can't set headers, and only the

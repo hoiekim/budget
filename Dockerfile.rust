@@ -1,0 +1,60 @@
+# The image with the Rust server (src/server-rust) in place of the Bun one:
+# the same client, served from the same build/ layout. CD builds the Bun image
+# from `Dockerfile` until the cutover points cd.yml at this file.
+FROM oven/bun:1.4.4 AS client-builder
+
+WORKDIR /app
+
+COPY package.json bun.lockb* ./
+COPY tsconfig.json tsconfig.node.json ./
+COPY vite.config.ts eslint.config.js ./
+COPY src src
+COPY scripts scripts
+COPY .env.example ./
+COPY healthcheck.js ./
+
+# The checks the Bun image's builder runs, as the client and the code it
+# shares are still TypeScript.
+RUN bun install
+RUN bun run lint
+RUN bun run typecheck
+RUN bun run test
+RUN bun run build-client
+
+FROM rust:1.97.0-slim-trixie AS server-builder
+
+WORKDIR /app
+
+# rust-toolchain.toml names the image's Rust version, and adds Clippy to it.
+COPY rust-toolchain.toml Cargo.toml Cargo.lock ./
+COPY src/server-rust src/server-rust
+
+# The checks CI runs on the Rust server, but for the conformance suite, which
+# needs a database. Tested in release, which builds the dependencies once.
+RUN cargo clippy --locked --all-targets -- -D warnings
+RUN cargo test --locked --release
+RUN cargo build --locked --release --bin budget-server --bin budget-healthcheck
+
+# The Debian release the Bun image runs on, and that the server is built on.
+FROM debian:trixie-slim
+
+# The root certificates Plaid, SimpleFin and the other upstreams are checked against.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# The user id the Bun image runs as.
+RUN useradd --uid 1000 --user-group --no-create-home --shell /usr/sbin/nologin budget
+
+WORKDIR /app
+
+# The server serves the client from ../client beside its own directory.
+COPY --from=client-builder /app/build/client ./build/client
+COPY --from=server-builder /app/target/release/budget-server /app/target/release/budget-healthcheck ./build/server-rust/
+
+USER budget
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD ["/app/build/server-rust/budget-healthcheck"]
+
+CMD ["/app/build/server-rust/budget-server"]

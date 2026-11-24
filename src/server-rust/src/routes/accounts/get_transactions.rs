@@ -92,6 +92,7 @@ mod tests {
                 raw_body: None,
                 ip: "127.0.0.1".to_string(),
                 disconnected: CancellationToken::new(),
+                idle_timeout: Default::default(),
             },
             session: Session { id: "session".into(), user: None, auth: None, destroyed: false, stored: false, bearer: false },
             status: 200,

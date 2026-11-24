@@ -158,7 +158,7 @@ impl Table {
     }
 
     /// The `Model` constructor: checks every column and keeps exactly the checked ones.
-    pub fn validate(&self, row: Obj) -> anyhow::Result<Row> {
+    pub fn validate(&self, mut row: Obj) -> anyhow::Result<Row> {
         let mut errors = Vec::new();
         for (key, check) in self.checks {
             let value = row.get(*key);
@@ -174,10 +174,16 @@ impl Table {
         if !errors.is_empty() {
             return Err(ModelValidationError { model: self.model, errors }.into());
         }
+        // A row read with `SELECT *` usually holds the checked columns already,
+        // in the same order: it is the model as it stands.
+        if row.len() == self.checks.len() && row.keys().zip(self.checks).all(|(key, (checked, _))| key == checked) {
+            return Ok(row);
+        }
+        // Otherwise the checked values move over: a row's `raw` payload can be large.
         let mut model = Obj::new();
         for (key, _) in self.checks {
-            if let Some(value) = row.get(*key) {
-                model.insert(key.to_string(), value.clone());
+            if let Some((key, value)) = row.remove_entry(*key) {
+                model.insert(key, value);
             }
         }
         Ok(model)

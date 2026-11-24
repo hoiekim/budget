@@ -11,6 +11,14 @@ use crate::js::{parse_int, Json, JsDate, Obj};
 /// Gap between `: keepalive` blocks on an otherwise-quiet stream.
 pub const SSE_KEEPALIVE_MS: u64 = 30_000;
 
+/// How long an event stream's connection may stay silent before it is closed:
+/// three keepalive periods, so one missed tick is tolerated, within the
+/// 255-second ceiling. The default of 10 seconds would close a quiet stream.
+pub const SSE_IDLE_TIMEOUT_SECONDS: u64 = {
+    let seconds = SSE_KEEPALIVE_MS / 1000 * 3;
+    if seconds < 255 { seconds } else { 255 }
+};
+
 pub const RING_BUFFER_MAX_ENTRIES: usize = 512;
 pub const RING_BUFFER_MAX_AGE_MS: f64 = 15.0 * 60.0 * 1000.0;
 

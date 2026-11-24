@@ -14,6 +14,7 @@ node_modules
 # variables the server reads. Placeholders only; no stage copies it to runtime.
 !.env.example
 
-# The Rust backend and the cross-server tests are not part of the Bun image
+# Local Rust build output (the Rust image builds its own), and the cross-server
+# tests, which CI runs
 target
 conformance

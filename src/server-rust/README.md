@@ -134,7 +134,8 @@ than of the TypeScript.
 - **Wording of transport and parse errors** from upstream calls (reqwest
   against axios or `fetch`, JSON parse errors, `TypeError`s for malformed
   answers) is close to Bun's, not identical. It shows in logs and alarm text,
-  never in a response body.
+  and in an item's `last_sync_error` after a failed sync, which is stored and
+  answered with the item by `GET /accounts` (the client does not show it).
 - **Plaid webhook signatures** are verified for ES256 (P-256) only, the one
   algorithm Plaid signs with; `jose` would also accept others.
 - **Time-zone data.** Rust reads the system tz database, Bun the copy inside
@@ -163,3 +164,56 @@ than of the TypeScript.
 - **`undefined` in log context.** Bun's logger prints a context of only
   undefined values as `{}`; Rust has no `undefined` and prints nothing. It
   shows on one webhook log line, for a body without an `item_id`.
+- **Error stacks in logs.** A logged error's `stack` lists the Rust functions
+  it passed through, not TypeScript files, and its `message` includes the
+  context Rust adds on the way up (`outer: inner`). Its `name` is the
+  TypeScript error class where Rust has a matching error type (`AxiosError`
+  for Plaid, `error` for one Postgres reported, `ModelValidationError`, the
+  identity provider's errors), and `Error` otherwise.
+- **When an idle connection closes.** Both close a connection 10 seconds after
+  its last byte (90 for an event stream). Bun checks its deadlines on a coarse
+  timer and closes up to about 4 seconds later.
+- **Shutdown.** On `SIGTERM` both stop taking connections. Rust then waits up
+  to 10 seconds for the requests it is still handling before closing the
+  database pool. Bun closes the pool once no query is running and exits, so a
+  request waiting on an upstream between two writes stops there.
+
+## Running it in production
+
+This server has an image of its own, built from `Dockerfile.rust`: the same
+client, and this server in place of the Bun one, on Debian without Bun. It
+takes the same settings, listens on the same port and answers the same health
+check (`budget-healthcheck`, which checks what `healthcheck.js` checks). Its
+builder runs the TypeScript checks the Bun image's builder runs, then Clippy
+and the Rust unit tests; the conformance suite needs a database, so only CI
+runs it. Both servers use the same database: each migrates the schema the same
+way at start and reads what the other wrote.
+
+CD builds the Bun image from `Dockerfile` until the cutover, which is one line
+in `.github/workflows/cd.yml`: `file: ./Dockerfile.rust`. The image is pushed
+under the same name and tags as the Bun one. Rolling back is reverting that
+line, and CD builds and deploys the Bun image again. Nothing builds
+`Dockerfile.rust` before then, so should it have broken in the meantime, the
+cutover's CD run fails at the build, before the deploy, and the Bun image keeps
+running.
+
+To try it on real data first, run both servers locally, each against its own
+copy of the production database, and compare what they store:
+
+```bash
+pg_dump --format=custom "$PRODUCTION_DATABASE_URL" > budget.dump
+createdb budget_bun && pg_restore --no-owner --dbname=budget_bun budget.dump
+createdb budget_rust && pg_restore --no-owner --dbname=budget_rust budget.dump
+bun run build && bun run build-server-rust
+# With the production settings (.env), each on its own port and copy:
+POSTGRES_DATABASE=budget_bun PORT=3006 bun run start-server
+POSTGRES_DATABASE=budget_rust PORT=3007 bun run start-server-rust
+# Once both have logged "Scheduled sync completed", and after using each app the same way:
+bun conformance/compare-databases.ts postgres://…/budget_bun postgres://…/budget_rust
+```
+
+Each server syncs every item with Plaid at start, from the cursor the copy
+holds, so both receive the same updates. Plaid keeps the production server's
+place; a webhook still goes to production only. Avoid removing a connection
+in either copy: that removes the item at Plaid too. The copies hold real data:
+drop them when done.

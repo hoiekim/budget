@@ -33,6 +33,7 @@ use crate::js::{json_parse, json_stringify, Json, Obj};
 use crate::routes;
 use crate::server::alarm::send_alarm;
 use crate::server::bearer_auth::resolve_bearer_auth;
+use crate::server::connection::{self, IdleTimeout, Tracked};
 use crate::server::logger;
 use crate::server::node_env::is_production;
 use crate::server::postgres::{initialize_postgres, pool};
@@ -178,6 +179,7 @@ struct IncomingParts {
     headers: HashMap<String, String>,
     body: Incoming,
     socket_ip: String,
+    idle_timeout: IdleTimeout,
 }
 
 async fn read_text(body: Incoming) -> anyhow::Result<String> {
@@ -192,7 +194,7 @@ async fn read_text(body: Incoming) -> anyhow::Result<String> {
 }
 
 async fn handle_api_request(parts: IncomingParts, api_path: &str, log: &mut Obj) -> anyhow::Result<HttpResponse> {
-    let IncomingParts { method, url, headers, body: incoming, socket_ip } = parts;
+    let IncomingParts { method, url, headers, body: incoming, socket_ip, idle_timeout } = parts;
     let ip = get_client_ip(&headers, Some(&socket_ip));
     log.insert("ip".into(), json!(ip));
 
@@ -292,6 +294,7 @@ async fn handle_api_request(parts: IncomingParts, api_path: &str, log: &mut Obj)
             raw_body,
             ip,
             disconnected: disconnected.clone(),
+            idle_timeout,
         },
         session,
         status: 200,
@@ -547,7 +550,7 @@ fn listen(port: u16) -> std::io::Result<TcpListener> {
     TcpListener::from_std(socket.into())
 }
 
-async fn handle(request: hyper::Request<Incoming>, peer: SocketAddr) -> Result<HttpResponse, Infallible> {
+async fn handle(request: hyper::Request<Incoming>, peer: SocketAddr, idle_timeout: IdleTimeout) -> Result<HttpResponse, Infallible> {
     let (head, body) = request.into_parts();
     let method = head.method.as_str().to_string();
 
@@ -603,7 +606,7 @@ async fn handle(request: hyper::Request<Incoming>, peer: SocketAddr) -> Result<H
     log.insert("path".into(), json!(full_path));
 
     let is_head = head.method == Method::HEAD;
-    let parts = IncomingParts { method, url, headers, body, socket_ip: peer.ip().to_string() };
+    let parts = IncomingParts { method, url, headers, body, socket_ip: peer.ip().to_string(), idle_timeout };
     let mut response = match handle_api_request(parts, &api_path, &mut log).await {
         Ok(response) => response,
         Err(error) if error.to_string().contains("length limit exceeded") => payload_too_large(),
@@ -640,6 +643,9 @@ async fn shutdown_signal() -> &'static str {
     }
 }
 
+/// How long a shutdown waits for requests already being handled.
+const SHUTDOWN_DRAIN_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Boots the app and serves until a termination signal.
 pub async fn run() -> anyhow::Result<()> {
     crate::server::polygon::initialize();
@@ -675,9 +681,26 @@ pub async fn run() -> anyhow::Result<()> {
             };
             let _ = stream.set_nodelay(true);
             tokio::spawn(async move {
-                let service = service_fn(move |request| handle(request, peer));
+                let idle_timeout = IdleTimeout::default();
+                let io = TokioIo::new(Tracked::new(stream, idle_timeout.clone()));
+                let service = {
+                    let idle_timeout = idle_timeout.clone();
+                    service_fn(move |request| {
+                        let handled = connection::run_to_completion(handle(request, peer, idle_timeout.clone()));
+                        async move {
+                            Ok::<_, Infallible>(match handled.await {
+                                Some(Ok(response)) => response,
+                                Some(Err(never)) => match never {},
+                                None => {
+                                    logger::error("A request handler panicked", None, None);
+                                    internal_error()
+                                }
+                            })
+                        }
+                    })
+                };
                 // A connection that fails mid-flight has nobody left to answer.
-                let _ = http1::Builder::new().serve_connection(TokioIo::new(stream), service).await;
+                idle_timeout.serve(http1::Builder::new().serve_connection(io, service)).await;
             });
         }
     };
@@ -689,6 +712,10 @@ pub async fn run() -> anyhow::Result<()> {
     logger::info(&format!("{signal} received — shutting down gracefully"), None);
     crate::server::compute_tools::schedule::stop_scheduled_sync();
     logger::info("HTTP server closed", None);
+    // Requests already being handled finish their writes before the pool closes.
+    if !connection::settle(SHUTDOWN_DRAIN_LIMIT).await {
+        logger::warn("Requests still running at shutdown", None, None);
+    }
     pool().end();
     logger::info("Database pool closed", None);
     Ok(())
