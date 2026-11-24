@@ -301,14 +301,13 @@ describe("the client files", () => {
   const page = (pathname: string, options: Parameters<ApiClient["request"]>[2] = {}) =>
     stack.anonymous().request("GET", `/${pathname}`, options);
 
-  test("serves the app shell at / without the API's headers", async () => {
+  test("serves the app shell at / with the security headers and no cookie", async () => {
     const result = await page("/");
     expect(result.status).toBe(200);
     expect(result.text).toBe(index);
     expect(result.headers.get("content-type")).toBe("text/html;charset=utf-8");
     expect(result.headers.get("content-length")).toBe(String(Buffer.byteLength(index)));
-    expect(result.headers.get("content-security-policy")).toBeNull();
-    expect(result.headers.get("x-frame-options")).toBeNull();
+    expectSecurityHeaders(result.headers);
     expect(result.setCookies).toEqual([]);
   });
 

@@ -484,7 +484,7 @@ async fn serve_static(method: &str, full_path: &str, headers: &HashMap<String, S
             *response.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
             set_header(&mut response, "content-range", &format!("bytes */{size}"));
             set_header(&mut response, "accept-ranges", "bytes");
-            return response;
+            response
         }
         Ok(Some((start, end))) => {
             let slice = Bytes::from(bytes).slice(start as usize..=end as usize);
@@ -502,8 +502,10 @@ async fn serve_static(method: &str, full_path: &str, headers: &HashMap<String, S
             response
         }
     };
-    if !is_head {
-        set_header(&mut response, "content-type", content_type_of(&file));
+    set_header(&mut response, "content-type", content_type_of(&file));
+    // The document is what a browser enforces CSP and X-Frame-Options from.
+    for (name, value) in response_security_headers() {
+        set_header(&mut response, name, value);
     }
     response
 }
