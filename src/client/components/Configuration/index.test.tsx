@@ -43,10 +43,12 @@ afterEach(() => {
   resetDom();
 });
 
+const NO_SERVER_ANSWER = Symbol("no server answer");
+
 const logOut = async (logoutAnswer: unknown) => {
   fetchStub = stubFetch([
     { path: "/api/api-keys", response: { status: "success", body: { api_keys: [] } } },
-    { path: "/api/login", response: logoutAnswer },
+    ...(logoutAnswer === NO_SERVER_ANSWER ? [] : [{ path: "/api/login", response: logoutAnswer }]),
   ]);
   const signedOut: unknown[] = [];
   const confirm = spyOn(window, "confirm").mockImplementation(() => true);
@@ -86,6 +88,28 @@ describe("Configuration logout", () => {
     const { signedOut, assigned } = await logOut({ status: "success" });
     expect(signedOut).toEqual([undefined]);
     expect(assigned).toEqual([]);
+  });
+
+  it("an error answer from the server still signs out here", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { signedOut, assigned } = await logOut({ status: "error", message: "Internal server error" });
+      expect(signedOut).toStrictEqual([undefined]);
+      expect(assigned).toEqual([]);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it("no answer from the server keeps the user signed in", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { signedOut, assigned } = await logOut(NO_SERVER_ANSWER);
+      expect(signedOut).toStrictEqual([]);
+      expect(assigned).toEqual([]);
+    } finally {
+      error.mockRestore();
+    }
   });
 });
 
