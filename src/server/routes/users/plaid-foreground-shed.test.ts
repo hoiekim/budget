@@ -236,14 +236,28 @@ describe("a shed foreground call is a retryable 503, not a route error", () => {
     expect(mockDeleteItem).not.toHaveBeenCalled();
   });
 
-  test("any other Plaid failure still reaches the route error handler", async () => {
-    mockGetLinkToken.mockImplementation(async () => {
-      throw new Error("plaid exploded");
-    });
-    const res = makeRes();
-    const result = await getLinkTokenRoute.execute(linkToken(), res);
-    expect(res.statusCode).toBe(500);
-    expect(result).toEqual({ status: "error", message: "Internal server error" });
-    expect(mockSendAlarm).toHaveBeenCalledTimes(1);
-  });
+  const otherFailures = [
+    { name: "GET /link-token", call: mockGetLinkToken, route: getLinkTokenRoute, req: linkToken },
+    {
+      name: "POST /public-token",
+      call: mockExchangePublicToken,
+      route: postPublicTokenRoute,
+      req: publicToken,
+    },
+    { name: "DELETE /item", call: mockPlaidDeleteItem, route: deleteItemRoute, req: removeItem },
+  ];
+
+  test.each(otherFailures)(
+    "any other Plaid failure still reaches the route error handler: $name",
+    async ({ call, route, req }) => {
+      call.mockImplementation(async () => {
+        throw new Error("plaid exploded");
+      });
+      const res = makeRes();
+      const result = await route.execute(req(), res);
+      expect(res.statusCode).toBe(500);
+      expect(result).toEqual({ status: "error", message: "Internal server error" });
+      expect(mockSendAlarm).toHaveBeenCalledTimes(1);
+    },
+  );
 });
