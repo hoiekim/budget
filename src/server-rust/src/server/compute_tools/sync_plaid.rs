@@ -350,7 +350,16 @@ fn transactions_start_date(item: &Json) -> JsDate {
 /// first transactions page, the investment transactions, then the next
 /// transactions pages, which is the order they reach Plaid there.
 pub async fn sync_plaid_transactions(item_id: &str) -> anyhow::Result<Option<SyncTransactionsResult>> {
-    let Some(UserItem { user, item }) = get_user_item(item_id).await? else { return Ok(None) };
+    sync_plaid_transactions_of(item_id, get_user_item(item_id).await).await
+}
+
+/// [`sync_plaid_transactions`] of an item already read: `read` is what
+/// [`get_user_item`] answered for `item_id`.
+pub async fn sync_plaid_transactions_of(
+    item_id: &str,
+    read: anyhow::Result<Option<UserItem>>,
+) -> anyhow::Result<Option<SyncTransactionsResult>> {
+    let Some(UserItem { user, item }) = read? else { return Ok(None) };
     if item.get("provider").and_then(Json::as_str) != Some(PLAID) {
         return Ok(None);
     }
@@ -647,7 +656,13 @@ fn stored_or(existing: Option<&Json>, key: &str, fallback: Json) -> Json {
 /// Both are fetched and stored at once, as in the TypeScript, with the
 /// accounts request going to Plaid before the holdings request (`in_call_order`).
 pub async fn sync_plaid_accounts(item_id: &str) -> anyhow::Result<Option<SyncAccountsResult>> {
-    let Some(UserItem { user, item }) = get_user_item(item_id).await? else { return Ok(None) };
+    sync_plaid_accounts_of(item_id, get_user_item(item_id).await).await
+}
+
+/// [`sync_plaid_accounts`] of an item already read: `read` is what
+/// [`get_user_item`] answered for `item_id`.
+pub async fn sync_plaid_accounts_of(item_id: &str, read: anyhow::Result<Option<UserItem>>) -> anyhow::Result<Option<SyncAccountsResult>> {
+    let Some(UserItem { user, item }) = read? else { return Ok(None) };
     if item.get("provider").and_then(Json::as_str) != Some(PLAID) {
         return Ok(None);
     }
