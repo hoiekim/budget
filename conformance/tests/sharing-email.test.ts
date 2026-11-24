@@ -175,6 +175,23 @@ const connect = async (who: Person): Promise<Tab> => {
 
 const plus = (id: string, n: number) => String(Number(id) + n);
 
+/**
+ * `from` invites `email` before anyone's tabs are open, as `sendTo`, and answers once the invitation's
+ * event has reached `from`'s group: the reference server tells the group after it answers, once it has
+ * read who is in it, so a tab opened right after the answer could still hear the invitation.
+ */
+const sendBeforeTabs = async (from: Person, email: string): Promise<Invitation> => {
+  const witness = await openEventStream(from.client);
+  try {
+    await witness.next((block) => block.event === "connected");
+    const invitation = await sendTo(from, email);
+    await witness.next((block) => block.event === "sharing_invitations-updated", { what: "the invitation's event" });
+    return invitation;
+  } finally {
+    await witness.close();
+  }
+};
+
 /** Expects the next event of every stream to be `event` with `data`, `n` ids past where that stream connected. */
 const expectEach = async (tabs: Tab[], n: number, event: string, data: Record<string, string>) => {
   for (const tab of tabs) expect(await tab.stream.nextEvent()).toEqual({ id: plus(tab.id, n), event, data });
@@ -678,7 +695,7 @@ describe("what an invitation to an address tells open tabs", () => {
     ];
     await group(alice, bob);
     await group(carol, dave);
-    const [toCarol, toNobody] = [await sendTo(alice, email), await sendTo(alice, address("nobody"))];
+    const [toCarol, toNobody] = [await sendBeforeTabs(alice, email), await sendBeforeTabs(alice, address("nobody"))];
     const [ta, tb, tc, td, tOutsider] = [await connect(alice), await connect(bob), await connect(carol), await connect(dave), await connect(outsider)];
 
     expect(await decline(bob, toCarol.invitation_id, "withdrawing-tab")).toEqual({ status: "success" });
@@ -693,7 +710,7 @@ describe("what an invitation to an address tells open tabs", () => {
     const email = address("declined");
     const [alice, bob, carol] = [await person("alice"), await person("bob"), await person("carol", email)];
     await group(alice, bob);
-    const invitation = await sendTo(alice, email);
+    const invitation = await sendBeforeTabs(alice, email);
     const [ta, tb, tc] = [await connect(alice), await connect(bob), await connect(carol)];
     expect(await decline(carol, invitation.invitation_id, "declining-tab")).toEqual({ status: "success" });
     await expectEach([ta, tb, tc], 1, "sharing_invitations-updated", { originTabId: "declining-tab" });
@@ -703,7 +720,7 @@ describe("what an invitation to an address tells open tabs", () => {
     const email = address("joined");
     const [alice, bob, carol] = [await person("alice"), await person("bob"), await person("carol", email)];
     await group(alice, bob);
-    const invitation = await sendTo(alice, email);
+    const invitation = await sendBeforeTabs(alice, email);
     const [ta, tb, tc] = [await connect(alice), await connect(bob), await connect(carol)];
     expect(await accept(carol, invitation.invitation_id, "joining-tab")).toEqual({ status: "success" });
     await expectEach([ta, tb, tc], 1, "sharing_members-updated", { originTabId: "joining-tab" });
