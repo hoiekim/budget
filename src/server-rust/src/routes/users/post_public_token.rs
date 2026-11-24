@@ -5,11 +5,11 @@ use serde_json::json;
 use crate::common::date::get_date_string;
 use crate::common::utils::get_random_id;
 use crate::js::{Json, JsDate, Obj};
-use crate::server::compute_tools::sync_plaid::{sync_plaid_accounts, sync_plaid_transactions};
+use crate::server::compute_tools::sync_plaid::{sync_plaid_accounts_of, sync_plaid_transactions_of};
 use crate::server::compute_tools::sync_simple_fin::sync_simple_fin_data;
 use crate::server::plaid::{exchange_public_token, get_item, is_plaid_configured};
 use crate::server::postgres::models::MaskedUser;
-use crate::server::postgres::repositories::items::{search_items, to_client_item, upsert_items, SearchItemsOptions};
+use crate::server::postgres::repositories::items::{get_user_item, search_items, to_client_item, upsert_items, SearchItemsOptions};
 use crate::server::route::{ApiResponse, Ctx, HandlerResult, Route};
 use crate::server::simple_fin::exchange_setup_token;
 use crate::server::validation::{require_query_string, validation_error};
@@ -81,17 +81,25 @@ async fn post_public_token(ctx: &mut Ctx) -> HandlerResult {
             let item = exchange_plaid_token(&user, public_token, institution_id).await?;
             upsert_items(&user, std::slice::from_ref(&item), None).await;
 
-            // Both syncs at once: each reads the item as it was stored here,
-            // whatever the other changes on it. Which reaches Plaid first
-            // depends on which of their database reads answers first, as in
-            // the TypeScript. Both run to their end even when one fails, as
-            // the other goes on there after the request has failed.
+            // Both syncs at once, each on the item as it was stored here,
+            // whatever the other changes on it. In the TypeScript both reads
+            // go out before either sync sends anything else, and both answer
+            // before either sync has changed the item. Here the second read
+            // can wait for a new database connection while the first sync
+            // goes on, so the two reads are awaited together first. Which
+            // sync then reaches Plaid first is left open, as there. Both run
+            // to their end even when one fails, as the other goes on there
+            // after the request has failed.
             let item_id = match item.get("item_id") {
                 Some(Json::String(item_id)) => item_id.clone(),
                 Some(other) => crate::js::to_js_string(other),
                 None => "undefined".to_string(),
             };
-            let (accounts, transactions) = futures::join!(sync_plaid_accounts(&item_id), sync_plaid_transactions(&item_id));
+            let (for_accounts, for_transactions) = futures::join!(get_user_item(&item_id), get_user_item(&item_id));
+            let (accounts, transactions) = futures::join!(
+                sync_plaid_accounts_of(&item_id, for_accounts),
+                sync_plaid_transactions_of(&item_id, for_transactions)
+            );
             accounts?;
             transactions?;
 
