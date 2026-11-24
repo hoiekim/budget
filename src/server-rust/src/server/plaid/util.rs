@@ -177,6 +177,7 @@ impl PlaidClient {
             return transport(endpoint, body).await;
         }
         let mut request = http_client()
+            .map_err(|error| PlaidError::transport(error.to_string()))?
             .post(format!("{}{}", self.base_path, endpoint))
             .header("Accept", "application/json, text/plain, */*")
             .header("Content-Type", "application/json")

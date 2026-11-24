@@ -359,10 +359,12 @@ pub fn is_ok(status: u16) -> bool {
 /// attempt number. The TypeScript's defaults are 2 retries and 1000 ms.
 pub async fn fetch_with_retry(url: &str, max_retries: u32, delay_ms: u64) -> Result<reqwest::Response, Thrown> {
     let mut last_error: Option<Thrown> = None;
+    // A client that cannot be built stays that way: no retry would help.
+    let client = http_client().map_err(|error| Thrown::new(error.to_string()))?;
 
     for attempt in 0..=max_retries {
         let backoff = Duration::from_millis(delay_ms * (attempt as u64 + 1));
-        match http_client().get(url).send().await {
+        match client.get(url).send().await {
             Ok(response) => {
                 let status = response.status().as_u16();
                 if is_ok(status) || status == 404 {

@@ -54,7 +54,7 @@ pub async fn get_data(item: &Json, options: &GetSimpleFinDataOptions) -> anyhow:
 
     let url = format!("{}/accounts?{}", credentials.url, accounts_query(options));
     // A redirect would carry the credentials to a host the allowlist never checked.
-    let response = http_client().get(&url).header("Authorization", format!("Basic {}", credentials.credentials)).send().await?;
+    let response = http_client()?.get(&url).header("Authorization", format!("Basic {}", credentials.credentials)).send().await?;
     refuse_redirect(&response, &url)?;
 
     if !response.status().is_success() {
