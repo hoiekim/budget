@@ -195,17 +195,11 @@ function jsonResponse(
 }
 
 /**
- * Answers a request whose handling threw outside any route's own catch, with
- * the same log, alarm and JSON body a failing route produces. The alarm key is
- * fixed because the path is caller-controlled.
+ * Answers a request whose handling threw outside any route's own catch: logged,
+ * and answered with the app's JSON 500. No route ran, so no route error alarm.
  */
 function unhandledRequestError(error: unknown, method?: string, path?: string): Response {
   logger.error("Unhandled request error", { method, path }, error);
-  const where = method && path ? `**Request:** ${method} ${path}\n` : "";
-  sendAlarm(
-    "Unhandled Request Error",
-    `${where}**Error:** ${error instanceof Error ? error.message : String(error)}`,
-  ).catch(() => undefined);
   return jsonResponse({ status: "error", message: "Internal server error" }, 500);
 }
 

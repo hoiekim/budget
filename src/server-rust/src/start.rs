@@ -89,7 +89,7 @@ pub fn is_api_path(path: &str) -> bool {
 
 async fn load_session(headers: &HashMap<String, String>) -> anyhow::Result<Session> {
     let cookie_header = headers.get("cookie").map(String::as_str).unwrap_or("");
-    let cookies = parse_cookies(cookie_header).ok_or_else(|| anyhow::anyhow!("URI error"))?;
+    let cookies = parse_cookies(cookie_header);
     // An empty session id is falsy in the TypeScript: it is never looked up.
     if let Some(sid) = cookies.get(SESSION_COOKIE_NAME).filter(|sid| !sid.is_empty()) {
         if let Ok(Some(data)) = load_session_data(sid).await {

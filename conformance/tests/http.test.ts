@@ -207,10 +207,16 @@ describe("the session cookie", () => {
     expect((await client.get("/login")).json.message).toBe("Not logged in.");
   });
 
-  test("a malformed percent-escape in any cookie fails the request", async () => {
-    // The Bun server answers with its development error page here, so only the status is compared.
-    const result = await stack.anonymous().get("/login", { headers: { Cookie: "theme=%E0%A4%A" }, noCompare: true });
-    expect(result.status).toBe(500);
+  test("a cookie value with a malformed percent-escape reads as absent, and the others still count", async () => {
+    const client = await stack.login();
+    const sid = client.cookies.get("session_id")!;
+    const login = (cookie: string) => stack.anonymous().get<{ user?: { username: string } }>("/login", { headers: { Cookie: cookie } });
+    const anonymous = await login("theme=%E0%A4%A");
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.json.message).toBe("Not logged in.");
+    expect((await login(`theme=%E0%A4%A; session_id=${sid}`)).body.user?.username).toBe("admin");
+    expect((await login(`session_id=${sid}; session_id=%`)).body.user?.username).toBe("admin");
+    expect((await login("session_id=%E0%A4%A")).body.user).toBeUndefined();
   });
 
   test("the session still names its user after the user row changes", async () => {
