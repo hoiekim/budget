@@ -468,8 +468,11 @@ pub fn decode_uri_component(text: &str) -> Option<String> {
     while i < bytes.len() {
         if bytes[i] == b'%' {
             let hex = bytes.get(i + 1..i + 3)?;
-            let hex = std::str::from_utf8(hex).ok()?;
-            out.push(u8::from_str_radix(hex, 16).ok()?);
+            // `from_str_radix` would also take a sign: `%+1` must fail, as it does in JS.
+            if !hex.iter().all(u8::is_ascii_hexdigit) {
+                return None;
+            }
+            out.push(u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?);
             i += 3;
         } else {
             out.push(bytes[i]);
@@ -1954,6 +1957,8 @@ mod tests {
         assert_eq!(encode_uri_component("a b&c/d:é'()*!~"), "a%20b%26c%2Fd%3A%C3%A9'()*!~");
         assert_eq!(decode_uri_component("a%20b").as_deref(), Some("a b"));
         assert!(decode_uri_component("%E0%A4%A").is_none());
+        assert!(decode_uri_component("%+1").is_none());
+        assert!(decode_uri_component("%1").is_none());
     }
 
     #[test]

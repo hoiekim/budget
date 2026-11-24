@@ -216,6 +216,7 @@ describe("the session cookie", () => {
     expect(anonymous.json.message).toBe("Not logged in.");
     expect((await login(`theme=%E0%A4%A; session_id=${sid}`)).body.user?.username).toBe("admin");
     expect((await login(`session_id=${sid}; session_id=%`)).body.user?.username).toBe("admin");
+    expect((await login(`session_id=${sid}; session_id=%+1`)).body.user?.username).toBe("admin");
     expect((await login("session_id=%E0%A4%A")).body.user).toBeUndefined();
   });
 

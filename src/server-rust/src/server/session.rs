@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn a_cookie_value_that_does_not_decode_is_dropped_and_the_others_kept() {
-        let cookies = parse_cookies("theme=%E0%A4%A; session_id=abc; a=%");
+        let cookies = parse_cookies("theme=%E0%A4%A; session_id=abc; a=%; b=%+1");
         let pairs: Vec<(&str, &str)> = cookies.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
         assert_eq!(pairs, [("session_id", "abc")]);
     }
@@ -248,6 +248,7 @@ mod tests {
     #[test]
     fn an_undecodable_repeat_of_a_name_leaves_the_earlier_value() {
         assert_eq!(parse_cookies("session_id=abc; session_id=%E0%A4%A").get("session_id").map(String::as_str), Some("abc"));
+        assert_eq!(parse_cookies("session_id=abc; session_id=%+1").get("session_id").map(String::as_str), Some("abc"));
         assert!(parse_cookies("session_id=%").is_empty());
     }
 
