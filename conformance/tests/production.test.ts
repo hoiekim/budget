@@ -21,13 +21,13 @@ describe("the production posture (NODE_ENV=production)", () => {
     expect(out.setCookies).toEqual(["session_id=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict; Secure"]);
   });
 
-  test("adds HSTS to responses a route produced, and not to the ones the server shed before routing", async () => {
+  test("adds HSTS to responses a route produced and to the client files, and not to API requests the server shed before routing", async () => {
     const client = await stack.login();
     expect((await client.get("/login")).headers.get("strict-transport-security")).toBe(HSTS);
     expect((await stack.anonymous().get("/health")).headers.get("strict-transport-security")).toBe(HSTS);
     expect((await stack.anonymous().get("/nope")).headers.get("strict-transport-security")).toBeNull();
     expect((await client.get("/nope")).headers.get("strict-transport-security")).toBeNull();
-    expect((await stack.anonymous().get("//index.html")).headers.get("strict-transport-security")).toBeNull();
+    expect((await stack.anonymous().get("//index.html")).headers.get("strict-transport-security")).toBe(HSTS);
   });
 
   test("logs one JSON line per API request, with field names but never values", async () => {
