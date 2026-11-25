@@ -152,10 +152,11 @@ describe("the scheduled sync of a SimpleFin item", () => {
     expect(await rowOf(stack, "transactions", "sf-full-tx-2")).toMatchObject({ amount: 25, pending: false, date: localDay(-1) });
     expect(await rowOf(stack, "investment_transactions", "sf-full-inv")).toMatchObject({
       account_id: "sf-full-brokerage",
-      amount: -3000,
-      price: -3000,
-      quantity: 1,
-      type: "buy",
+      amount: 3000,
+      price: 0,
+      quantity: 0,
+      type: "cash",
+      subtype: "withdrawal",
       date: localDay(-2),
     });
 
