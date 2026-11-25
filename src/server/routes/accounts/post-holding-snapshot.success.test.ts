@@ -778,3 +778,160 @@ describe("post-holding-snapshot on an account someone else in the sharing group 
     expect(findCall(HOLDINGS_INSERT)).toBeNull();
   });
 });
+
+describe("post-holding-snapshot create mode stores a value on the snapshot row", () => {
+  const formPost = () =>
+    makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 3, snapshot_date: "2024-03-15" });
+
+  test("a form post with no price takes the latest security close on or before the date", async () => {
+    securityRows = [existingSecurityRow({ close_price: 999 })];
+    accountRows = [accountRow()];
+    snapshotRows = [
+      holdingSnapshotRow({ snapshot_id: "s-mar", snapshot_type: "security", snapshot_date: "2024-03-15", security_id: "sec-1", close_price: 50 }),
+    ];
+
+    const result = await postHoldingSnapshotRoute.execute(formPost(), fakeRes());
+
+    expect(result?.status).toBe("success");
+    const priceLookup = findCall(/select[\s\S]*from\s+snapshots[\s\S]*order\s+by\s+snapshot_date\s+desc/i);
+    expect(priceLookup).not.toBeNull();
+    expect(priceLookup!.sql).toMatch(/snapshot_date\s*<=/i);
+    expect(priceLookup!.sql).toMatch(/limit/i);
+    expect(priceLookup!.values).toEqual(expect.arrayContaining(["security", "sec-1", "2024-03-15", 1]));
+    expect(result?.body?.institution_price).toBe(50);
+    expect(result?.body?.institution_value).toBe(150);
+    expect(findCall(/insert\s+into\s+snapshots/i)!.values).toContain(150);
+    expect(findCall(/insert\s+into\s+holdings/i)!.values).toContain(150);
+  });
+
+  test("with no security snapshot it falls back to the security's close price", async () => {
+    securityRows = [existingSecurityRow({ close_price: 40 })];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(formPost(), fakeRes());
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.institution_value).toBe(120);
+    expect(findCall(/insert\s+into\s+snapshots/i)!.values).toContain(120);
+  });
+
+  test("a supplied price without a value derives the snapshot's value from it", async () => {
+    securityRows = [existingSecurityRow({ close_price: 999 })];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 3, institution_price: 7, snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.institution_value).toBe(21);
+    const snapshotValues = findCall(/insert\s+into\s+snapshots/i)!.values;
+    expect(snapshotValues).toContain(21);
+    expect(snapshotValues).not.toContain(2997);
+  });
+
+  test("with no known price the snapshot stores zero, not null", async () => {
+    securityRows = [existingSecurityRow()];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(formPost(), fakeRes());
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.institution_value).toBe(0);
+    expect(findCall(/insert\s+into\s+snapshots/i)!.values).toContain(0);
+  });
+
+  test("refuses a resolved price whose derived value would overflow, writing nothing", async () => {
+    securityRows = [existingSecurityRow({ close_price: 1e8 })];
+    accountRows = [accountRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ account_id: "acct-9", ticker_symbol: "VOO", quantity: 1e8, snapshot_date: "2024-03-15" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(findCall(/insert\s+into\s+snapshots/i)).toBeNull();
+    expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+  });
+});
+
+describe("post-holding-snapshot update mode recomputes a stored value", () => {
+  const storedRow = () =>
+    holdingSnapshotRow({ quantity: 10, institution_price: 50, institution_value: 500 });
+
+  test("a quantity edit rewrites the snapshot and holdings value from quantity * price", async () => {
+    snapshotRows = [storedRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 20 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.institution_value).toBe(1000);
+    expect(result?.body?.institution_price).toBe(50);
+    const upd = findCall(/update\s+snapshots/i)!;
+    expect(upd.sql).toMatch(/institution_value/i);
+    expect(upd.values).toContain(1000);
+  });
+
+  test("a date edit re-resolves the price on the new date and recomputes the value", async () => {
+    snapshotRows = [storedRow()];
+    securityRows = [existingSecurityRow({ close_price: 70 })];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", snapshot_date: "2024-05-15" }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const priceLookup = findCall(/select[\s\S]*from\s+snapshots[\s\S]*order\s+by\s+snapshot_date\s+desc/i);
+    expect(priceLookup).not.toBeNull();
+    expect(priceLookup!.values).toEqual(expect.arrayContaining(["security", "sec-1", "2024-05-15"]));
+    expect(result?.body?.institution_price).toBe(70);
+    expect(result?.body?.institution_value).toBe(700);
+    expect(findCall(/update\s+snapshots/i)!.values).toEqual(expect.arrayContaining([70, 700]));
+  });
+
+  test("a cost-basis edit leaves the stored price and value alone", async () => {
+    snapshotRows = [storedRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", cost_basis: 400 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    expect(result?.body?.institution_value).toBeUndefined();
+    expect(findCall(/update\s+snapshots/i)!.sql).not.toMatch(/institution_value/i);
+  });
+
+  test("an explicit value in the patch is stored as given", async () => {
+    snapshotRows = [storedRow()];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 20, institution_value: 123 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("success");
+    const upd = findCall(/update\s+snapshots/i)!;
+    expect(upd.values).toContain(123);
+    expect(upd.values).not.toContain(1000);
+  });
+
+  test("refuses a quantity edit whose recomputed value would overflow, even over a stored value", async () => {
+    snapshotRows = [holdingSnapshotRow({ quantity: 10, institution_price: 1e8, institution_value: 500 })];
+
+    const result = await postHoldingSnapshotRoute.execute(
+      makeReq({ snapshot_id: "snap-1", quantity: 1e8 }),
+      fakeRes(),
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(findCall(/update\s+snapshots/i)).toBeNull();
+    expect(findCall(/insert\s+into\s+holdings/i)).toBeNull();
+  });
+});

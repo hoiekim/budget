@@ -11,6 +11,7 @@ import {
   searchSecurities,
   upsertSecurities,
   getSecurity,
+  getLatestSecurityClosePrice,
   accountsTable,
   getRowOwner,
   getHoldingSnapshotById,
@@ -30,6 +31,9 @@ import { HoldingSnapshot, snapshotsTable } from "server/lib/postgres/repositorie
 export interface HoldingSnapshotPostResponse {
   snapshot_id: string;
   security_id: string;
+  /** The price and value the route stored, so the client's copy matches. */
+  institution_price?: number | null;
+  institution_value?: number | null;
 }
 
 /**
@@ -84,6 +88,21 @@ const derivedInstitutionValueOverflow = (
     return `Field institution_value must be at most ${DECIMAL_15_2_MAX}`;
   }
   return null;
+};
+
+/**
+ * The price a manually entered holding is worth on `snapshot_date` when the
+ * caller supplies none: the security's latest close on or before that date,
+ * else the security's latest known close. Null when neither exists.
+ */
+const resolveInstitutionPrice = async (
+  security_id: string,
+  snapshot_date: string,
+): Promise<number | null> => {
+  const snapshotPrice = await getLatestSecurityClosePrice(security_id, snapshot_date);
+  if (snapshotPrice !== null) return snapshotPrice;
+  const security = await getSecurity(security_id);
+  return security?.close_price ?? null;
 };
 
 /**
@@ -206,28 +225,46 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         return validationError("no fields to update");
       }
 
-      // The re-sync below derives the holdings row's institution_value from
-      // the patched quantity * institution_price when the snapshot carries
-      // no explicit value — the same overflow the create path refuses. Check
-      // the effective post-patch values (body over the stored row) before
-      // the snapshot write, so a refused combination leaves no written
-      // snapshot behind a stale holdings row.
+      // A stored value is quantity * price on the snapshot's date, so an edit
+      // to any of those inputs recomputes it — and a date or security edit
+      // re-resolves the price first — unless the caller sets the value itself.
+      const securityChanged = patch.holding_security_id !== undefined;
+      const repriced = securityChanged || patch.snapshot_date !== undefined;
+      const rederive =
+        body.institution_value === undefined &&
+        (repriced || body.quantity !== undefined || body.institution_price !== undefined);
+
       const effectiveQuantity =
         body.quantity !== undefined ? (body.quantity as number | null) : existing.quantity;
-      const effectivePrice =
+      let effectivePrice =
         body.institution_price !== undefined
           ? (body.institution_price as number | null)
           : existing.institution_price;
-      const effectiveValue =
-        body.institution_value !== undefined
+      if (rederive && repriced && body.institution_price === undefined) {
+        const resolvedPrice = await resolveInstitutionPrice(
+          (patch.holding_security_id as string | undefined) ?? existing.holding_security_id,
+          (patch.snapshot_date as string | undefined) ?? existing.snapshot_date,
+        );
+        effectivePrice = resolvedPrice ?? (securityChanged ? null : effectivePrice);
+        patch.institution_price = effectivePrice;
+      }
+      const effectiveValue = rederive
+        ? null
+        : body.institution_value !== undefined
           ? (body.institution_value as number | null)
           : existing.institution_value;
+
+      // Checked before the snapshot write, so a refused combination leaves no
+      // written snapshot behind a stale holdings row.
       const patchDerivedOverflow = derivedInstitutionValueOverflow(
         effectiveQuantity,
         effectivePrice,
         effectiveValue,
       );
       if (patchDerivedOverflow) return validationError(patchDerivedOverflow);
+      if (rederive) {
+        patch.institution_value = (effectiveQuantity ?? 0) * (effectivePrice ?? 0);
+      }
 
       try {
         await snapshotsTable.update(provided_snapshot_id, patch, undefined, sharedWith(user));
@@ -260,6 +297,10 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
           body: {
             snapshot_id: provided_snapshot_id,
             security_id: new_security_id ?? existing.holding_security_id,
+            ...(rederive && {
+              institution_price: effectivePrice,
+              institution_value: patch.institution_value as number,
+            }),
           },
         };
       } catch (error: unknown) {
@@ -336,15 +377,23 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
     // updates in place rather than producing duplicate rows.
     const snapshot_id = `holding-${account_id}-${security_id}-${dateString}`;
 
+    const snapshot_date = date.toISOString().split("T")[0];
+    const price =
+      institution_price ??
+      (institution_value == null ? await resolveInstitutionPrice(security_id, snapshot_date) : null);
+    const resolvedOverflow = derivedInstitutionValueOverflow(quantity, price, institution_value);
+    if (resolvedOverflow) return validationError(resolvedOverflow);
+    const value = institution_value ?? quantity * (price ?? 0);
+
     const snapshot: HoldingSnapshot = {
       snapshot_id,
-      snapshot_date: date.toISOString().split("T")[0],
+      snapshot_date,
       holding_account_id: account_id,
       holding_security_id: security_id,
       quantity,
       cost_basis,
-      institution_price,
-      institution_value,
+      institution_price: price ?? undefined,
+      institution_value: value,
     };
 
     try {
@@ -356,9 +405,9 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         security_id,
         quantity,
         cost_basis: cost_basis ?? null,
-        institution_price: institution_price ?? 0,
+        institution_price: price ?? 0,
         institution_price_as_of: date.toISOString(),
-        institution_value: institution_value ?? quantity * (institution_price ?? 0),
+        institution_value: value,
         iso_currency_code: null,
         unofficial_currency_code: null,
       };
@@ -377,7 +426,10 @@ export const postHoldingSnapshotRoute = new Route<HoldingSnapshotPostResponse>(
         ),
       );
 
-      return { status: "success", body: { snapshot_id, security_id } };
+      return {
+        status: "success",
+        body: { snapshot_id, security_id, institution_price: price, institution_value: value },
+      };
     } catch (error: unknown) {
       logger.error("Failed to upsert holding snapshot", { snapshot_id }, error);
       throw error instanceof Error ? error : new Error(String(error));
