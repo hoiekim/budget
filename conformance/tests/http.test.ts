@@ -301,15 +301,20 @@ describe("the client files", () => {
   const page = (pathname: string, options: Parameters<ApiClient["request"]>[2] = {}) =>
     stack.anonymous().request("GET", `/${pathname}`, options);
 
-  test("serves the app shell at / without the API's headers", async () => {
-    const result = await page("/");
-    expect(result.status).toBe(200);
-    expect(result.text).toBe(index);
-    expect(result.headers.get("content-type")).toBe("text/html;charset=utf-8");
-    expect(result.headers.get("content-length")).toBe(String(Buffer.byteLength(index)));
-    expect(result.headers.get("content-security-policy")).toBeNull();
-    expect(result.headers.get("x-frame-options")).toBeNull();
-    expect(result.setCookies).toEqual([]);
+  test("serves the app shell at /, and at an app route, with the API's security headers", async () => {
+    const api = (await stack.anonymous().get("/health")).headers;
+    for (const pathname of ["/", "/accounts/some-account"]) {
+      const result = await page(pathname);
+      expect(result.status).toBe(200);
+      expect(result.text).toBe(index);
+      expect(result.headers.get("content-type")).toBe("text/html;charset=utf-8");
+      expect(result.headers.get("content-length")).toBe(String(Buffer.byteLength(index)));
+      for (const header of ["content-security-policy", "x-frame-options", "x-content-type-options", "x-xss-protection", "referrer-policy"]) {
+        expect([pathname, header, result.headers.get(header)]).toEqual([pathname, header, api.get(header)]);
+      }
+      expect(result.headers.get("x-frame-options")).toBe("DENY");
+      expect(result.setCookies).toEqual([]);
+    }
   });
 
   test("serves a file that exists with a content type from its extension", async () => {

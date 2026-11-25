@@ -453,7 +453,19 @@ fn parse_range(header: Option<&String>, size: u64) -> Result<Option<(u64, u64)>,
     Ok(Some((start, end)))
 }
 
+/// A client file, falling back to `index.html` for the single-page app's
+/// routes. The document is the response a browser enforces CSP and
+/// X-Frame-Options from, so every answer carries the security headers the
+/// API's do.
 async fn serve_static(method: &str, full_path: &str, headers: &HashMap<String, String>) -> HttpResponse {
+    let mut response = read_static(method, full_path, headers).await;
+    for (name, value) in response_security_headers() {
+        set_header(&mut response, name, value);
+    }
+    response
+}
+
+async fn read_static(method: &str, full_path: &str, headers: &HashMap<String, String>) -> HttpResponse {
     let root = client_dir();
     let index = root.join("index.html");
     // The path is used as written: nothing is percent-decoded, and the URL
@@ -484,7 +496,7 @@ async fn serve_static(method: &str, full_path: &str, headers: &HashMap<String, S
             *response.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
             set_header(&mut response, "content-range", &format!("bytes */{size}"));
             set_header(&mut response, "accept-ranges", "bytes");
-            return response;
+            response
         }
         Ok(Some((start, end))) => {
             let slice = Bytes::from(bytes).slice(start as usize..=end as usize);
@@ -502,9 +514,9 @@ async fn serve_static(method: &str, full_path: &str, headers: &HashMap<String, S
             response
         }
     };
-    if !is_head {
-        set_header(&mut response, "content-type", content_type_of(&file));
-    }
+    // Bun labels a file response given headers of its own whatever its
+    // method or status, so a HEAD and a 416 carry the type too.
+    set_header(&mut response, "content-type", content_type_of(&file));
     response
 }
 

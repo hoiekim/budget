@@ -119,10 +119,6 @@ servers and that test together.
 | A pending SimpleFin transaction is stored as posted | `sync-simple-fin.test.ts` |
 | An invitation to an address the demo account has is sent, though one to its username is refused; the demo account sees and can decline it, and only accepting is refused | `sharing-email.test.ts` |
 
-Two more are worked around rather than pinned:
-
-- `DELETE /login` answers before the session row is deleted, so a request
-  sent right after can still find the session; tests that replay a
-  signed-out cookie wait for the row to go first.
-- Each SimpleFin sync gives every holding's security a new random id; tests
-  read the id back instead of naming it.
+One more is worked around rather than pinned: each SimpleFin sync gives every
+holding's security a new random id; tests read the id back instead of naming
+it.

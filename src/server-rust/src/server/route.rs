@@ -238,21 +238,22 @@ pub struct Session {
 }
 
 impl Session {
-    /// Replaces the session id and forgets who was signed in, deleting the old row.
-    pub async fn regenerate(&mut self) {
+    /// Replaces the session id and forgets who was signed in, deleting the old
+    /// row. Fails when that row could not be deleted; the id is replaced and
+    /// the user forgotten either way.
+    pub async fn regenerate(&mut self) -> anyhow::Result<()> {
         let old_id = std::mem::replace(&mut self.id, uuid::Uuid::new_v4().to_string());
         self.user = None;
         self.auth = None;
         self.stored = false;
-        let _ = crate::server::session::session_store().destroy(&old_id).await;
+        crate::server::session::session_store().destroy(&old_id).await
     }
 
-    /// Ends the session: its row is deleted and its cookie cleared.
-    pub async fn destroy(&mut self) {
+    /// Ends the session: its cookie is cleared, and its row deleted. Fails
+    /// when the row could not be deleted; the cookie is cleared either way.
+    pub async fn destroy(&mut self) -> anyhow::Result<()> {
         self.destroyed = true;
-        if let Err(error) = crate::server::session::session_store().destroy(&self.id).await {
-            logger::error("Failed to destroy session", None, Some(&error));
-        }
+        crate::server::session::session_store().destroy(&self.id).await
     }
 }
 

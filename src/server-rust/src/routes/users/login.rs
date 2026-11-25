@@ -84,7 +84,7 @@ pub async fn post_login(ctx: &mut Ctx) -> HandlerResult {
         LOGIN_RATE_LIMITER.refund(&ip, 1);
         let masked = mask_user(user);
         // A fresh session id, so one planted before sign-in is never promoted.
-        ctx.session.regenerate().await;
+        ctx.session.regenerate().await?;
         ctx.session.user = Some(masked.clone());
         return Ok(ApiResponse::success_with(masked.to_json()).into());
     }
@@ -95,11 +95,10 @@ pub async fn post_login(ctx: &mut Ctx) -> HandlerResult {
 
 pub async fn delete_login(ctx: &mut Ctx) -> HandlerResult {
     let auth = ctx.session.auth.clone();
-    ctx.session.destroy().await;
+    let sso = get_sso();
 
-    let (Some(auth), Some(sso)) = (auth, get_sso()) else { return Ok(ApiResponse::success().into()) };
-
-    if let Some(refresh_token) = auth.refresh_token {
+    // The revoke goes first: if the store delete fails, the surviving row is ended at its next re-check.
+    if let (Some(refresh_token), Some(sso)) = (auth.as_ref().and_then(|auth| auth.refresh_token.clone()), &sso) {
         let revoking = sso.clone();
         tokio::spawn(async move {
             if let Err(error) = revoking.client.revoke(&refresh_token).await {
@@ -111,6 +110,9 @@ pub async fn delete_login(ctx: &mut Ctx) -> HandlerResult {
             }
         });
     }
+    ctx.session.destroy().await?;
+
+    let (Some(_), Some(sso)) = (auth, sso) else { return Ok(ApiResponse::success().into()) };
     match sso.client.logout_url(Some(&sso.config.post_logout_redirect)).await {
         Ok(logout_url) if !logout_url.is_empty() => Ok(ApiResponse::success_with(json!({ "logoutUrl": logout_url })).into()),
         Ok(_) => Ok(ApiResponse::success().into()),

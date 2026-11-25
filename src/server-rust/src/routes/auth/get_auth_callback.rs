@@ -61,7 +61,7 @@ async fn get_auth_callback(ctx: &mut Ctx) -> HandlerResult {
         }
     };
 
-    ctx.session.regenerate().await;
+    ctx.session.regenerate().await?;
     let secure = is_production();
     let auth = SessionAuth {
         sid: claim("sid").to_string(),
