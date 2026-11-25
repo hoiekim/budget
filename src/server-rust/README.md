@@ -163,6 +163,14 @@ than of the TypeScript.
   Rust waits for both and reports the first failure in branch order. The
   upstream calls and database writes come out the same; the timing of the
   answer and of log lines does not.
+- **The shared Plaid gate is not ported yet.** Bun runs every Plaid call
+  through one gate of `PLAID_MAX_INFLIGHT` slots, gives each call a request
+  timeout, and has `GET /link-token`, `POST /public-token` and `DELETE /item`
+  answer 503 with a busy message when they cannot get a slot within
+  `PLAID_FOREGROUND_WAIT_MS`. Rust calls Plaid without that gate or timeout,
+  so those routes wait instead of answering 503. The suite's fake Plaid never
+  fills the gate, so it does not show this difference. Unlike the entries
+  above, this one is not meant to stay: the port is still to be done.
 - **`undefined` in log context.** Bun's logger prints a context of only
   undefined values as `{}`; Rust has no `undefined` and prints nothing. It
   shows on one webhook log line, for a body without an `item_id`.

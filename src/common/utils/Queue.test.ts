@@ -190,5 +190,73 @@ describe("Queue", () => {
 
       expect(results).toEqual([1, 2]);
     });
+
+    describe("in-flight gate", () => {
+      const holdSlot = async (q: Queue) => {
+        let release!: () => void;
+        let started!: () => void;
+        const running = new Promise<void>((resolve) => (started = resolve));
+        const held = q.add(
+          () =>
+            new Promise<void>((resolve) => {
+              release = resolve;
+              started();
+            }),
+        );
+        await running;
+        return { held, release: () => release() };
+      };
+
+      it("rejects when no in-flight slot frees inside the budget", async () => {
+        const q = new Queue({ maxInflight: 1 });
+        const slot = await holdSlot(q);
+        let ran = false;
+
+        await expect(
+          q.add(
+            async () => {
+              ran = true;
+            },
+            { maxWaitMs: 10 },
+          ),
+        ).rejects.toBeInstanceOf(QueueWaitTimeoutError);
+        expect(ran).toBe(false);
+
+        slot.release();
+        await slot.held;
+      });
+
+      it("hands the freed slot to the next waiter, not to a shed one", async () => {
+        const q = new Queue({ maxInflight: 1 });
+        const slot = await holdSlot(q);
+        const shed = q.add(async () => "shed", { maxWaitMs: 10 });
+        const patient = q.add(async () => "patient");
+        await expect(shed).rejects.toBeInstanceOf(QueueWaitTimeoutError);
+
+        slot.release();
+        await slot.held;
+        expect(await patient).toBe("patient");
+        expect(await q.add(async () => "after", { maxWaitMs: 10 })).toBe("after");
+      });
+
+      it("resolves when the slot frees inside the budget", async () => {
+        const q = new Queue({ maxInflight: 1 });
+        const slot = await holdSlot(q);
+        const waiting = q.add(async () => "ran", { maxWaitMs: 1_000 });
+
+        slot.release();
+        expect(await waiting).toBe("ran");
+      });
+
+      it("waits indefinitely when unset", async () => {
+        const q = new Queue({ maxInflight: 1 });
+        const slot = await holdSlot(q);
+        const waiting = q.add(async () => "ran");
+        await new Promise((r) => setTimeout(r, 30));
+
+        slot.release();
+        expect(await waiting).toBe("ran");
+      });
+    });
   });
 });

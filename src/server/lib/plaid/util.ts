@@ -1,5 +1,6 @@
 import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
 import { MaskedUser, logger } from "server";
+import { Queue } from "common";
 
 const { PLAID_CLIENT_ID, PLAID_SECRET_PRODUCTION, PLAID_SECRET_DEVELOPMENT, PLAID_SECRET_SANDBOX } =
   process.env;
@@ -12,6 +13,14 @@ export const isPlaidConfigured =
 if (!isPlaidConfigured) {
   logger.warn("Plaid is not configured. Check env vars.");
 }
+
+/**
+ * Every call made with {@link getClient} holds a {@link plaidQueue} slot until
+ * it settles, and the SDK's axios default never times out, so one stalled
+ * connection would hold a shared slot forever. 30 s leaves room for a large
+ * `transactionsSync` page while still handing a stuck slot back.
+ */
+export const PLAID_REQUEST_TIMEOUT_MS = 30_000;
 
 export const getClient = (user?: MaskedUser) => {
   if (!isPlaidConfigured) {
@@ -39,6 +48,7 @@ export const getClient = (user?: MaskedUser) => {
   const config = new Configuration({
     basePath,
     baseOptions: {
+      timeout: PLAID_REQUEST_TIMEOUT_MS,
       headers: {
         "PLAID-CLIENT-ID": PLAID_CLIENT_ID,
         "PLAID-SECRET": secret,
@@ -47,6 +57,45 @@ export const getClient = (user?: MaskedUser) => {
   });
   return new PlaidApi(config);
 };
+
+/**
+ * Every Plaid call made with {@link getClient} is metered against one
+ * app-level credential shared by every user of the deployment, so their
+ * concurrency is one process-wide budget. Route each client call through
+ * `plaidQueue.add(() => client.someCall(...))`.
+ */
+export const PLAID_MAX_INFLIGHT = 8;
+export const plaidQueue = new Queue({ maxInflight: PLAID_MAX_INFLIGHT });
+
+/**
+ * How long a call made while someone waits on the HTTP response may queue for
+ * a {@link plaidQueue} slot. Bun reaps a silent request after 10 s, so a call
+ * that cannot start inside half of that fails with `QueueWaitTimeoutError`
+ * instead of being dropped with no response.
+ *
+ * Only the route knows whether shedding is safe, so it passes this as
+ * {@link PlaidCallOptions.maxWaitMs}, and only on a request's first Plaid call:
+ * once a call has created state at Plaid, the calls after it must finish late
+ * rather than not at all.
+ */
+export const PLAID_FOREGROUND_WAIT_MS = 5_000;
+
+/**
+ * Message for a foreground call shed by {@link PLAID_FOREGROUND_WAIT_MS}.
+ * Shedding is expected under load, so routes answer it with a 503 and a warn
+ * log, never an alarm.
+ */
+export const PLAID_BUSY_MESSAGE = "The bank connection service is busy. Please try again shortly.";
+
+/** Test seam: the Plaid client factory. Production callers pass nothing. */
+export interface PlaidClientDeps {
+  getClient?: typeof getClient;
+}
+
+export interface PlaidCallOptions extends PlaidClientDeps {
+  /** Bound on the {@link plaidQueue} wait. Unset waits for as long as it takes. */
+  maxWaitMs?: number;
+}
 
 /**
  * Get a production Plaid client.

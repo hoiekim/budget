@@ -13,7 +13,9 @@ import {
   toClientItem,
   validationError,
 } from "server";
+import { logger } from "server/lib/logger";
 import {
+  QueueWaitTimeoutError,
   getDateString,
   JSONItem,
   JSONClientItem,
@@ -29,7 +31,7 @@ export interface PublicTokenPostResponse {
 export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
   "POST",
   "/public-token",
-  async (req) => {
+  async (req, res) => {
     const { user } = req.session;
     if (!user) {
       return {
@@ -79,7 +81,17 @@ export const postPublicTokenRoute = new Route<PublicTokenPostResponse>(
         return { status: "failed", message: "Plaid integration is not configured" };
       }
 
-      const item = await exchangePlaidToken(user, public_token, institution_id);
+      let item: JSONItem;
+      try {
+        item = await exchangePlaidToken(user, public_token, institution_id);
+      } catch (error) {
+        if (!(error instanceof QueueWaitTimeoutError)) throw error;
+        logger.warn("Plaid public token exchange shed by the shared gate", {
+          userId: user.user_id,
+        });
+        res.status(503);
+        return { status: "failed", message: plaid.PLAID_BUSY_MESSAGE };
+      }
       await upsertItems(user, [item]);
 
       await Promise.all([syncPlaidAccounts(item.item_id), syncPlaidTransactions(item.item_id)]);
@@ -120,7 +132,11 @@ const exchangePlaidToken = async (
   public_token: string,
   institution_id: string,
 ): Promise<JSONItem> => {
-  const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token);
+  const { access_token, item_id } = await plaid.exchangePublicToken(user, public_token, {
+    maxWaitMs: plaid.PLAID_FOREGROUND_WAIT_MS,
+  });
+  // Unbounded: the item now exists at Plaid, and shedding here would lose its
+  // single-use access token.
   const { consented_products = [], products = [] } = await plaid.getItem(access_token);
   return {
     item_id,
