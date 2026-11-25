@@ -167,9 +167,14 @@ export const AccountProperties = ({ account }: Props) => {
               ))}
             </select>
           ) : (
-            <span>{toTitleCase(subtype || type)}</span>
+            <span>{toTitleCase(type)}</span>
           )}
         </KeyValue>
+        {!isManualAccount && !!subtype && (
+          <KeyValue name="Subtype">
+            <span>{toTitleCase(subtype)}</span>
+          </KeyValue>
+        )}
         <KeyValue name="Institution">
           {isManualAccount ? (
             <span>Manual</span>
