@@ -44,6 +44,7 @@ import {
   initializeSso,
   ssoPublicPathMethods,
 } from "server/lib/sso";
+import { readSessionData } from "server/lib/session-read";
 import type { MaskedUser } from "server/lib/postgres/models/user";
 import type { SessionAuth } from "server/lib/postgres/models/session";
 import * as routes from "server/routes";
@@ -98,7 +99,7 @@ async function loadSession(request: Request): Promise<Session & ServerRequest["s
   const sid = cookies[SESSION_COOKIE_NAME];
 
   if (sid) {
-    const data = await loadSessionData(sid).catch(() => null);
+    const data = await readSessionData({ get: loadSessionData }, sid);
     if (data) return makeSession(sid, data.user, data.auth);
   }
 
