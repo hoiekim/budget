@@ -4,10 +4,12 @@ import { InvestmentTransactionType, InvestmentTransactionSubtype } from "common/
 
 import {
   buildSecurityPriceIndex,
+  foldCostBasis,
   getPriceForHolding,
   inferCostBasis,
   getHoldingsValueData,
   getEarningsForPeriod,
+  CostBasisPosition,
   SecurityPriceIndex,
 } from "./holdings";
 import { HoldingsValueData, HoldingValueSummary, HoldingValueHistory } from "../../models/Calculations";
@@ -517,6 +519,53 @@ describe("inferCostBasis", () => {
     });
 
     expect(result).toBeNull();
+  });
+});
+
+describe("foldCostBasis direction", () => {
+  const fold = (
+    position: CostBasisPosition,
+    type: InvestmentTransactionType,
+    price: number,
+    quantity: number,
+  ) =>
+    foldCostBasis(
+      position,
+      createInvestmentTransaction("acc1", "sec1", type, price, quantity, "2026-01-10"),
+    );
+
+  test("a provider buy adds cost and shares", () => {
+    expect(fold({ totalCost: 0, totalQuantity: 0 }, InvestmentTransactionType.Buy, 10, 10)).toEqual({
+      totalCost: 100,
+      totalQuantity: 10,
+    });
+  });
+
+  test("a provider sell removes basis in proportion to the shares leaving", () => {
+    expect(
+      fold({ totalCost: 1000, totalQuantity: 10 }, InvestmentTransactionType.Sell, 120, -4),
+    ).toEqual({ totalCost: 600, totalQuantity: 6 });
+  });
+
+  test("a sell with a positive quantity removes basis", () => {
+    expect(
+      fold({ totalCost: 100, totalQuantity: 10 }, InvestmentTransactionType.Sell, 30, 5),
+    ).toEqual({ totalCost: 50, totalQuantity: 5 });
+  });
+
+  test("a buy with a negative quantity removes basis for the shares leaving", () => {
+    expect(
+      fold({ totalCost: 100, totalQuantity: 10 }, InvestmentTransactionType.Buy, 30, -5),
+    ).toEqual({ totalCost: 50, totalQuantity: 5 });
+  });
+
+  test("a zero-quantity row moves nothing", () => {
+    expect(
+      fold({ totalCost: 100, totalQuantity: 10 }, InvestmentTransactionType.Buy, 10, 0),
+    ).toEqual({ totalCost: 100, totalQuantity: 10 });
+    expect(
+      fold({ totalCost: 100, totalQuantity: 10 }, InvestmentTransactionType.Sell, 10, 0),
+    ).toEqual({ totalCost: 100, totalQuantity: 10 });
   });
 });
 

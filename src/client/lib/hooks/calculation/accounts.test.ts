@@ -654,6 +654,30 @@ describe("investment balance history from transactions", () => {
     expect(at(balanceData, "2022-01")).toBeCloseTo(600, 2);
   });
 
+  // Rows written before the canonical form can record a sale as a buy with
+  // a negative quantity.
+  test("a buy with a negative quantity is a sale, not neither", () => {
+    const balanceData = balancesFor(300, [
+      contribution("2022-01-10", 10),
+      contribution("2022-02-10", 30, -5),
+      new InvestmentTransaction({
+        investment_transaction_id: "recon",
+        account_id: ACCOUNT_ID,
+        security_id: "sec1",
+        date: "2022-03-10",
+        name: "Manual",
+        quantity: -5,
+        amount: -150,
+        price: 30,
+        type: InvestmentTransactionType.Buy,
+        subtype: InvestmentTransactionSubtype.Buy,
+      }),
+    ]);
+    expect(at(balanceData, "2022-01")).toBeCloseTo(100, 2);
+    expect(at(balanceData, "2022-02")).toBeCloseTo(200, 2);
+    expect(at(balanceData, "2022-03")).toBeCloseTo(300, 2);
+  });
+
   // A month takes the state after everything in it, so a later row in the
   // same month has to win over an earlier one.
   test("a month reads the state after its last transaction, not its first", () => {
