@@ -5,6 +5,9 @@
 //! missing (`undefined`) in what is built from it, and a number field that
 //! does not hold a number becomes `null` (`NaN`), as in the TypeScript.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde_json::json;
 
 use crate::common::date::{get_date_string, get_date_time_string_of};
@@ -168,24 +171,48 @@ pub fn translate_transaction(simple_fin_transaction: &Json, simple_fin_account: 
     Ok(Json::Object(translated))
 }
 
-/// A transaction of a SimpleFin account that holds securities, as a purchase
-/// of one unit at its amount.
+/// Subtypes a SimpleFin description can name for money arriving in the
+/// account. Whole-word matches only, so a payee name can't trip it.
+static ARRIVING_CASH_SUBTYPE_BY_KEYWORD: LazyLock<[(Regex, &str); 2]> = LazyLock::new(|| {
+    [
+        (Regex::new(r"(?i-u)\bdividends?\b").unwrap(), "dividend"),
+        (Regex::new(r"(?i-u)\binterest\b").unwrap(), "interest"),
+    ]
+});
+
+fn infer_cash_subtype(description: Option<&Json>, raw_amount: f64) -> &'static str {
+    if raw_amount > 0.0 {
+        let description = description.map_or_else(|| "undefined".to_string(), to_js_string);
+        for (pattern, subtype) in ARRIVING_CASH_SUBTYPE_BY_KEYWORD.iter() {
+            if pattern.is_match(&description) {
+                return subtype;
+            }
+        }
+    }
+    if raw_amount >= 0.0 { "deposit" } else { "withdrawal" }
+}
+
+/// A transaction of a SimpleFin account that holds securities, as cash moving
+/// in or out of it: SimpleFin does not say which security a row bought or sold.
 pub fn translate_investment_transaction(simple_fin_transaction: &Json, simple_fin_account: &Json) -> anyhow::Result<Json> {
     let transaction = Some(simple_fin_transaction);
-    let amount = num(unary_plus(field(transaction, "amount", "simpleFinTransaction")?));
+    // SimpleFin signs positive when money arrives; investment amounts are positive when money leaves.
+    let raw_amount = unary_plus(field(transaction, "amount", "simpleFinTransaction")?);
+    let amount = if raw_amount == 0.0 { 0.0 } else { -raw_amount };
+    let description = field(transaction, "description", "simpleFinTransaction")?;
 
     let mut translated = Obj::new();
     put(&mut translated, "investment_transaction_id", field(transaction, "id", "simpleFinTransaction")?);
     translated.insert("date".into(), json!(date_time_of_seconds(field(transaction, "posted", "simpleFinTransaction")?)));
-    translated.insert("amount".into(), amount.clone());
-    translated.insert("quantity".into(), json!(1));
-    translated.insert("price".into(), amount);
-    put(&mut translated, "name", field(transaction, "description", "simpleFinTransaction")?);
+    translated.insert("amount".into(), num(amount));
+    translated.insert("quantity".into(), json!(0));
+    translated.insert("price".into(), json!(0));
+    put(&mut translated, "name", description);
     put(&mut translated, "account_id", field(Some(simple_fin_account), "id", "simpleFinAccount")?);
     translated.insert("security_id".into(), Json::Null);
     translated.insert("cancel_transaction_id".into(), Json::Null);
-    translated.insert("type".into(), json!("buy"));
-    translated.insert("subtype".into(), json!("buy"));
+    translated.insert("type".into(), json!("cash"));
+    translated.insert("subtype".into(), json!(infer_cash_subtype(description, raw_amount)));
     translated.insert("fees".into(), Json::Null);
     translated.insert("iso_currency_code".into(), Json::Null);
     translated.insert("unofficial_currency_code".into(), Json::Null);
@@ -411,20 +438,71 @@ mod tests {
         assert_eq!(no_memo["date"], json!("NaN-NaN-NaNT00:00:00"));
     }
 
+    fn investment_transaction_with(amount: &str, description: &str) -> Json {
+        let transaction = transaction_with(json!({ "id": "inv-txn-001", "amount": amount, "description": description }));
+        translate_investment_transaction(&transaction, &account_with(json!({}))).unwrap()
+    }
+
     #[test]
-    fn translates_an_investment_transaction_as_a_one_unit_purchase() {
-        let transaction = transaction_with(json!({ "id": "inv-txn-001", "amount": "500.00", "description": "Stock Purchase" }));
-        let translated = translate_investment_transaction(&transaction, &account_with(json!({}))).unwrap();
+    fn translates_a_cash_in_row_as_a_cash_deposit_with_the_flipped_sign() {
+        let translated = investment_transaction_with("500.00", "Transfer in");
         assert_eq!(translated["investment_transaction_id"], json!("inv-txn-001"));
-        assert_eq!(translated["amount"], json!(500));
-        assert_eq!(translated["quantity"], json!(1));
-        assert_eq!(translated["price"], json!(500));
-        assert_eq!(translated["name"], json!("Stock Purchase"));
+        assert_eq!(translated["amount"], json!(-500));
+        assert_eq!(translated["quantity"], json!(0));
+        assert_eq!(translated["price"], json!(0));
+        assert_eq!(translated["name"], json!("Transfer in"));
         assert_eq!(translated["account_id"], json!("acc-001"));
-        assert_eq!(translated["type"], json!("buy"));
-        assert_eq!(translated["subtype"], json!("buy"));
+        assert_eq!(translated["type"], json!("cash"));
+        assert_eq!(translated["subtype"], json!("deposit"));
         assert_eq!(translated["security_id"], Json::Null);
         assert_eq!(translated["label"], json!({}));
+    }
+
+    #[test]
+    fn translates_a_cash_out_row_as_a_cash_withdrawal() {
+        let translated = investment_transaction_with("-250.00", "Wire transfer out");
+        assert_eq!(translated["amount"], json!(250));
+        assert_eq!(translated["type"], json!("cash"));
+        assert_eq!(translated["subtype"], json!("withdrawal"));
+    }
+
+    #[test]
+    fn names_dividend_and_interest_only_as_whole_words_on_arriving_money() {
+        let subtypes: Vec<(Json, Json)> = [
+            ("12.34", "Quarterly dividend"),
+            ("12.00", "Quarterly DIVIDENDS"),
+            ("3.21", "Interest paid"),
+            ("7.00", "Dividendco payout"),
+            ("-5.00", "Margin interest charged"),
+            ("-40.00", "Dividend reinvestment"),
+        ]
+        .iter()
+        .map(|(amount, description)| {
+            let translated = investment_transaction_with(amount, description);
+            (translated["amount"].clone(), translated["subtype"].clone())
+        })
+        .collect();
+        assert_eq!(
+            subtypes,
+            vec![
+                (json!(-12.34), json!("dividend")),
+                (json!(-12), json!("dividend")),
+                (json!(-3.21), json!("interest")),
+                (json!(-7), json!("deposit")),
+                (json!(5), json!("withdrawal")),
+                (json!(40), json!("withdrawal")),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_zero_amount_stays_zero_and_an_unreadable_one_is_a_withdrawal() {
+        let zero = investment_transaction_with("0.00", "No-op adjustment");
+        assert_eq!(zero["amount"], json!(0));
+        assert_eq!(zero["subtype"], json!("deposit"));
+        let unreadable = investment_transaction_with("abc", "Interest paid");
+        assert_eq!(unreadable["amount"], Json::Null);
+        assert_eq!(unreadable["subtype"], json!("withdrawal"));
     }
 
     #[test]
