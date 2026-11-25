@@ -90,6 +90,24 @@ describe("session cookie", () => {
       "__Host-login": "x",
     });
   });
+
+  test("drops a cookie with a malformed percent sequence instead of throwing", () => {
+    expect(parseCookies("session_id=%E0%A4%A")).toEqual({});
+  });
+
+  test("keeps the well-formed cookies alongside a malformed one", () => {
+    expect(parseCookies("bad=%E0%A4%A; session_id=abc%20def; other=%")).toEqual({
+      session_id: "abc def",
+    });
+  });
+
+  test("skips parts without a name or without an equals sign", () => {
+    expect(parseCookies("=orphan; flag; session_id=x")).toEqual({ session_id: "x" });
+  });
+
+  test("an empty header yields no cookies", () => {
+    expect(parseCookies("")).toEqual({});
+  });
 });
 
 describe("saveSession", () => {

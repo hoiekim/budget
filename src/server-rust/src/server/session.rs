@@ -34,18 +34,21 @@ pub fn session_store() -> &'static PostgresSessionStore {
     STORE.get_or_init(PostgresSessionStore::new)
 }
 
-/// The cookies of a `Cookie` header. `None` where `decodeURIComponent` would throw.
-pub fn parse_cookies(cookie_header: &str) -> Option<IndexMap<String, String>> {
+/// The cookies of a `Cookie` header. A value that is not valid percent-encoding is dropped: the app never
+/// issues one, so it reads the same as an absent cookie.
+pub fn parse_cookies(cookie_header: &str) -> IndexMap<String, String> {
     let mut cookies = IndexMap::new();
     for part in cookie_header.split(';') {
         let Some(eq) = part.find('=') else { continue };
         let key = crate::server::validation::js_trim(&part[..eq]);
-        let value = crate::server::validation::js_trim(&part[eq + 1..]);
-        if !key.is_empty() {
-            cookies.insert(key.to_string(), decode_uri_component(value)?);
+        if key.is_empty() {
+            continue;
+        }
+        if let Some(value) = decode_uri_component(crate::server::validation::js_trim(&part[eq + 1..])) {
+            cookies.insert(key.to_string(), value);
         }
     }
-    Some(cookies)
+    cookies
 }
 
 pub fn build_session_cookie(sid: &str, max_age: i64, secure: bool) -> String {
@@ -222,23 +225,31 @@ mod tests {
 
     #[test]
     fn the_session_id_reads_back_from_a_cookie_header_among_others() {
-        let cookies = parse_cookies("a=1; session_id=abc%3D; __Host-login=x").unwrap();
+        let cookies = parse_cookies("a=1; session_id=abc%3D; __Host-login=x");
         let pairs: Vec<(&str, &str)> = cookies.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
         assert_eq!(pairs, [("a", "1"), ("session_id", "abc="), ("__Host-login", "x")]);
     }
 
     #[test]
     fn cookie_parts_without_a_name_or_an_equals_sign_are_skipped_and_a_repeated_name_takes_the_last() {
-        let cookies = parse_cookies("flag; =nameless; session_id = first ;session_id=second; empty=").unwrap();
+        let cookies = parse_cookies("flag; =nameless; session_id = first ;session_id=second; empty=");
         let pairs: Vec<(&str, &str)> = cookies.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
         assert_eq!(pairs, [("session_id", "second"), ("empty", "")]);
-        assert!(parse_cookies("").unwrap().is_empty());
+        assert!(parse_cookies("").is_empty());
     }
 
     #[test]
-    fn a_cookie_value_that_does_not_decode_fails_the_whole_header() {
-        assert!(parse_cookies("session_id=%E0%A4%A").is_none());
-        assert!(parse_cookies("a=%").is_none());
+    fn a_cookie_value_that_does_not_decode_is_dropped_and_the_others_kept() {
+        let cookies = parse_cookies("theme=%E0%A4%A; session_id=abc; a=%; b=%+1");
+        let pairs: Vec<(&str, &str)> = cookies.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+        assert_eq!(pairs, [("session_id", "abc")]);
+    }
+
+    #[test]
+    fn an_undecodable_repeat_of_a_name_leaves_the_earlier_value() {
+        assert_eq!(parse_cookies("session_id=abc; session_id=%E0%A4%A").get("session_id").map(String::as_str), Some("abc"));
+        assert_eq!(parse_cookies("session_id=abc; session_id=%+1").get("session_id").map(String::as_str), Some("abc"));
+        assert!(parse_cookies("session_id=%").is_empty());
     }
 
     #[test]
