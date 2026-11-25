@@ -481,7 +481,7 @@ describe("POST /transaction", () => {
     expect(await storedRejections(stack, transaction_id)).toEqual([]);
   });
 
-  test("writes every column it is given, and keeps the id, owner, account and raw provider data", async () => {
+  test("writes every column it is given, and keeps the id, owner, account, source and raw provider data", async () => {
     const transaction_id = await target({ name: "Before", raw: { before: true } });
     const before = await storedTransaction(stack, transaction_id);
     const body = {
@@ -521,7 +521,6 @@ describe("POST /transaction", () => {
       label_category_id: own.category_id,
       label_memo: "lunch",
       label_category_confidence: 0.25,
-      source: "manual",
       updated: expect.any(String),
     });
     expect(updatedLater(after, before)).toBe(true);

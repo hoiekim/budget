@@ -144,6 +144,8 @@ export const updateTransactions = async (
       delete row.transaction_id;
       delete row.user_id;
       delete row.account_id;
+      // Provenance is fixed at creation; the delete gate and sync removal both key on it.
+      delete row.source;
 
       // Soft-deleted rows keep their primary key but are invisible to every
       // read. Updating one would report a change no user can see; excluding
